@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "project": "NoteFall 88",
+  "prototype": {
+    "first_midi_note": 60,
+    "note_count": 12,
+    "white_key_pitch_mm": 23.5,
+    "octave_span_mm": 164.5,
+    "row_count": 4,
+    "row_pitch_mm": 15.5,
+    "lookahead_ms": [0, 350, 700, 1050]
+  },
+  "led": {
+    "type": "APA102C_or_SK9822",
+    "supply_v": 5.0,
+    "pixels_per_m": 144,
+    "pixels_per_row": 24,
+    "strip_width_mm": 12.0,
+    "max_global_brightness": 4,
+    "spi_hz": 4000000,
+    "data_pin": 11,
+    "clock_pin": 12
+  },
+  "mechanical": {
+    "body_width_mm": 180.0,
+    "body_depth_mm": 70.0,
+    "base_thickness_mm": 4.5,
+    "tray_floor_mm": 2.0,
+    "tray_height_mm": 5.0,
+    "baffle_height_mm": 4.0,
+    "diffuser_thickness_mm": 0.6,
+    "grid_wall_mm": 0.8,
+    "outer_wall_mm": 1.6,
+    "fastener_clearance_mm": 3.4,
+    "fastener_x_mm": 86.0,
+    "fastener_y_mm": 31.0,
+    "silicone_pad_thickness_mm": 0.8,
+    "alignment_finger_length_mm": 35.0
+  },
+  "protocol": {
+    "baud": 921600,
+    "frame_hz": 50,
+    "failsafe_ms": 1000
+  }
+}

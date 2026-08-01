@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "source_config": "config/system.json",
+  "config_sha256": "1069c224d3ffa149bacdb33b169f384a89e62454330e9fa0f7ee20217cb0a39e",
+  "parts": {
+    "base": {
+      "x_mm": 180.0,
+      "y_mm": 70.0,
+      "z_mm": 4.5043,
+      "volume_mm3": 51850.344
+    },
+    "tray": {
+      "x_mm": 180.0,
+      "y_mm": 70.0,
+      "z_mm": 5.0005,
+      "volume_mm3": 27643.942
+    },
+    "baffle": {
+      "x_mm": 180.0,
+      "y_mm": 70.0,
+      "z_mm": 4.0011,
+      "volume_mm3": 14624.029
+    },
+    "diffuser": {
+      "x_mm": 180.0,
+      "y_mm": 70.0,
+      "z_mm": 0.6011,
+      "volume_mm3": 7538.21
+    },
+    "alignment_jig": {
+      "x_mm": 180.0,
+      "y_mm": 47.0,
+      "z_mm": 1.6,
+      "volume_mm3": 2470.4
+    }
+  },
+  "layout": {
+    "total_pixels": 96,
+    "max_abs_mapping_error_mm": 3.4722222222222143,
+    "unique_note_pixels_per_row": 12
+  },
+  "files": [
+    {
+      "file": "v0_base.stl",
+      "sha256": "ea17acda0068c3aee0261c351a8abccd3c6207ed4dac5dff2c353471909edf4e"
+    },
+    {
+      "file": "v0_base.step",
+      "sha256": "0ec330c3aeb1c93ab2fd481ea1f3105962253fd423e0be08a9d3ac3b355e7093"
+    },
+    {
+      "file": "v0_tray.stl",
+      "sha256": "bd50ed821b3bea74b363ee21c5759574b14370581233bb79c7f9ec124d7525fe"
+    },
+    {
+      "file": "v0_tray.step",
+      "sha256": "4dacc1944d9fc3cfed510798d851bf8cb7cca7bbed6b950bf90f31ddc976ad66"
+    },
+    {
+      "file": "v0_baffle.stl",
+      "sha256": "ef5accccb0863b9e6b84209345f86ccc1e6f29b6f16a78b80b8bc5b729da3500"
+    },
+    {
+      "file": "v0_baffle.step",
+      "sha256": "a0eb684de50a69eb871ea77af04297379ee88224b0b2a682c48752fd57f96366"
+    },
+    {
+      "file": "v0_diffuser.stl",
+      "sha256": "4e2201e64cf80f39fb915f063d07a6bf58a3561c09de6891aa55de95fd4b3941"
+    },
+    {
+      "file": "v0_diffuser.step",
+      "sha256": "f91f6f669b10719b4a89b37a838b5145921263bebcb896f0bd55ca581affe816"
+    },
+    {
+      "file": "v0_alignment_jig.stl",
+      "sha256": "74688aba0dda658a75481184e0f0ef6655a1efa271bb718e45f902281b50dc63"
+    },
+    {
+      "file": "v0_alignment_jig.step",
+      "sha256": "2375de3fe72de417ec567f9e93b2e7900345628e136e050893a72065c0556fad"
+    },
+    {
+      "file": "v0_assembly.step",
+      "sha256": "8c2618cf82c7da1dcb481aeed68279e494f8474b306049a21eeea4a64891dc3b"
+    },
+    {
+      "file": "layout.json",
+      "sha256": "80d41ee8ab8f5e2d8e48af7a1592ca403dcdc03cacbe0dbb8ff33cab6400e82c"
+    }
+  ]
+}
