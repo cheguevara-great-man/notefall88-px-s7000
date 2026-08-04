@@ -4,6 +4,13 @@ __pycache__/
 *.pyc
 .pio/
 firmware/.pio/
-host/*.egg-info/
-dist/
+web/node_modules/
+web/coverage/
+web/dist/
+web/*.tsbuildinfo
+tmp/
+output/
+.playwright-cli/
 .build/
+*.egg-info/
+.DS_Store

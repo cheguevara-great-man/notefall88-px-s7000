@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#090b10" />
+    <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
+    <title>NoteFall 88</title>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">PX-S7000 · SINGLE STRIP</div>
+          <h1>NoteFall <span>88</span></h1>
+        </div>
+        <div class="status-row">
+          <span class="status-pill" id="device-status" data-state="offline">ESP 未连接</span>
+          <span class="status-pill" id="piano-status" data-state="offline">钢琴未连接</span>
+        </div>
+      </header>
+
+      <section class="transport-card">
+        <label class="file-button">
+          <input id="midi-file" type="file" accept=".mid,.midi,audio/midi" />
+          <span>选择 MIDI</span>
+        </label>
+        <button id="play-button" class="primary" disabled>播放</button>
+        <button id="reset-button" disabled>复位</button>
+        <label class="compact-field">
+          <span>模式</span>
+          <select id="practice-mode">
+            <option value="wait">等我弹</option>
+            <option value="realtime">实时</option>
+          </select>
+        </label>
+        <label class="compact-field">
+          <span>速度</span>
+          <select id="tempo">
+            <option value="0.5">50%</option>
+            <option value="0.75">75%</option>
+            <option value="1" selected>100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+          </select>
+        </label>
+        <button id="settings-button" aria-controls="settings-panel">灯带校准</button>
+      </section>
+
+      <section class="score-strip">
+        <div>
+          <span class="label">曲目</span>
+          <strong id="score-name">尚未加载</strong>
+        </div>
+        <div>
+          <span class="label">进度</span>
+          <strong id="score-time">00:00 / 00:00</strong>
+        </div>
+        <div>
+          <span class="label">命中</span>
+          <strong id="score-result">0 / 0</strong>
+        </div>
+      </section>
+
+      <section class="visualizer-card">
+        <canvas id="waterfall" aria-label="钢琴瀑布流"></canvas>
+        <div class="legend">
+          <span><i class="left-hand"></i>左手</span>
+          <span><i class="right-hand"></i>右手</span>
+          <span><i class="correct"></i>正确</span>
+          <span><i class="wrong"></i>多余按键</span>
+        </div>
+      </section>
+
+      <aside id="settings-panel" class="settings-panel" hidden>
+        <div class="settings-head">
+          <div>
+            <div class="eyebrow">STRIP CALIBRATION</div>
+            <h2>灯带校准</h2>
+          </div>
+          <button id="settings-close" aria-label="关闭">关闭</button>
+        </div>
+        <p>先点击“测试中央 C”。如果亮点偏左或偏右，只调像素偏移；如果整条方向相反，打开反向。</p>
+        <label>
+          <span>亮度上限内档位：<strong id="brightness-value">2 / 4</strong></span>
+          <input id="brightness" type="range" min="1" max="4" value="2" />
+        </label>
+        <label>
+          <span>全局像素偏移：<strong id="offset-value">0</strong></span>
+          <input id="pixel-offset" type="range" min="-8" max="8" value="0" />
+        </label>
+        <label class="switch-line">
+          <span>灯带方向反向</span>
+          <input id="strip-reversed" type="checkbox" />
+        </label>
+        <div class="button-row">
+          <button id="test-a0">测试最低 A</button>
+          <button id="test-c4" class="primary">测试中央 C</button>
+          <button id="test-c8">测试最高 C</button>
+          <button id="blackout">全部熄灭</button>
+        </div>
+        <hr />
+        <h3>加入家庭 Wi-Fi（可选）</h3>
+        <div class="wifi-grid">
+          <input id="wifi-ssid" placeholder="Wi-Fi 名称" autocomplete="off" />
+          <input id="wifi-password" type="password" placeholder="Wi-Fi 密码" autocomplete="new-password" />
+          <button id="wifi-save">保存并重启</button>
+        </div>
+      </aside>
+
+      <footer>
+        <span>网页只显示瀑布流；钢琴上是一条单排目标灯。</span>
+        <span id="latency-status">WebSocket -- ms</span>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,92 +1,113 @@
 {
-  "schema_version": 1,
-  "source_config": "config/system.json",
-  "config_sha256": "1069c224d3ffa149bacdb33b169f384a89e62454330e9fa0f7ee20217cb0a39e",
-  "parts": {
-    "base": {
-      "x_mm": 180.0,
-      "y_mm": 70.0,
-      "z_mm": 4.5043,
-      "volume_mm3": 51850.344
-    },
-    "tray": {
-      "x_mm": 180.0,
-      "y_mm": 70.0,
-      "z_mm": 5.0005,
-      "volume_mm3": 27643.942
-    },
-    "baffle": {
-      "x_mm": 180.0,
-      "y_mm": 70.0,
-      "z_mm": 4.0011,
-      "volume_mm3": 14624.029
-    },
-    "diffuser": {
-      "x_mm": 180.0,
-      "y_mm": 70.0,
-      "z_mm": 0.6011,
-      "volume_mm3": 7538.21
-    },
-    "alignment_jig": {
-      "x_mm": 180.0,
-      "y_mm": 47.0,
-      "z_mm": 1.6,
-      "volume_mm3": 2470.4
+  "schema_version": 2,
+  "config_sha256": "e288f61e7a739c945b570dea1a5691d9562cc6237de2361b3904eff010d6a528",
+  "layout_sha256": "43766ee141f3c6dd8b4b2f156b038c4ca954d6a17bb07b08a8d3222ee70a504d",
+  "layout": {
+    "notes": 88,
+    "pixels": 176,
+    "max_abs_mapping_error_mm": 3.444444444444457
+  },
+  "rail": {
+    "total_length_mm": 1236.0,
+    "segment_count": 7,
+    "nominal_segment_length_mm": 176.57142857142858,
+    "print_quantities": {
+      "rail_left_end": 1,
+      "rail_segment": 5,
+      "rail_right_end": 1,
+      "diffuser_segment": 7
     }
   },
-  "layout": {
-    "total_pixels": 96,
-    "max_abs_mapping_error_mm": 3.4722222222222143,
-    "unique_note_pixels_per_row": 12
+  "parts": {
+    "rail_left_end": {
+      "x_mm": 179.571,
+      "y_mm": 17.0,
+      "z_mm": 6.2,
+      "volume_mm3": 6357.0
+    },
+    "rail_segment": {
+      "x_mm": 179.571,
+      "y_mm": 17.0,
+      "z_mm": 6.2,
+      "volume_mm3": 6334.5
+    },
+    "rail_right_end": {
+      "x_mm": 176.571,
+      "y_mm": 17.0,
+      "z_mm": 6.2,
+      "volume_mm3": 6320.7
+    },
+    "diffuser_segment": {
+      "x_mm": 175.971,
+      "y_mm": 12.65,
+      "z_mm": 0.8,
+      "volume_mm3": 1780.8
+    },
+    "controller_tray": {
+      "x_mm": 106.0,
+      "y_mm": 62.0,
+      "z_mm": 18.0,
+      "volume_mm3": 22054.2
+    },
+    "controller_lid": {
+      "x_mm": 106.4,
+      "y_mm": 62.4,
+      "z_mm": 1.8,
+      "volume_mm3": 9646.8
+    }
   },
   "files": [
     {
-      "file": "v0_base.stl",
-      "sha256": "ea17acda0068c3aee0261c351a8abccd3c6207ed4dac5dff2c353471909edf4e"
+      "file": "rail_left_end.stl",
+      "sha256": "79deb73e6e5f1cfb4f41812476ddf13d8401075b133e3fab1c1da61b378c5f5f"
     },
     {
-      "file": "v0_base.step",
-      "sha256": "0ec330c3aeb1c93ab2fd481ea1f3105962253fd423e0be08a9d3ac3b355e7093"
+      "file": "rail_left_end.step",
+      "sha256": "84e0ce5ca0926fb675edf8d4360709f4ea5f8787759a4325eb3bf25f0f21c9ab"
     },
     {
-      "file": "v0_tray.stl",
-      "sha256": "bd50ed821b3bea74b363ee21c5759574b14370581233bb79c7f9ec124d7525fe"
+      "file": "rail_segment.stl",
+      "sha256": "44af43dbce8f745f2cc39e291d7fa16d9c862eae30c9d26bb3bd971f2cd65592"
     },
     {
-      "file": "v0_tray.step",
-      "sha256": "4dacc1944d9fc3cfed510798d851bf8cb7cca7bbed6b950bf90f31ddc976ad66"
+      "file": "rail_segment.step",
+      "sha256": "78c307750f6caf7afb3082064fe53332d40ba588c3f45e38371be61f31048893"
     },
     {
-      "file": "v0_baffle.stl",
-      "sha256": "ef5accccb0863b9e6b84209345f86ccc1e6f29b6f16a78b80b8bc5b729da3500"
+      "file": "rail_right_end.stl",
+      "sha256": "02d9e930e3623ec6fb9ae441f796e2961ddf3dd5609798a115c1f8d45362401f"
     },
     {
-      "file": "v0_baffle.step",
-      "sha256": "a0eb684de50a69eb871ea77af04297379ee88224b0b2a682c48752fd57f96366"
+      "file": "rail_right_end.step",
+      "sha256": "9c59e560582666d88d9bf0981ae4a94af6915e68c66510217a97139a2872fe37"
     },
     {
-      "file": "v0_diffuser.stl",
-      "sha256": "4e2201e64cf80f39fb915f063d07a6bf58a3561c09de6891aa55de95fd4b3941"
+      "file": "diffuser_segment.stl",
+      "sha256": "5347c94b7286d79a0e534d582aa9c42bbfff0e742b0d9546f046f9d8b21d0fb6"
     },
     {
-      "file": "v0_diffuser.step",
-      "sha256": "f91f6f669b10719b4a89b37a838b5145921263bebcb896f0bd55ca581affe816"
+      "file": "diffuser_segment.step",
+      "sha256": "ea54019ca6fef366f90a27ab3e189c08d6b8871cc463594eabcba1a1920aeb57"
     },
     {
-      "file": "v0_alignment_jig.stl",
-      "sha256": "74688aba0dda658a75481184e0f0ef6655a1efa271bb718e45f902281b50dc63"
+      "file": "controller_tray.stl",
+      "sha256": "3a2dedb9f36e50fe4727034b9510d9b30973ac995b0fe12effa24e03b8b96806"
     },
     {
-      "file": "v0_alignment_jig.step",
-      "sha256": "2375de3fe72de417ec567f9e93b2e7900345628e136e050893a72065c0556fad"
+      "file": "controller_tray.step",
+      "sha256": "5f8d279aac13516464aa500c883a29a7ae0ecc9baae9c0b743271a03233136a3"
     },
     {
-      "file": "v0_assembly.step",
-      "sha256": "8c2618cf82c7da1dcb481aeed68279e494f8474b306049a21eeea4a64891dc3b"
+      "file": "controller_lid.stl",
+      "sha256": "a1135e24b1e5f772edd74b54af31b6d67ead7b9a5f200eb29c5abd9b61013c74"
     },
     {
-      "file": "layout.json",
-      "sha256": "80d41ee8ab8f5e2d8e48af7a1592ca403dcdc03cacbe0dbb8ff33cab6400e82c"
+      "file": "controller_lid.step",
+      "sha256": "425b8a3f7373db52ef62f83d229c03634e10228bec63bd758c28490411453cf7"
     }
-  ]
+  ],
+  "assembly": {
+    "file": "full_88_rail_assembly.step",
+    "purpose": "reference assembly; manufacture the hashed individual parts above"
+  }
 }

@@ -1,186 +1,314 @@
 #include <Arduino.h>
-#include <SPI.h>
+#include <ArduinoJson.h>
+#include <ESPmDNS.h>
+#include <LittleFS.h>
+#include <Preferences.h>
+#include <WebServer.h>
+#include <WebSocketsServer.h>
+#include <WiFi.h>
 
+#include <algorithm>
+
+#include "Apa102Strip.h"
+#include "UsbMidiHost.h"
+#include "app_config.h"
 #include "layout_generated.h"
 
 namespace {
 
+using notefall::Apa102Strip;
+using notefall::Rgb;
+using namespace notefall::app;
 using namespace notefall::layout;
 
-constexpr uint8_t kMagic0 = 'N';
-constexpr uint8_t kMagic1 = 'F';
-constexpr uint8_t kProtocolVersion = 1;
-constexpr uint8_t kFrameMessage = 0x10;
-constexpr size_t kFramePayloadSize = 4 + static_cast<size_t>(kRows) * kNotes * 3;
-constexpr size_t kMaxPayload = 2048;
-
-struct Rgb {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
-
-  Rgb() : r(0), g(0), b(0) {}
-  Rgb(uint8_t red, uint8_t green, uint8_t blue) : r(red), g(green), b(blue) {}
+struct NoteState {
+  bool target = false;
+  bool pressed = false;
+  uint8_t hand = 1;
+  uint8_t velocity = 0;
 };
 
-Rgb pixels[kPixelCount];
-uint8_t payload[kMaxPayload];
-uint8_t activeBrightness = 1;
-uint32_t lastValidFrameMs = 0;
-bool outputIsBlank = true;
+Apa102Strip strip(kPixelCount, kDataPin, kClockPin, kSpiHz);
+notefall::UsbMidiHost usbMidi;
+WebServer http(kHttpPort);
+WebSocketsServer websocket(kWebSocketPort);
+Preferences preferences;
+NoteState notes[kNoteCount];
 
-uint16_t crc16Update(uint16_t crc, uint8_t value) {
-  crc ^= static_cast<uint16_t>(value) << 8;
-  for (uint8_t bit = 0; bit < 8; ++bit) {
-    crc = (crc & 0x8000U) ? static_cast<uint16_t>((crc << 1U) ^ 0x1021U)
-                          : static_cast<uint16_t>(crc << 1U);
-  }
-  return crc;
+bool pianoConnected = false;
+bool mdnsStarted = false;
+bool restartRequested = false;
+uint8_t webClients = 0;
+uint8_t brightness = kDefaultGlobalBrightness;
+int8_t pixelOffset = 0;
+bool stripReversed = false;
+uint32_t lastTargetMs = 0;
+uint32_t lastLedRefreshMs = 0;
+uint32_t lastStatusMs = 0;
+int16_t testNote = -1;
+uint32_t testUntilMs = 0;
+
+constexpr Rgb kLeftTarget{28, 178, 255};
+constexpr Rgb kRightTarget{255, 42, 175};
+constexpr Rgb kCorrect{35, 255, 104};
+constexpr Rgb kWrong{255, 55, 28};
+constexpr Rgb kTest{255, 210, 32};
+
+template <typename T>
+T clampValue(T value, T low, T high) {
+  return value < low ? low : (value > high ? high : value);
 }
 
-void clearPixels() {
-  for (auto &pixel : pixels) {
-    pixel = Rgb{};
+bool validNote(int note) { return note >= kFirstMidiNote && note <= kLastMidiNote; }
+
+size_t noteIndex(uint8_t note) { return static_cast<size_t>(note - kFirstMidiNote); }
+
+int mappedPixel(uint8_t note) {
+  if (!validNote(note)) return -1;
+  int pixel = static_cast<int>(kPixelByNote[noteIndex(note)]) + pixelOffset;
+  if (stripReversed) pixel = static_cast<int>(kPixelCount) - 1 - pixel;
+  return pixel >= 0 && pixel < static_cast<int>(kPixelCount) ? pixel : -1;
+}
+
+void clearTargets() {
+  for (auto& note : notes) note.target = false;
+}
+
+void renderStrip() {
+  strip.clear();
+  const uint32_t now = millis();
+  if (lastTargetMs != 0 && now - lastTargetMs > kTargetStaleMs) clearTargets();
+  if (testNote >= 0 && now >= testUntilMs) testNote = -1;
+
+  for (uint8_t midiNote = kFirstMidiNote; midiNote <= kLastMidiNote; ++midiNote) {
+    const size_t index = noteIndex(midiNote);
+    const int pixel = mappedPixel(midiNote);
+    if (pixel < 0) continue;
+    Rgb color{};
+    if (notes[index].target) color = notes[index].hand == 0 ? kLeftTarget : kRightTarget;
+    if (notes[index].pressed) color = notes[index].target ? kCorrect : kWrong;
+    if (midiNote == testNote) color = kTest;
+    strip.setPixel(static_cast<size_t>(pixel), color);
+  }
+  strip.show(std::min<uint8_t>(brightness, kMaxGlobalBrightness));
+}
+
+void sendStatus(uint8_t client = 255) {
+  JsonDocument doc;
+  doc["t"] = "status";
+  doc["piano"] = pianoConnected;
+  doc["clients"] = webClients;
+  doc["brightness"] = brightness;
+  doc["offset"] = pixelOffset;
+  doc["reversed"] = stripReversed;
+  doc["rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
+  doc["uptimeMs"] = millis();
+  String payload;
+  serializeJson(doc, payload);
+  if (client == 255) websocket.broadcastTXT(payload);
+  else websocket.sendTXT(client, payload);
+}
+
+void sendMidiEvent(bool on, uint8_t note, uint8_t velocity) {
+  JsonDocument doc;
+  doc["t"] = "midi";
+  doc["s"] = on ? "on" : "off";
+  doc["n"] = note;
+  doc["v"] = velocity;
+  doc["ts"] = millis();
+  String payload;
+  serializeJson(doc, payload);
+  websocket.broadcastTXT(payload);
+}
+
+void handleMidiPacket(void*, const uint8_t data[4]) {
+  if (data == nullptr) return;
+  const uint8_t status = data[1];
+  const uint8_t note = data[2];
+  const uint8_t velocity = data[3];
+  if (!validNote(note)) return;
+  const uint8_t command = status & 0xF0;
+  if (command == 0x90 && velocity > 0) {
+    notes[noteIndex(note)].pressed = true;
+    notes[noteIndex(note)].velocity = velocity;
+    sendMidiEvent(true, note, velocity);
+  } else if (command == 0x80 || (command == 0x90 && velocity == 0)) {
+    notes[noteIndex(note)].pressed = false;
+    notes[noteIndex(note)].velocity = 0;
+    sendMidiEvent(false, note, velocity);
   }
 }
 
-void showPixels() {
-  SPI.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
-  for (uint8_t i = 0; i < 4; ++i) {
-    SPI.transfer(0x00);
-  }
-  const uint8_t brightness = min(activeBrightness, kMaxGlobalBrightness);
-  for (const auto &pixel : pixels) {
-    SPI.transfer(static_cast<uint8_t>(0xE0U | brightness));
-    SPI.transfer(pixel.b);
-    SPI.transfer(pixel.g);
-    SPI.transfer(pixel.r);
-  }
-  // Four bytes is conservative for the 96-pixel V0 and compatible with both
-  // common APA102C/SK9822 strip latch behavior at the configured low clock rate.
-  const size_t endBytes = max<size_t>(4, (kPixelCount + 15U) / 16U);
-  for (size_t i = 0; i < endBytes; ++i) {
-    SPI.transfer(0xFF);
-  }
-  SPI.endTransaction();
+void onPianoConnected(void*) {
+  pianoConnected = true;
+  sendStatus();
 }
 
-bool applyFrame(const uint8_t *data, size_t length) {
-  if (length != kFramePayloadSize) {
-    return false;
-  }
-  const uint8_t rows = data[1];
-  const uint8_t notes = data[2];
-  if (rows != kRows || notes != kNotes || data[3] != 0) {
-    return false;
-  }
-  activeBrightness = min(data[0], kMaxGlobalBrightness);
-  clearPixels();
-  bool anyLit = false;
-  size_t offset = 4;
-  for (uint8_t row = 0; row < kRows; ++row) {
-    for (uint8_t note = 0; note < kNotes; ++note) {
-      const Rgb color{data[offset], data[offset + 1], data[offset + 2]};
-      offset += 3;
-      pixels[kPixelByRowNote[row][note]] = color;
-      anyLit = anyLit || color.r || color.g || color.b;
+void onPianoDisconnected(void*) {
+  pianoConnected = false;
+  for (auto& note : notes) note.pressed = false;
+  sendStatus();
+}
+
+void saveCalibration() {
+  preferences.putUChar("brightness", brightness);
+  preferences.putChar("offset", pixelOffset);
+  preferences.putBool("reversed", stripReversed);
+}
+
+void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
+  JsonDocument doc;
+  const DeserializationError error = deserializeJson(doc, payload, length);
+  if (error) return;
+  const char* type = doc["t"] | "";
+
+  if (strcmp(type, "hello") == 0) {
+    sendStatus(client);
+  } else if (strcmp(type, "target") == 0) {
+    clearTargets();
+    const JsonArray targets = doc["notes"].as<JsonArray>();
+    for (JsonObject target : targets) {
+      const int note = target["n"] | -1;
+      if (!validNote(note)) continue;
+      NoteState& state = notes[noteIndex(static_cast<uint8_t>(note))];
+      state.target = true;
+      state.hand = static_cast<uint8_t>(clampValue<int>(target["h"] | 1, 0, 1));
+    }
+    lastTargetMs = millis();
+  } else if (strcmp(type, "config") == 0) {
+    brightness = static_cast<uint8_t>(
+        clampValue<int>(doc["brightness"] | brightness, 1, kMaxGlobalBrightness));
+    pixelOffset = static_cast<int8_t>(
+        clampValue<int>(doc["offset"] | pixelOffset, kMinPixelOffset, kMaxPixelOffset));
+    stripReversed = doc["reversed"] | stripReversed;
+    saveCalibration();
+    sendStatus();
+  } else if (strcmp(type, "test") == 0) {
+    const int note = doc["n"] | -1;
+    if (validNote(note)) {
+      testNote = note;
+      testUntilMs = millis() + kTestNoteMs;
+    }
+  } else if (strcmp(type, "blackout") == 0) {
+    clearTargets();
+    testNote = -1;
+  } else if (strcmp(type, "ping") == 0) {
+    JsonDocument reply;
+    reply["t"] = "pong";
+    reply["ts"] = doc["ts"] | 0;
+    String encoded;
+    serializeJson(reply, encoded);
+    websocket.sendTXT(client, encoded);
+  } else if (strcmp(type, "wifi") == 0) {
+    const String ssid = doc["ssid"] | "";
+    const String password = doc["password"] | "";
+    if (!ssid.isEmpty()) {
+      preferences.putString("wifiSsid", ssid);
+      preferences.putString("wifiPass", password);
+      websocket.sendTXT(client, "{\"t\":\"wifiSaved\"}");
+      restartRequested = true;
     }
   }
-  showPixels();
-  outputIsBlank = !anyLit;
-  lastValidFrameMs = millis();
-  return true;
 }
 
-enum class RxState : uint8_t { Magic0, Magic1, Header, Payload, CrcLow, CrcHigh };
+void webSocketEvent(uint8_t client, WStype_t type, uint8_t* payload, size_t length) {
+  switch (type) {
+    case WStype_CONNECTED:
+      webClients = std::min<uint8_t>(webClients + 1, 250);
+      sendStatus(client);
+      break;
+    case WStype_DISCONNECTED:
+      if (webClients > 0) --webClients;
+      if (webClients == 0) clearTargets();
+      break;
+    case WStype_TEXT:
+      handleWebMessage(client, payload, length);
+      break;
+    default:
+      break;
+  }
+}
 
-class PacketReceiver {
- public:
-  void consume(uint8_t value) {
-    switch (state_) {
-      case RxState::Magic0:
-        if (value == kMagic0) state_ = RxState::Magic1;
-        break;
-      case RxState::Magic1:
-        if (value == kMagic1) {
-          state_ = RxState::Header;
-          headerAt_ = 0;
-          crc_ = 0xFFFFU;
-        } else {
-          state_ = value == kMagic0 ? RxState::Magic1 : RxState::Magic0;
-        }
-        break;
-      case RxState::Header:
-        header_[headerAt_++] = value;
-        crc_ = crc16Update(crc_, value);
-        if (headerAt_ == sizeof(header_)) {
-          payloadLength_ = static_cast<uint16_t>(header_[2]) |
-                           (static_cast<uint16_t>(header_[3]) << 8U);
-          if (header_[0] != kProtocolVersion || payloadLength_ > kMaxPayload) {
-            reset();
-          } else {
-            payloadAt_ = 0;
-            state_ = payloadLength_ == 0 ? RxState::CrcLow : RxState::Payload;
-          }
-        }
-        break;
-      case RxState::Payload:
-        payload[payloadAt_++] = value;
-        crc_ = crc16Update(crc_, value);
-        if (payloadAt_ == payloadLength_) state_ = RxState::CrcLow;
-        break;
-      case RxState::CrcLow:
-        receivedCrc_ = value;
-        state_ = RxState::CrcHigh;
-        break;
-      case RxState::CrcHigh:
-        receivedCrc_ |= static_cast<uint16_t>(value) << 8U;
-        if (receivedCrc_ == crc_ && header_[1] == kFrameMessage) {
-          applyFrame(payload, payloadLength_);
-        }
-        reset();
-        break;
+void startNetwork() {
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setHostname(kHostname);
+  WiFi.softAP(kApSsid, kApPassword);
+  const String ssid = preferences.getString("wifiSsid", "");
+  const String password = preferences.getString("wifiPass", "");
+  if (!ssid.isEmpty()) WiFi.begin(ssid.c_str(), password.c_str());
+
+  http.on("/api/status", HTTP_GET, []() {
+    JsonDocument doc;
+    doc["project"] = "NoteFall 88";
+    doc["piano"] = pianoConnected;
+    doc["apIp"] = WiFi.softAPIP().toString();
+    doc["stationIp"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "";
+    String body;
+    serializeJson(doc, body);
+    http.send(200, "application/json", body);
+  });
+  // Arduino-ESP32 2.x defaults directory roots to /index.htm (without the
+  // final "l"), so register our Vite entry file explicitly and serve hashed
+  // assets from their own prefix.
+  http.serveStatic("/", LittleFS, "/index.html", "no-cache");
+  http.serveStatic("/assets/", LittleFS, "/assets/", "max-age=31536000, immutable");
+  http.onNotFound([]() {
+    if (LittleFS.exists("/index.html")) {
+      http.sendHeader("Location", "/", true);
+      http.send(302, "text/plain", "");
+    } else {
+      http.send(503, "text/plain", "NoteFall web UI is not flashed; run PlatformIO uploadfs");
     }
-  }
-
- private:
-  void reset() {
-    state_ = RxState::Magic0;
-    headerAt_ = 0;
-    payloadAt_ = 0;
-    payloadLength_ = 0;
-  }
-
-  RxState state_ = RxState::Magic0;
-  uint8_t header_[6]{};  // version, type, length LE, sequence LE
-  size_t headerAt_ = 0;
-  size_t payloadAt_ = 0;
-  uint16_t payloadLength_ = 0;
-  uint16_t crc_ = 0xFFFFU;
-  uint16_t receivedCrc_ = 0;
-};
-
-PacketReceiver receiver;
+  });
+  http.begin();
+  websocket.begin();
+  websocket.onEvent(webSocketEvent);
+}
 
 }  // namespace
 
 void setup() {
-  clearPixels();
-  SPI.begin(kClockPin, -1, kDataPin, -1);
-  showPixels();
-  Serial.begin(921600);
-  lastValidFrameMs = millis();
+  Serial.begin(115200);
+  delay(150);
+  preferences.begin("notefall", false);
+  brightness = clampValue<uint8_t>(preferences.getUChar("brightness", kDefaultGlobalBrightness),
+                                   static_cast<uint8_t>(1), kMaxGlobalBrightness);
+  pixelOffset = static_cast<int8_t>(clampValue<int>(preferences.getChar("offset", 0),
+                                                    kMinPixelOffset, kMaxPixelOffset));
+  stripReversed = preferences.getBool("reversed", false);
+
+  if (!strip.begin()) Serial.println("FATAL: LED strip allocation failed");
+  if (!LittleFS.begin(true)) Serial.println("WARN: LittleFS unavailable; web UI will not load");
+  startNetwork();
+
+  usbMidi.setMidiCallback(handleMidiPacket, nullptr);
+  usbMidi.setConnectionCallbacks(onPianoConnected, onPianoDisconnected, nullptr);
+  if (!usbMidi.begin()) Serial.printf("USB host start failed: %s\n", usbMidi.lastError().c_str());
+  renderStrip();
 }
 
 void loop() {
-  while (Serial.available() > 0) {
-    receiver.consume(static_cast<uint8_t>(Serial.read()));
+  usbMidi.poll();
+  http.handleClient();
+  websocket.loop();
+
+  if (!mdnsStarted && (WiFi.status() == WL_CONNECTED || WiFi.softAPgetStationNum() > 0)) {
+    mdnsStarted = MDNS.begin(kHostname);
+    if (mdnsStarted) MDNS.addService("http", "tcp", kHttpPort);
   }
-  if (!outputIsBlank && millis() - lastValidFrameMs > kFailsafeMs) {
-    clearPixels();
-    activeBrightness = 1;
-    showPixels();
-    outputIsBlank = true;
+
+  const uint32_t now = millis();
+  if (now - lastLedRefreshMs >= kLedRefreshMs) {
+    lastLedRefreshMs = now;
+    renderStrip();
+  }
+  if (now - lastStatusMs >= kStatusBroadcastMs) {
+    lastStatusMs = now;
+    sendStatus();
+  }
+  if (restartRequested) {
+    delay(300);
+    ESP.restart();
   }
   delay(1);
 }

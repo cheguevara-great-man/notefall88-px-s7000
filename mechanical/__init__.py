@@ -1,2 +1,1 @@
-"""Parametric mechanical package for NoteFall 88."""
-
+"""Parametric mechanical design for NoteFall 88."""

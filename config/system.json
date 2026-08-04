@@ -1,45 +1,60 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "project": "NoteFall 88",
-  "prototype": {
-    "first_midi_note": 60,
-    "note_count": 12,
+  "piano": {
+    "model": "Casio PX-S7000",
+    "first_midi_note": 21,
+    "last_midi_note": 108,
+    "white_key_count": 52,
     "white_key_pitch_mm": 23.5,
-    "octave_span_mm": 164.5,
-    "row_count": 4,
-    "row_pitch_mm": 15.5,
-    "lookahead_ms": [0, 350, 700, 1050]
+    "keybed_span_mm": 1222.0
   },
   "led": {
     "type": "APA102C_or_SK9822",
     "supply_v": 5.0,
     "pixels_per_m": 144,
-    "pixels_per_row": 24,
-    "strip_width_mm": 12.0,
-    "max_global_brightness": 4,
-    "spi_hz": 4000000,
+    "pixel_count": 176,
+    "pcb_width_mm": 12.0,
     "data_pin": 11,
-    "clock_pin": 12
+    "clock_pin": 12,
+    "spi_hz": 8000000,
+    "max_global_brightness": 4,
+    "default_global_brightness": 2,
+    "pixels_per_note": 1,
+    "runtime_pixel_offset": 0,
+    "runtime_reversed": false
+  },
+  "network": {
+    "ap_ssid": "NoteFall-88",
+    "ap_password": "notefall88",
+    "hostname": "notefall",
+    "http_port": 80,
+    "websocket_port": 81
+  },
+  "practice": {
+    "default_mode": "wait",
+    "default_lead_ms": 900,
+    "chord_window_ms": 55,
+    "target_stale_ms": 3000
   },
   "mechanical": {
-    "body_width_mm": 180.0,
-    "body_depth_mm": 70.0,
-    "base_thickness_mm": 4.5,
-    "tray_floor_mm": 2.0,
-    "tray_height_mm": 5.0,
-    "baffle_height_mm": 4.0,
-    "diffuser_thickness_mm": 0.6,
-    "grid_wall_mm": 0.8,
-    "outer_wall_mm": 1.6,
-    "fastener_clearance_mm": 3.4,
-    "fastener_x_mm": 86.0,
-    "fastener_y_mm": 31.0,
-    "silicone_pad_thickness_mm": 0.8,
-    "alignment_finger_length_mm": 35.0
+    "rail_total_length_mm": 1236.0,
+    "rail_segment_count": 7,
+    "rail_depth_mm": 17.0,
+    "rail_height_mm": 6.2,
+    "rail_floor_mm": 1.4,
+    "rail_wall_mm": 1.2,
+    "strip_clearance_mm": 0.4,
+    "diffuser_thickness_mm": 0.8,
+    "silicone_pad_mm": 0.8,
+    "controller_board_length_mm": 62.0,
+    "controller_board_width_mm": 25.4
   },
-  "protocol": {
-    "baud": 921600,
-    "frame_hz": 50,
-    "failsafe_ms": 1000
+  "power": {
+    "conservative_full_white_w_per_pixel": 0.30,
+    "supply_v": 5.0,
+    "supply_a": 5.0,
+    "fuse_a": 5.0,
+    "injection": ["left_end", "right_end"]
   }
 }

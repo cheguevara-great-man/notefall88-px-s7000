@@ -1,0 +1,21 @@
+{
+  "name": "notefall88-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "test": "vitest",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@tonejs/midi": "2.0.28"
+  },
+  "devDependencies": {
+    "@types/node": "24.2.0",
+    "typescript": "5.9.2",
+    "vite": "8.2.0",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,25 +1,28 @@
-# ESP32-S3 V0 固件
+# ESP32-S3 固件
 
-## 引脚与接线
+固件面向乐鑫官方 `ESP32-S3-DevKitC-1-N8R8`。原生 `USB/OTG` Micro-USB 口作为钢琴 USB Host；另一个 `UART` Micro-USB 口用于烧录和日志。
 
-默认引脚由 `config/system.json` 生成到 `include/layout_generated.h`：
-
-| ESP32-S3 | 连接 | 说明 |
-|---|---|---|
-| GPIO11 | 74AHCT125 A1 → Y1 → 100 Ω → strip DATA IN | 数据 |
-| GPIO12 | 74AHCT125 A2 → Y2 → 100 Ω → strip CLOCK IN | 时钟 |
-| GND | 74AHCT125 GND、灯带 GND、电源 GND | 必须共地 |
-| USB | 电脑 | 串口和开发板供电 |
-
-74AHCT125 的 VCC 接灯阵 5 V，`/OE1`、`/OE2` 接 GND；所有未使用输入固定接 GND，未使用 `/OE` 接 5 V。灯带 5 V 直接来自带保险的独立电源，不经过开发板。灯带入口并 1000 µF / 10 V 电容。
-
-## 编译
+## 生成、构建和烧录
 
 ```powershell
-pio run -d firmware
-pio run -d firmware -t upload
-pio device monitor -b 921600
+python scripts/generate.py
+cd web
+npm.cmd ci
+npm.cmd run build
+cd ..
+.\.venv\Scripts\platformio.exe run -d firmware
+.\.venv\Scripts\platformio.exe run -d firmware -t upload
+.\.venv\Scripts\platformio.exe run -d firmware -t uploadfs
 ```
 
-固件只接受协议版本 1、4 排 × 12 音的完整逻辑帧。亮度硬钳制到 4/31；1 秒没有合法显示帧即熄灯。上电时不会自动跑高亮自检，避免接线错误时扩大损害。
+首次必须同时烧录固件和 LittleFS 网页。后续只改网页时可仅执行 `uploadfs`。
 
+## 运行状态
+
+- 热点：`NoteFall-88`
+- 密码：`notefall88`
+- 网页：`http://192.168.4.1`
+- 家庭 Wi-Fi 下：`http://notefall.local`（取决于路由器/客户端 mDNS）
+- WebSocket：端口 `81`
+
+亮度上限 `4/31` 写在生成头文件中。修改网页滑块不能越过该值。
