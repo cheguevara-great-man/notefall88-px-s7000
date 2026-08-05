@@ -4,6 +4,12 @@ const DB_VERSION = 1;
 const FOLDER_STORE = "folders";
 const SCORE_STORE = "scores";
 const MAX_BACKUP_SOURCE_BYTES = 32 * 1024 * 1024;
+const MAX_BACKUP_TOTAL_SOURCE_BYTES = 128 * 1024 * 1024;
+const MAX_BACKUP_FOLDERS = 500;
+const MAX_BACKUP_SCORES = 1000;
+const MAX_FOLDER_NAME_LENGTH = 128;
+const MAX_SCORE_TEXT_LENGTH = 255;
+const MAX_BASE64_SOURCE_CHARS = Math.ceil(MAX_BACKUP_SOURCE_BYTES / 3) * 4 + 4;
 
 export interface LibraryFolder {
   id: string;
@@ -134,11 +140,24 @@ function bufferToBase64(buffer: ArrayBuffer): string {
 }
 
 function base64ToBuffer(value: string): ArrayBuffer {
+  if (value.length > MAX_BASE64_SOURCE_CHARS) {
+    throw new Error("备份中的单个乐谱超过 32 MB 安全上限");
+  }
   const binary = atob(value);
   if (binary.length > MAX_BACKUP_SOURCE_BYTES) throw new Error("备份中的单个乐谱超过 32 MB 安全上限");
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes.buffer;
+}
+
+function finiteNumber(value: unknown, fallback: number, minimum = 0): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= minimum ? value : fallback;
+}
+
+function boundedText(value: unknown, fallback: string, maximum: number, label: string): string {
+  const result = typeof value === "string" && value.trim() ? value.trim() : fallback;
+  if (result.length > maximum) throw new Error(`${label}超过 ${maximum} 个字符`);
+  return result;
 }
 
 export class ScoreLibrary {
@@ -209,11 +228,19 @@ export class ScoreLibrary {
     if (source.byteLength > MAX_BACKUP_SOURCE_BYTES) throw new Error("乐谱文件超过 32 MB 安全上限");
     const digest = sha256Hex(source);
     const db = await this.open();
-    const lookupTx = db.transaction(SCORE_STORE, "readonly");
+    // Use one write transaction for the duplicate check and insertion. Write
+    // transactions on the store are serialized, so simultaneous saves cannot
+    // both pass a stale read and create duplicate rows.
+    const tx = db.transaction(SCORE_STORE, "readwrite");
+    const done = transactionDone(tx);
+    const store = tx.objectStore(SCORE_STORE);
     const existing = await requestResult(
-      lookupTx.objectStore(SCORE_STORE).index("by_sha256").get(digest) as IDBRequest<LibraryScore | undefined>,
+      store.index("by_sha256").get(digest) as IDBRequest<LibraryScore | undefined>,
     );
-    if (existing) return { score: existing, duplicate: true };
+    if (existing) {
+      await done;
+      return { score: existing, duplicate: true };
+    }
 
     const now = Date.now();
     const score: LibraryScore = {
@@ -231,9 +258,8 @@ export class ScoreLibrary {
       updatedAt: now,
       lastOpenedAt: now,
     };
-    const tx = db.transaction(SCORE_STORE, "readwrite");
-    tx.objectStore(SCORE_STORE).put(score);
-    await transactionDone(tx);
+    store.put(score);
+    await done;
     return { score, duplicate: false };
   }
 
@@ -296,61 +322,118 @@ export class ScoreLibrary {
       || !Array.isArray(backup.folders) || !Array.isArray(backup.scores)) {
       throw new Error("不是受支持的 NoteFall 88 曲库备份");
     }
+    if (backup.folders.length > MAX_BACKUP_FOLDERS) {
+      throw new Error(`备份文件夹数量超过 ${MAX_BACKUP_FOLDERS} 个安全上限`);
+    }
+    if (backup.scores.length > MAX_BACKUP_SCORES) {
+      throw new Error(`备份乐谱数量超过 ${MAX_BACKUP_SCORES} 首安全上限`);
+    }
+
+    const sourceFolderIds = new Set<string>();
     const preparedFolders = backup.folders.map((rawFolder) => {
       if (!rawFolder || typeof rawFolder.name !== "string" || !rawFolder.name.trim()) {
         throw new Error("备份中的文件夹记录无效");
       }
-      return { sourceId: String(rawFolder.id), name: rawFolder.name.trim() };
+      const sourceId = String(rawFolder.id ?? "");
+      if (!sourceId || sourceFolderIds.has(sourceId)) throw new Error("备份中的文件夹 ID 无效或重复");
+      sourceFolderIds.add(sourceId);
+      return {
+        sourceId,
+        name: boundedText(rawFolder.name, "", MAX_FOLDER_NAME_LENGTH, "文件夹名称"),
+      };
     });
+
+    let totalSourceBytes = 0;
     const preparedScores = backup.scores.map((rawScore) => {
-      if (!rawScore || typeof rawScore.sourceBase64 !== "string" || typeof rawScore.sha256 !== "string") {
+      if (!rawScore || typeof rawScore.sourceBase64 !== "string"
+        || typeof rawScore.sha256 !== "string" || !/^[0-9a-f]{64}$/i.test(rawScore.sha256)) {
         throw new Error("备份中的乐谱记录无效");
       }
+      if (rawScore.folderId !== null && rawScore.folderId !== undefined
+        && !sourceFolderIds.has(String(rawScore.folderId))) {
+        throw new Error("备份中的乐谱引用了不存在的文件夹");
+      }
       const source = base64ToBuffer(rawScore.sourceBase64);
-      if (sha256Hex(source) !== rawScore.sha256) throw new Error(`乐谱“${rawScore.title ?? "未命名"}”校验失败`);
+      totalSourceBytes += source.byteLength;
+      if (totalSourceBytes > MAX_BACKUP_TOTAL_SOURCE_BYTES) {
+        throw new Error("备份乐谱总容量超过 128 MB 安全上限");
+      }
+      if (sha256Hex(source) !== rawScore.sha256.toLowerCase()) {
+        throw new Error(`乐谱“${rawScore.title ?? "未命名"}”校验失败`);
+      }
       return { rawScore, source };
     });
 
-    // Validation above is intentionally complete before the first write. A
-    // corrupt final score must not leave half-restored folders behind.
+    // Complete validation and planning before the first write. Folders and
+    // scores then commit in one transaction, so quota and I/O failures cannot
+    // leave a half-restored library behind.
     const folderMap = new Map<string, string>();
-    const existingFolders = await this.listFolders();
-    let foldersAdded = 0;
+    const [existingFolders, existingScores, db] = await Promise.all([
+      this.listFolders(), this.listScores(), this.open(),
+    ]);
+    const foldersByName = new Map(existingFolders.map((folder) => [folder.name, folder]));
+    const foldersToAdd: LibraryFolder[] = [];
+    const now = Date.now();
     for (const prepared of preparedFolders) {
-      const existing = existingFolders.find((folder) => folder.name === prepared.name);
-      const folder = existing ?? await this.createFolder(prepared.name);
-      if (!existing) {
-        existingFolders.push(folder);
-        foldersAdded += 1;
+      let folder = foldersByName.get(prepared.name);
+      if (!folder) {
+        folder = { id: uniqueId("folder"), name: prepared.name, createdAt: now, updatedAt: now };
+        foldersByName.set(prepared.name, folder);
+        foldersToAdd.push(folder);
       }
       folderMap.set(prepared.sourceId, folder.id);
     }
 
-    let scoresAdded = 0;
+    const hashes = new Set(existingScores.map((score) => score.sha256));
+    const scoresToAdd: LibraryScore[] = [];
     let duplicatesSkipped = 0;
     for (const { rawScore, source } of preparedScores) {
-      const parsed: ParsedScore = {
-        name: String(rawScore.title || "导入乐谱"),
-        duration: Number(rawScore.duration) || 0,
-        notes: [],
-        format: rawScore.format === "musicxml" ? "musicxml" : "midi",
-      };
-      const saved = await this.saveScore(
-        source,
-        parsed,
-        String(rawScore.fileName || "imported.mid"),
-        folderMap.get(String(rawScore.folderId)) ?? null,
-      );
-      if (saved.duplicate) duplicatesSkipped += 1;
-      else {
-        await this.updateScore(saved.score.id, (score) => {
-          score.noteCount = Number(rawScore.noteCount) || 0;
-          score.title = String(rawScore.title || score.title);
-        });
-        scoresAdded += 1;
+      const digest = rawScore.sha256.toLowerCase();
+      if (hashes.has(digest)) {
+        duplicatesSkipped += 1;
+        continue;
       }
+      hashes.add(digest);
+      const format = rawScore.format === "musicxml" ? "musicxml" : "midi";
+      const createdAt = finiteNumber(rawScore.createdAt, now);
+      scoresToAdd.push({
+        id: uniqueId("score"),
+        title: boundedText(rawScore.title, "导入乐谱", MAX_SCORE_TEXT_LENGTH, "乐谱名称"),
+        fileName: boundedText(
+          rawScore.fileName,
+          format === "musicxml" ? "imported.musicxml" : "imported.mid",
+          MAX_SCORE_TEXT_LENGTH,
+          "文件名称",
+        ),
+        format,
+        folderId: rawScore.folderId === null || rawScore.folderId === undefined
+          ? null : folderMap.get(String(rawScore.folderId)) ?? null,
+        source: source.slice(0),
+        sourceBytes: source.byteLength,
+        sha256: digest,
+        noteCount: Math.floor(finiteNumber(rawScore.noteCount, 0)),
+        duration: finiteNumber(rawScore.duration, 0),
+        createdAt,
+        updatedAt: finiteNumber(rawScore.updatedAt, createdAt),
+        lastOpenedAt: rawScore.lastOpenedAt === null
+          ? null : finiteNumber(rawScore.lastOpenedAt, createdAt),
+      });
     }
-    return { foldersAdded, scoresAdded, duplicatesSkipped };
+
+    if (foldersToAdd.length || scoresToAdd.length) {
+      const tx = db.transaction([FOLDER_STORE, SCORE_STORE], "readwrite");
+      const done = transactionDone(tx);
+      const folderStore = tx.objectStore(FOLDER_STORE);
+      const scoreStore = tx.objectStore(SCORE_STORE);
+      foldersToAdd.forEach((folder) => folderStore.add(folder));
+      scoresToAdd.forEach((score) => scoreStore.add(score));
+      await done;
+    }
+    return {
+      foldersAdded: foldersToAdd.length,
+      scoresAdded: scoresToAdd.length,
+      duplicatesSkipped,
+    };
   }
 
   private async updateScore(id: string, mutate: (score: LibraryScore) => void): Promise<void> {

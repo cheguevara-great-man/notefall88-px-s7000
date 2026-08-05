@@ -10,7 +10,7 @@ NoteFall 88 只有在数字门禁全部自动通过后才能生成候选包；�
 | CAD 有效、尺寸与哈希一致 | Python 测试 + STL/STEP manifest | 通过 |
 | 供电/保险/压降预算 | `generated/power_budget.json` + Python 测试 | 通过 |
 | 线束防呆与 SVG 可解析 | `tests/test_hardware_package.py` | 通过 |
-| Web 练习与数据语义 | Vitest | 64 项通过 |
+| Web 练习与数据语义 | Vitest | 68 项通过 |
 | 嵌入资源可解析且 `<500 KiB` | Python 资源测试 + `buildfs` 反向列表 | 通过 |
 | ESP32 固件链接 | PlatformIO N8R8 环境 | RAM 16.2%，Flash 34.5% |
 | OTA 与制造包可重复 | 双次打包 SHA-256 相同 | 通过 |

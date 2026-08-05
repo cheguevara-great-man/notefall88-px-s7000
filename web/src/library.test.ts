@@ -60,6 +60,17 @@ describe("score library", () => {
     expect(await db.listScores()).toHaveLength(1);
   });
 
+  it("serializes concurrent saves so a hash is inserted only once", async () => {
+    const db = library();
+    const results = await Promise.all([
+      db.saveScore(bytes("simultaneous"), parsed, "first.mid"),
+      db.saveScore(bytes("simultaneous"), parsed, "second.mid"),
+    ]);
+    expect(results.filter((result) => result.duplicate)).toHaveLength(1);
+    expect(results.filter((result) => !result.duplicate)).toHaveLength(1);
+    expect(await db.listScores()).toHaveLength(1);
+  });
+
   it("round-trips a checksummed backup", async () => {
     const source = library();
     const folder = await source.createFolder("Folder A");
@@ -86,6 +97,48 @@ describe("score library", () => {
     const destination = library();
     await expect(destination.importBackup(backup)).rejects.toThrow(/校验失败/);
     expect(await destination.listFolders()).toEqual([]);
+    expect(await destination.listScores()).toEqual([]);
+  });
+
+  it("deduplicates repeated content within one atomic restore", async () => {
+    const source = library();
+    await source.saveScore(bytes("one-content"), parsed, "one.mid");
+    const backup = await source.exportBackup();
+    backup.scores.push({ ...backup.scores[0], id: "second-copy", fileName: "copy.mid" });
+
+    const destination = library();
+    expect(await destination.importBackup(backup)).toEqual({
+      foldersAdded: 0,
+      scoresAdded: 1,
+      duplicatesSkipped: 1,
+    });
+    expect(await destination.listScores()).toHaveLength(1);
+  });
+
+  it("rejects dangling folder references before writing anything", async () => {
+    const source = library();
+    const folder = await source.createFolder("Referenced");
+    await source.saveScore(bytes("folder-reference"), parsed, "folder.mid", folder.id);
+    const backup = await source.exportBackup();
+    backup.folders = [];
+
+    const destination = library();
+    await expect(destination.importBackup(backup)).rejects.toThrow(/不存在的文件夹/);
+    expect(await destination.listFolders()).toEqual([]);
+    expect(await destination.listScores()).toEqual([]);
+  });
+
+  it("rejects pathological backup counts before allocating score data", async () => {
+    const source = library();
+    await source.saveScore(bytes("template"), parsed, "template.mid");
+    const backup = await source.exportBackup();
+    backup.scores = Array.from({ length: 1001 }, (_, index) => ({
+      ...backup.scores[0],
+      id: `score-${index}`,
+    }));
+
+    const destination = library();
+    await expect(destination.importBackup(backup)).rejects.toThrow(/1000/);
     expect(await destination.listScores()).toEqual([]);
   });
 });
