@@ -19,7 +19,7 @@ NoteFall 88 只有在数字门禁全部自动通过后才能生成候选包；�
 | 390×844 手机布局、设备离线与存储保护 | Playwright 真浏览器 | 无横向溢出；容量/持久化状态及拒绝提示可见 |
 | README/装机/制造文档本地链接 | Python 文档门禁 | 全部可解析 |
 | 嵌入资源可解析且 `<500 KiB` | Python 资源测试 + `buildfs` 反向列表 | 通过 |
-| ESP32 固件链接 | PlatformIO N8R8 环境 | RAM 17.2%，Flash 34.7% |
+| ESP32 固件链接 | 仓库内固定 N8R8 板型清单 + PlatformIO；项目源码启用 `-Wall -Wextra -Werror` | 精确识别 8 MB Flash + 8 MB Octal PSRAM；RAM 17.2%，Flash 34.7%，零编译警告 |
 | OTA 与制造包可重复且许可证随包分发 | 双次打包 SHA-256 相同；LICENSE/THIRD_PARTY_NOTICES 逐文件哈希 | 通过 |
 | 私密现场照片不进入发布包 | 制造清单显式为 false + Git 路径审计 | 通过 |
 

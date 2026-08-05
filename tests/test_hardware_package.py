@@ -1,4 +1,5 @@
 import csv
+import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -108,9 +109,23 @@ def test_firmware_environment_targets_n8r8_opi_psram():
     platformio = (ROOT / "firmware" / "platformio.ini").read_text(encoding="utf-8")
     for setting in (
         "default_envs = esp32-s3-devkitc-1-n8r8",
-        "board_build.arduino.memory_type = qio_opi",
-        "board_build.psram_type = opi",
-        "board_upload.flash_size = 8MB",
-        "-D BOARD_HAS_PSRAM",
+        "boards_dir = boards",
+        "board = notefall-esp32-s3-devkitc1-n8r8",
+        "platform = espressif32@6.9.0",
+        "-Werror",
     ):
         assert setting in platformio
+    for obsolete_override in (
+        "board_build.arduino.memory_type",
+        "board_build.psram_type",
+        "board_upload.flash_size",
+    ):
+        assert obsolete_override not in platformio
+    board = json.loads(
+        (ROOT / "firmware" / "boards" / "notefall-esp32-s3-devkitc1-n8r8.json")
+        .read_text(encoding="utf-8")
+    )
+    assert board["build"]["arduino"]["memory_type"] == "qio_opi"
+    assert board["build"]["psram_type"] == "opi"
+    assert "-DBOARD_HAS_PSRAM" in board["build"]["extra_flags"]
+    assert board["upload"]["flash_size"] == "8MB"

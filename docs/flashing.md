@@ -16,7 +16,7 @@ cd ..
 .\.venv\Scripts\platformio.exe run -d firmware -t buildfs
 ```
 
-`platformio.ini` 把临时构建目录放到纯英文用户缓存，是为了规避旧版 Xtensa Windows 链接器不能在中文路径创建 map 文件的问题；源代码和输出仍由仓库管理。
+`platformio.ini` 把临时构建目录放到纯英文用户缓存，是为了规避旧版 Xtensa Windows 链接器不能在中文路径创建 map 文件的问题；源代码和输出仍由仓库管理。`firmware/boards/notefall-esp32-s3-devkitc1-n8r8.json` 固定乐鑫 N8R8 的 8 MB Quad Flash、8 MB Octal PSRAM、原生 USB 与烧录参数，避免把同外形的 N8 无 PSRAM配置误用于实板；项目自身 C/C++ 代码以 `-Wall -Wextra -Werror` 编译。
 
 ## 烧录
 
