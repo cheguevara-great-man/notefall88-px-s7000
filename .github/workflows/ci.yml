@@ -35,7 +35,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
-      - run: npm test -- --run
+      - run: npm run coverage
       - run: npm run build
 
   firmware:

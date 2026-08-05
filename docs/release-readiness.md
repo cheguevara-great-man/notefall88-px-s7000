@@ -10,7 +10,7 @@ NoteFall 88 只有在数字门禁全部自动通过后才能生成候选包；�
 | CAD 有效、尺寸与哈希一致 | Python 测试 + STL/STEP manifest | 通过 |
 | 供电/保险/压降预算 | `generated/power_budget.json` + Python 测试 | 通过 |
 | 线束防呆与 SVG 可解析 | `tests/test_hardware_package.py` | 通过 |
-| Web 练习/和弦持键与事务记分语义、25%–200% 速度规范化、手机后台暂停、自建 + W3C 固定 MusicXML 语料、数据/长录制资源边界与入站协议边界 | Vitest | 110 项通过 |
+| Web 练习/和弦持键与事务记分语义、25%–200% 速度规范化、手机后台暂停、节拍器音频生命周期、自建 + W3C 固定 MusicXML 语料、数据/长录制资源边界与入站协议边界 | Vitest + V8 coverage | 113 项通过；Statements 90.5%、Branches 79.4%、Functions 90.48%、Lines 94.48%，CI 最低门限 85/75/85/90% |
 | W3C MusicXML 官方完整语料 | 固定提交 `b2e6a162` + `npm run audit:musicxml` | 150/150 分类完成：149 解析，1 个非法反复文件按预期安全拒绝，0 意外异常 |
 | 厂商 MusicXML 功能语料 | MuseScore 官方提交 `d6f84b78` + eNote CC-BY-4.0 提交 `03896bf8` | 447/447 MuseScore 仓库文件无异常；100/100 跨厂商文件分类完成（97 解析、3 预期拒绝），0 意外异常 |
 | 谱面引擎互操作语料与示例总谱 | OSMD BSD-3-Clause 提交 `c663e0d3` | 317/317 测试文件 + 2/2 Finale 示例总谱解析，0 意外异常；示例音符数/小节数/时长固定断言 |
