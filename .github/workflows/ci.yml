@@ -39,6 +39,8 @@ jobs:
       - run: npm run build
       - run: npx playwright-cli install-browser chromium
       - run: npm run smoke:browser
+      - run: npx playwright-cli install-browser webkit
+      - run: NOTEFALL_BROWSER=webkit npm run smoke:browser
       - uses: actions/upload-artifact@v6
         if: always()
         with:

@@ -5,8 +5,9 @@ import { fileURLToPath } from "node:url";
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = resolve(WEB, "..");
-const ARTIFACTS = join(ROOT, "output", "playwright", `smoke-${Date.now()}-${process.pid}`);
-const SESSION = `notefall-smoke-${process.pid}`;
+const BROWSER = process.env.NOTEFALL_BROWSER || "chromium";
+const ARTIFACTS = join(ROOT, "output", "playwright", `smoke-${BROWSER}-${Date.now()}-${process.pid}`);
+const SESSION = `notefall-smoke-${BROWSER}-${process.pid}`;
 const BASE_URL = "http://127.0.0.1:4173";
 const viteCli = join(WEB, "node_modules", "vite", "bin", "vite.js");
 const playwrightCli = join(WEB, "node_modules", "@playwright", "cli", "playwright-cli.js");
@@ -75,7 +76,7 @@ async function waitForServer() {
 
 try {
   await waitForServer();
-  command(["open", BASE_URL]);
+  command(BROWSER === "chromium" ? ["open", BASE_URL] : ["open", BASE_URL, "--browser", BROWSER]);
   command(["resize", "390", "844"]);
   let page = snapshot();
   assert(page.includes("NoteFall 88"), "mobile page did not render NoteFall 88");
@@ -147,6 +148,7 @@ try {
 
   console.log(JSON.stringify({
     passed: true,
+    browser: BROWSER,
     viewports: [[390, 844], [1280, 900]],
     score: "Parser Etude",
     notes: 4,

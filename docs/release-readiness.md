@@ -16,7 +16,7 @@ NoteFall 88 只有在数字门禁全部自动通过后才能生成候选包；�
 | 谱面引擎互操作语料与示例总谱 | OSMD BSD-3-Clause 提交 `c663e0d3` | 317/317 测试文件 + 2/2 Finale 示例总谱解析，0 意外异常；示例音符数/小节数/时长固定断言 |
 | 真实曲目内容级交叉验证 | `music21 9.9.1` + OSMD 固定提交 + `scripts/crosscheck_musicxml.py` | 6 首、2638 个音符：数量与逐音音高序列完全一致；最大起音差 0.109 ms，小于 2 ms 门限 |
 | NVS 校准、复位原因与灯先于网络的实时顺序 | Python 源码门禁 + 固件诊断 | 通过 |
-| 390×844 手机 + 1280×900 桌面布局、MusicXML 文件选择器与 OSMD 谱面 | 固定 `@playwright/cli 0.1.17` + `npm run smoke:browser`，GitHub CI 上传截图/快照 | 两视口无横向溢出；手机练习抽屉和关闭按钮完整位于视口内；真实导入 Parser Etude 后显示 4 音符、4 秒与非空五线谱 |
+| 390×844 手机 + 1280×900 桌面布局、MusicXML 文件选择器与 OSMD 谱面 | 固定 `@playwright/cli 0.1.17`，Chromium + WebKit 双引擎 `smoke:browser`，GitHub CI 上传截图/快照 | 两个引擎、两个视口均无横向溢出；手机练习抽屉和关闭按钮完整位于视口内；真实导入 Parser Etude 后显示 4 音符、4 秒与非空五线谱；不把桌面 WebKit 冒充真 iOS 实机 |
 | README/装机/制造文档本地链接 | Python 文档门禁 | 全部可解析 |
 | 嵌入资源可解析且 `<500 KiB` | Python 资源测试 + `buildfs` 反向列表 | 通过 |
 | ESP32 固件链接 | 仓库内固定 N8R8 板型清单 + PlatformIO；项目源码启用 `-Wall -Wextra -Werror` | 精确识别 8 MB Flash + 8 MB Octal PSRAM；RAM 17.2%，Flash 34.7%，零编译警告 |
