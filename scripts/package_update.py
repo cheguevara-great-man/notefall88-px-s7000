@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+NOTICE_FILES = ("LICENSE", "THIRD_PARTY_NOTICES.md")
 
 
 def write_reproducible(archive: zipfile.ZipFile, name: str, content: bytes) -> None:
@@ -47,6 +48,15 @@ def file_record(path: Path, target: str) -> dict[str, object]:
     }
 
 
+def notice_record(relative: str) -> dict[str, object]:
+    content = (ROOT / relative).read_bytes()
+    return {
+        "path": relative,
+        "bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+
+
 def package_update(firmware: Path, filesystem: Path, output: Path) -> dict[str, object]:
     if not firmware.is_file() or not filesystem.is_file():
         raise FileNotFoundError("firmware.bin and littlefs.bin must both exist")
@@ -62,6 +72,7 @@ def package_update(firmware: Path, filesystem: Path, output: Path) -> dict[str, 
             file_record(filesystem, "filesystem"),
             file_record(firmware, "firmware"),
         ],
+        "notices": [notice_record(relative) for relative in NOTICE_FILES],
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
@@ -72,6 +83,8 @@ def package_update(firmware: Path, filesystem: Path, output: Path) -> dict[str, 
         )
         write_reproducible(archive, filesystem.name, filesystem.read_bytes())
         write_reproducible(archive, firmware.name, firmware.read_bytes())
+        for relative in NOTICE_FILES:
+            write_reproducible(archive, relative, (ROOT / relative).read_bytes())
     return manifest
 
 

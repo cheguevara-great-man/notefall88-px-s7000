@@ -3,7 +3,7 @@ import hashlib
 import zipfile
 from pathlib import Path
 
-from scripts.package_update import firmware_version, package_update
+from scripts.package_update import NOTICE_FILES, ROOT, firmware_version, package_update
 
 
 def test_update_bundle_contains_checksums_and_version(tmp_path: Path) -> None:
@@ -22,6 +22,12 @@ def test_update_bundle_contains_checksums_and_version(tmp_path: Path) -> None:
         assert archived == manifest
         assert archive.read("firmware.bin") == firmware.read_bytes()
         assert archive.read("littlefs.bin") == filesystem.read_bytes()
+        assert set(NOTICE_FILES).issubset(archive.namelist())
+        for record in manifest["notices"]:
+            content = archive.read(record["path"])
+            assert content == (ROOT / record["path"]).read_bytes()
+            assert len(content) == record["bytes"]
+            assert hashlib.sha256(content).hexdigest() == record["sha256"]
 
     second = tmp_path / "notefall88-update-copy.zip"
     package_update(firmware, filesystem, second)

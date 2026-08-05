@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.package_update import firmware_version, write_reproducible  # noqa: E402
 PACKAGE_FILES = (
     "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "README.md",
     "config/system.json",
     "generated/layout.json",

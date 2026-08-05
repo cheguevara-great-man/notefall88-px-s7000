@@ -19,6 +19,7 @@ def test_manufacturing_bundle_is_complete_private_and_reproducible(tmp_path: Pat
         assert set(archive.namelist()) == {"manifest.json", *PACKAGE_FILES}
         assert {
             "README.md",
+            "THIRD_PARTY_NOTICES.md",
             "docs/first-build.md",
             "docs/vendor-order-template.md",
             "docs/decisions/001-native-usb-host-and-vbus.md",

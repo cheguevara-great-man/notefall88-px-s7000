@@ -35,9 +35,13 @@ NoteFall 对一个乐谱保留两种互补表示：
 
 标准反复和跳转已经有固定单元测试；真实曲目仍必须检查导出软件是否同时写入机器可读的 `sound` 属性。只有视觉文字而无标准导航属性的文件，OSMD 可能显示记号，但 NoteFall 不会猜测自由文本含义。
 
-## 实物/曲目验收集
+## 自动化标准语料与应用导出验收
 
-数字测试使用 `web/test-fixtures/parser-etude.musicxml` 覆盖双谱表、和弦、backup、速度变化、升号和跨小节 tie；`meter-tempo-dynamics.musicxml` 覆盖加法/复合拍号、附点速度、力度和静默 cue；固定内联总谱覆盖两声部重复写入 `quarter = dotted-quarter` 而不重复加速。发布前还要用至少以下真实导出源各验证 3 首：MuseScore、Dorico/Finale 任一、以及常见网络 MXL。每首逐项比对：显示小节数、目标音高、首末时刻、速度变化、左右手和 tie，不只做“能打开”测试。
+自建数字样例使用 `parser-etude.musicxml` 覆盖双谱表、和弦、backup、速度变化、升号和跨小节 tie；`meter-tempo-dynamics.musicxml` 覆盖加法/复合拍号、附点速度、力度和静默 cue；固定内联总谱覆盖两声部重复写入 `quarter = dotted-quarter` 而不重复加速。
+
+此外，仓库固定了 W3C Music Notation Community Group 的 MIT `musicxmlTestSuite` 提交 `b2e6a162` 中三个未经修改的互操作样例：`43a-PianoStaff.xml`、`45b-RepeatWithAlternatives.xml` 和 `31c-MetronomeMarks.xml`。测试先核对每个文件 SHA-256，再断言钢琴双谱表、反复结尾播放顺序、节拍标记和音符时值；来源与许可证保存在样例目录。这一层证明标准语料的稳定语义，不把自写 XML 当作全部兼容性证据。
+
+发布前仍要用至少以下应用导出源各验证 3 首：MuseScore、Dorico/Finale 任一、以及常见网络 MXL。每首逐项比对显示小节数、目标音高、首末时刻、速度变化、左右手和 tie，不只做“能打开”测试。W3C 标准语料不能替代这些厂商实际导出门禁。
 
 解析错误、缺少声部或超过安全上限时，导入失败但原曲库内容不变。OSMD 的可选光标若遇到不完整 staff/voice 数据会被关闭，谱面本身仍保留可读。
 

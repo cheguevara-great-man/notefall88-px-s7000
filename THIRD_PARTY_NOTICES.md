@@ -99,3 +99,12 @@ POSSIBILITY OF SUCH DAMAGE.
 - CadQuery — Apache-2.0; used to generate manufacturing exports, not linked into firmware.
 
 Piano Trainer Studio code and assets are not copied or linked. It is an audited AGPL-3.0 product reference only; see `docs/pts-adoption-decision.md`.
+
+## W3C MusicXML test fixtures
+
+Three unmodified compatibility fixtures under `web/test-fixtures/w3c-musicxml/`
+come from the W3C Music Notation Community Group's
+[`musicxmlTestSuite`](https://github.com/w3c-cg/musicxmlTestSuite/tree/b2e6a1627b8574c9714e1fd0a8a5b1921e10f8f3)
+at pinned commit `b2e6a1627b8574c9714e1fd0a8a5b1921e10f8f3`, under the MIT
+License. The upstream copyright and full license text are preserved beside the
+fixtures in `web/test-fixtures/w3c-musicxml/LICENSE`.

@@ -31,7 +31,7 @@ NoteFall 可选加入家庭 Wi-Fi，因此“同一局域网里能打开网页�
 - `manifest.json`；
 - `notefall88-update-<tag>.zip`。
 
-`manifest.json` 是版本 1 信封，记录产品名、固件版本、协议、分区表 SHA-256，以及两个镜像的目标、字节数和 SHA-256。可在本地复现：
+`manifest.json` 是版本 1 信封，记录产品名、固件版本、协议、分区表 SHA-256，以及两个镜像的目标、字节数和 SHA-256。OTA ZIP 另外固定包含项目 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`，并在 manifest 的 `notices` 中记录两者的字节数与 SHA-256；制造包同样包含两者。这样从 Release 单独取得二进制或制造资料的人也同时取得 MIT/BSD/LGPL 等适用声明。可在本地复现：
 
 ```powershell
 python scripts/package_update.py `
