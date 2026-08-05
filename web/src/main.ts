@@ -5,6 +5,16 @@ import type { PracticeEvent, PracticeSession } from "./analytics";
 import { recommendPractice } from "./coach";
 import type { PracticeRecommendation } from "./coach";
 import {
+  commissioningReport,
+  completeCommissioning,
+  loadCommissioning,
+  missingCommissioningEvidence,
+  observeDevice,
+  observeMidi,
+  saveCommissioning,
+} from "./commissioning";
+import type { CommissioningState } from "./commissioning";
+import {
   clampPianoNote,
   FIRST_PIANO_NOTE,
   normalizeKeyOffsets,
@@ -96,6 +106,8 @@ const sessionHistory = required("session-history");
 const historySummary = required("history-summary");
 const coachApply = required<HTMLButtonElement>("coach-apply");
 const settingsPanel = required("settings-panel");
+const commissioningPanel = required("commissioning-panel");
+const commissioningStatus = required<HTMLSpanElement>("commissioning-status");
 const updateStatus = required("update-status");
 const updateProgress = required<HTMLProgressElement>("update-progress");
 const libraryPanel = required("library-panel");
@@ -157,6 +169,7 @@ let countInGeneration = 0;
 let countInTimer: number | undefined;
 let needsCountIn = true;
 let updateInfo: UpdateInfo | undefined;
+let commissioning: CommissioningState = loadCommissioning();
 
 modeSelect.value = mode;
 handSelect.value = hand;
@@ -180,6 +193,58 @@ function persistPreferences(): void {
     leadMs,
     metronome: metronomeEnabled.checked,
     countIn: countInEnabled.checked,
+  });
+}
+
+function formatEndpoint(value: number | undefined): string {
+  return value ? `0x${value.toString(16).toUpperCase().padStart(2, "0")}` : "--";
+}
+
+function storeCommissioning(next: CommissioningState): void {
+  if (JSON.stringify(next) === JSON.stringify(commissioning)) return;
+  commissioning = next;
+  saveCommissioning(commissioning);
+  renderCommissioning();
+}
+
+function renderCommissioning(): void {
+  const missing = missingCommissioningEvidence(commissioning);
+  const manualComplete = Object.values(commissioning.manual).filter(Boolean).length;
+  const observedComplete = [
+    commissioning.observed.deviceSeen,
+    commissioning.observed.pianoSeen,
+    Boolean(commissioning.observed.usbInEndpoint),
+    commissioning.observed.c4Seen,
+  ].filter(Boolean).length;
+  const completedCount = manualComplete + observedComplete;
+  required<HTMLProgressElement>("commission-progress").value = completedCount;
+  required("commission-progress-label").textContent = `${completedCount} / 12`;
+  required("commission-device").textContent = commissioning.observed.deviceSeen
+    ? `${commissioning.observed.firmware ?? "未知版本"} / 协议 v${commissioning.observed.protocol ?? "--"}`
+    : "等待实际连接";
+  required("commission-piano").textContent = commissioning.observed.pianoSeen
+    ? `${formatHex(commissioning.observed.vid)}:${formatHex(commissioning.observed.pid)}`
+    : "等待 USB 枚举";
+  required("commission-in").textContent = commissioning.observed.usbInEndpoint
+    ? `${formatEndpoint(commissioning.observed.usbInEndpoint)} · 已观测 ${commissioning.observed.inputPackets ?? 0} 包`
+    : "--";
+  required("commission-out").textContent = commissioning.observed.usbOutEndpoint
+    ? formatEndpoint(commissioning.observed.usbOutEndpoint)
+    : "设备未提供 / 尚未观测";
+  required("commission-c4").textContent = commissioning.observed.c4Seen ? "已收到中央 C Note On" : "请在钢琴上弹中央 C";
+  required("commission-missing").textContent = missing.length === 0
+    ? "证据齐全。请完成验收并导出报告保存。"
+    : `尚缺 ${missing.length} 项：${missing.slice(0, 4).join("、")}${missing.length > 4 ? "…" : ""}`;
+  required<HTMLButtonElement>("commission-finish").disabled = missing.length > 0;
+  const complete = missing.length === 0 && commissioning.completedAt !== undefined;
+  setStatus(
+    commissioningStatus,
+    complete,
+    complete ? `硬件已验收 · ${new Date(commissioning.completedAt!).toLocaleDateString("zh-CN")}` : "硬件尚未验收",
+  );
+  document.querySelectorAll<HTMLInputElement>("[data-commission]").forEach((checkbox) => {
+    const key = checkbox.dataset.commission as keyof CommissioningState["manual"];
+    checkbox.checked = commissioning.manual[key];
   });
 }
 
@@ -556,6 +621,7 @@ function advanceFollowMode(): void {
 
 function handleMidi(event: MidiInputEvent): void {
   if (event.note < 21 || event.note > 108) return;
+  if (event.state === "on" && event.note === 60) storeCommissioning(observeMidi(commissioning, event));
   if (event.state === "on") {
     pressed.add(event.note);
     if (score && mode !== "realtime" && !followAdvancePending && currentWaitChord()) {
@@ -998,6 +1064,7 @@ for (const input of [loopStart, loopEnd]) {
 required("practice-options-button").addEventListener("click", () => {
   settingsPanel.hidden = true;
   libraryPanel.hidden = true;
+  commissioningPanel.hidden = true;
   practicePanel.hidden = false;
 });
 required("practice-close").addEventListener("click", () => { practicePanel.hidden = true; });
@@ -1042,6 +1109,7 @@ coachApply.addEventListener("click", () => {
 required("settings-button").addEventListener("click", () => {
   practicePanel.hidden = true;
   libraryPanel.hidden = true;
+  commissioningPanel.hidden = true;
   settingsPanel.hidden = false;
   void refreshUpdateInfo();
 });
@@ -1049,12 +1117,54 @@ required("settings-close").addEventListener("click", () => { settingsPanel.hidde
 required("library-button").addEventListener("click", () => {
   practicePanel.hidden = true;
   settingsPanel.hidden = true;
+  commissioningPanel.hidden = true;
   libraryPanel.hidden = false;
   void refreshLibrary().catch((error: unknown) => {
     librarySummary.textContent = error instanceof Error ? error.message : "无法打开曲库";
   });
 });
 required("library-close").addEventListener("click", () => { libraryPanel.hidden = true; });
+
+required("commissioning-button").addEventListener("click", () => {
+  practicePanel.hidden = true;
+  settingsPanel.hidden = true;
+  libraryPanel.hidden = true;
+  commissioningPanel.hidden = false;
+  renderCommissioning();
+});
+required("commissioning-close").addEventListener("click", () => { commissioningPanel.hidden = true; });
+commissioningPanel.addEventListener("change", (event) => {
+  const checkbox = (event.target as HTMLElement).closest<HTMLInputElement>("input[data-commission]");
+  if (!checkbox) return;
+  const key = checkbox.dataset.commission as keyof CommissioningState["manual"];
+  const next = structuredClone(commissioning);
+  next.manual[key] = checkbox.checked;
+  next.completedAt = undefined;
+  storeCommissioning(next);
+});
+commissioningPanel.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-commission-test]");
+  if (button) device.testNote(Number(button.dataset.commissionTest));
+});
+required("commission-blackout").addEventListener("click", () => device.blackout());
+required("commission-finish").addEventListener("click", () => {
+  try {
+    storeCommissioning(completeCommissioning(commissioning));
+    required("commission-missing").textContent = "实机验收已完成。建议立即导出报告，与当前固件版本一起保存。";
+  } catch (error) {
+    required("commission-missing").textContent = error instanceof Error ? error.message : "无法完成验收";
+  }
+});
+required("commission-export").addEventListener("click", () => {
+  const report = commissioningReport(commissioning);
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `notefall88-commissioning-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+});
 
 function sendCalibration(): void {
   required("brightness-value").textContent = `${brightness.value} / 4`;
@@ -1161,6 +1271,7 @@ device.onConnection((connected) => {
   setStatus(deviceStatus, connected, connected ? "ESP 已连接" : "ESP 未连接");
 });
 device.onStatus((status: DeviceStatus) => {
+  storeCommissioning(observeDevice(commissioning, status));
   midiOutAvailable = Boolean(status.usbOut);
   const midiOutOwnedElsewhere = Boolean(status.usbOutOwned) && !midiOutOwnedByThisPage;
   midiOutBlocked = midiOutOwnedElsewhere;
@@ -1228,6 +1339,7 @@ device.onMidiOutResult((result) => {
     setStatus(midiOutStatus, true, `钢琴伴奏输出中 · 队列 ${result.queued}`);
   }
 });
+renderCommissioning();
 device.connect();
 void refreshLibrary().catch((error: unknown) => {
   librarySummary.textContent = error instanceof Error ? error.message : "无法打开曲库";

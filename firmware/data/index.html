@@ -7,8 +7,8 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-BQQHIZG9.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-Bp_eYNwz.css">
+    <script type="module" crossorigin src="./assets/index-B8QgivW1.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CgatXwcd.css">
   </head>
   <body>
     <main class="app-shell">
@@ -22,6 +22,7 @@
           <span class="status-pill" id="piano-status" data-state="offline">钢琴未连接</span>
           <span class="status-pill" id="midi-out-status" data-state="offline">钢琴伴奏不可用</span>
           <span class="status-pill" id="sustain-status" data-state="offline">延音踏板松开</span>
+          <span class="status-pill" id="commissioning-status" data-state="offline">硬件尚未验收</span>
         </div>
       </header>
 
@@ -62,6 +63,7 @@
         <button id="practice-options-button" aria-controls="practice-panel">练习选项</button>
         <button id="library-button" aria-controls="library-panel">我的曲库</button>
         <button id="settings-button" aria-controls="settings-panel">灯带校准</button>
+        <button id="commissioning-button" aria-controls="commissioning-panel">安装向导</button>
       </section>
 
       <section class="score-strip">
@@ -266,6 +268,73 @@
           <div><dt>PSRAM</dt><dd id="diag-psram">--</dd></div>
           <div><dt>Wi-Fi RSSI</dt><dd id="diag-rssi">--</dd></div>
         </dl>
+      </aside>
+
+      <aside id="commissioning-panel" class="settings-panel commissioning-panel" hidden>
+        <div class="settings-head">
+          <div>
+            <div class="eyebrow">EVIDENCE-BASED COMMISSIONING</div>
+            <h2>安装与实机验收</h2>
+          </div>
+          <button id="commissioning-close" aria-label="关闭">关闭</button>
+        </div>
+        <p>这里不会替你“假装验收”。断电项目由你确认；ESP、USB 端点和中央 C 必须由设备实际观测到，证据齐全后才能完成。</p>
+        <div class="commission-progress"><span id="commission-progress-label">0 / 12</span><progress id="commission-progress" max="12" value="0"></progress></div>
+
+        <section class="commission-step">
+          <div class="step-number">1</div>
+          <div>
+            <h3>断电接线</h3>
+            <label><input type="checkbox" data-commission="wiringInspected" /> 万用表确认 5V-GND 不短路，DATA/CLOCK 不互通</label>
+            <label><input type="checkbox" data-commission="fuseInstalled" /> 5 V 正极已串联 3–5 A 保险丝</label>
+            <label><input type="checkbox" data-commission="stripPowerSeparate" /> 灯带由独立 5 V 电源供电，只与 ESP32 共地</label>
+            <label><input type="checkbox" data-commission="mountNonDamaging" /> 接触琴体的材料可移除、无硬边、无永久胶</label>
+          </div>
+        </section>
+
+        <section class="commission-step">
+          <div class="step-number">2</div>
+          <div>
+            <h3>设备与钢琴 USB</h3>
+            <dl class="diagnostic-grid">
+              <div><dt>ESP 链路</dt><dd id="commission-device">等待实际连接</dd></div>
+              <div><dt>PX-S7000</dt><dd id="commission-piano">等待 USB 枚举</dd></div>
+              <div><dt>MIDI IN</dt><dd id="commission-in">--</dd></div>
+              <div><dt>MIDI OUT</dt><dd id="commission-out">可选 / --</dd></div>
+              <div class="wide"><dt>实际按键证据</dt><dd id="commission-c4">请在钢琴上弹中央 C</dd></div>
+            </dl>
+            <p>MIDI OUT 缺失不会阻止基本验收，但“跟随我”将降级为无钢琴伴奏，并在报告中保留事实。</p>
+          </div>
+        </section>
+
+        <section class="commission-step">
+          <div class="step-number">3</div>
+          <div>
+            <h3>三点灯位</h3>
+            <div class="button-row">
+              <button type="button" data-commission-test="21">点亮 A0</button>
+              <button type="button" data-commission-test="60" class="primary">点亮 C4</button>
+              <button type="button" data-commission-test="108">点亮 C8</button>
+              <button type="button" id="commission-blackout">全部熄灭</button>
+            </div>
+            <label><input type="checkbox" data-commission="lightA0" /> A0 落在最低音白键中心附近</label>
+            <label><input type="checkbox" data-commission="lightC4" /> C4 落在中央 C 白键中心附近</label>
+            <label><input type="checkbox" data-commission="lightC8" /> C8 落在最高音白键中心附近</label>
+          </div>
+        </section>
+
+        <section class="commission-step">
+          <div class="step-number">4</div>
+          <div>
+            <h3>机械与完成</h3>
+            <label><input type="checkbox" data-commission="mountStable" /> 全键强奏、移动谱架和轻拉线缆后无触键、位移或异响</label>
+            <p id="commission-missing">仍需完成上述项目。</p>
+            <div class="button-row">
+              <button type="button" id="commission-export">导出验收报告</button>
+              <button type="button" id="commission-finish" class="primary" disabled>完成实机验收</button>
+            </div>
+          </div>
+        </section>
       </aside>
 
       <aside id="library-panel" class="settings-panel library-panel" hidden>
