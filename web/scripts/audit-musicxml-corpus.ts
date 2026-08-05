@@ -35,7 +35,17 @@ const EXPECTED_MEASURE_MAPS = new Map<string, number[]>([
   ],
 ]);
 
+const EXPECTED_SCORE_STATS = new Map<string, {
+  notes: number;
+  measures: number;
+  duration: number;
+}>([
+  ["BrahWiMeSample.musicxml", { notes: 172, measures: 13, duration: 32.5 }],
+  ["BrookeWestSample.musicxml", { notes: 299, measures: 17, duration: 48.57142857142857 }],
+]);
+
 const corpusRoot = resolve(process.argv[2] ?? "../tmp/musicxmlTestSuite/xmlFiles");
+const includeDetails = process.argv.includes("--details");
 const supportedExtensions = new Set([".xml", ".musicxml", ".mxl"]);
 function findScoreFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -84,6 +94,16 @@ for (const filePath of files) {
       && JSON.stringify(score.measureMap) !== JSON.stringify(expectedMeasureMap)) {
       throw new Error(`unexpected playback measure map: ${JSON.stringify(score.measureMap)}`);
     }
+    const expectedStats = EXPECTED_SCORE_STATS.get(fileName);
+    if (expectedStats && (score.notes.length !== expectedStats.notes
+      || score.measureStarts?.length !== expectedStats.measures
+      || Math.abs(score.duration - expectedStats.duration) > 1e-8)) {
+      throw new Error(`unexpected score stats: ${JSON.stringify({
+        notes: score.notes.length,
+        measures: score.measureStarts?.length ?? 0,
+        duration: score.duration,
+      })}`);
+    }
     successes.push({
       file,
       notes: score.notes.length,
@@ -127,6 +147,7 @@ process.stdout.write(`${JSON.stringify({
   expectedRejections,
   unexpectedFailures: failures,
   missingExpectedRejections,
+  ...(includeDetails ? { scores: successes } : {}),
 }, null, 2)}\n`);
 
 if (failures.length > 0 || invalidNumbers.length > 0 || missingExpectedRejections.length > 0) {

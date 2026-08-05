@@ -57,6 +57,7 @@ npm.cmd run audit:musicxml -- ..\tmp\musicxmlTestSuite\xmlFiles
 
 - MuseScore Studio 官方 GPL-3.0 仓库提交 `d6f84b78601e13055f1c3be97561f84f0e21650f` 的 `src/importexport/musicxml/tests/data`：447/447 文件解析，0 意外异常；按 `<software>` 元数据统计包含 412 份 MuseScore、18 份 Sibelius、6 份 Finale、2 份 Dolet，以及少量 Noteflight/Audiveris 等输入样例。
 - eNote GmbH 的 CC-BY-4.0 [`scorewriter-comparison`](https://github.com/eNote-GmbH/scorewriter-comparison) 提交 `03896bf8202ebb5cca3ba60992a8bb9cdb2f354c`：100/100 文件完成分类，覆盖 MuseScore 31、Dorico 28、Sibelius 26、Dolet 13、Finale 12 份导出；97 份解析，3 份预期拒绝，0 意外异常。两个 Dorico 文件只有元数据、没有任何声部；一个 Finale 文件引用 D.S. 编号 16，却没有机器可读的 segno 16，NoteFall 不根据可见文字猜判分时间线。
+- 当前谱面引擎 OpenSheetMusicDisplay 的 BSD-3-Clause 官方仓库提交 `c663e0d3f61aa2ee1b6ca4d0f360a60e42cc8b28`：`test/data` 317/317 文件解析、0 意外异常，其中 288 份含目标音、16 份为真实 MXL，并覆盖带 UTF-16 内部 XML 的 MXL；`demo` 中两份 Finale 示例总谱也通过固定语义统计，分别为 172 音/13 小节/32.5 秒和 299 音/17 小节/48.5714 秒。
 
 厂商语料审计直接促成并固定了两类兼容性修复：带 BOM 或 XML 字节特征的 UTF-16LE/UTF-16BE 解码，以及相邻多组 volta、较晚隐式反复跨越较早反复段时的独立轮次/终点管理。审计器会递归扫描目录、报告导出器分布、零目标音文件、非有限时长、预期拒绝和意外异常。
 
@@ -66,16 +67,21 @@ git -C tmp/MuseScore sparse-checkout set src/importexport/musicxml/tests/data
 git -C tmp/MuseScore checkout d6f84b78601e13055f1c3be97561f84f0e21650f
 git clone https://github.com/eNote-GmbH/scorewriter-comparison.git tmp/scorewriter-comparison
 git -C tmp/scorewriter-comparison checkout 03896bf8202ebb5cca3ba60992a8bb9cdb2f354c
+git clone --filter=blob:none --sparse --no-checkout https://github.com/opensheetmusicdisplay/opensheetmusicdisplay.git tmp/opensheetmusicdisplay
+git -C tmp/opensheetmusicdisplay sparse-checkout set test/data demo
+git -C tmp/opensheetmusicdisplay checkout c663e0d3f61aa2ee1b6ca4d0f360a60e42cc8b28
 cd web
 npm.cmd run audit:musicxml -- ..\tmp\MuseScore\src\importexport\musicxml\tests\data
 npm.cmd run audit:musicxml -- ..\tmp\scorewriter-comparison
+npm.cmd run audit:musicxml -- ..\tmp\opensheetmusicdisplay\test\data
+npm.cmd run audit:musicxml -- ..\tmp\opensheetmusicdisplay\demo --details
 ```
 
 这些外部语料只用于本地审计，不复制进产品、固件或发布包；测试结果绑定上游提交和许可证，不把不同版本的结果混写。
 
 “解析成功”表示目标音符时间线能够安全生成，不代表 NoteFall 实现了测试文件中的全部雕版、歌词、吉他谱、打击乐或微分音视觉语义；这些仍交给 OSMD 显示或明确处于练习引擎范围之外。
 
-公开厂商功能样例已经覆盖“能否安全导入”和大量结构边界，但其中只有 51 个 eNote 文件含 A0–C8 目标音，且多数不是完整双手钢琴曲。发布前仍要用 MuseScore、Dorico/Finale 任一和常见网络 MXL 各至少 3 首真实钢琴曲，逐项比对显示小节数、目标音高、首末时刻、速度变化、左右手和 tie。标准/功能语料不能替代真实曲目的内容级门禁。
+四套外部固定语料加 OSMD 两份示例共 1016 个文件，当前为 1012 个解析、4 个预期安全拒绝、0 个意外异常，其中 813 个含 A0–C8 目标音。它们已经覆盖“能否安全导入”和大量结构边界，但多数仍是功能测试而不是完整双手钢琴曲。发布前仍要用 MuseScore、Dorico/Finale 任一和常见网络 MXL 各至少 3 首真实钢琴曲，逐项人工比对显示小节数、目标音高、首末时刻、速度变化、左右手和 tie。标准/功能语料不能替代真实曲目的内容级门禁。
 
 解析错误、缺少声部或超过安全上限时，导入失败但原曲库内容不变。OSMD 的可选光标若遇到不完整 staff/voice 数据会被关闭，谱面本身仍保留可读。
 
