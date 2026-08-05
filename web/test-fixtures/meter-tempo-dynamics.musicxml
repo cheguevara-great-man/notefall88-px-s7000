@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <work><work-title>Meter Tempo Dynamics</work-title></work>
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>4</divisions>
+        <time><beats>3+2</beats><beat-type>8</beat-type></time>
+      </attributes>
+      <direction>
+        <direction-type><metronome><beat-unit>eighth</beat-unit><per-minute>120</per-minute></metronome></direction-type>
+        <sound dynamics="50"/>
+      </direction>
+      <note><cue/><pitch><step>G</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><staff>1</staff></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><staff>1</staff></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><staff>1</staff></note>
+    </measure>
+    <measure number="2">
+      <attributes>
+        <time><beats>2</beats><beat-type>4</beat-type><beats>3</beats><beat-type>8</beat-type></time>
+      </attributes>
+      <direction>
+        <direction-type><metronome><beat-unit>quarter</beat-unit><beat-unit-dot/><per-minute>60</per-minute></metronome></direction-type>
+      </direction>
+      <direction>
+        <direction-type><dynamics><ff/></dynamics></direction-type>
+        <staff>2</staff>
+      </direction>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>14</duration><voice>2</voice><staff>2</staff></note>
+    </measure>
+  </part>
+</score-partwise>

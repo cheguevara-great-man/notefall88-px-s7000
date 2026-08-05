@@ -20,6 +20,52 @@ const STEP_TO_SEMITONE: Record<string, number> = {
   B: 11,
 };
 
+const NOTE_TYPE_QUARTERS: Record<string, number> = {
+  maxima: 32,
+  long: 16,
+  breve: 8,
+  whole: 4,
+  half: 2,
+  quarter: 1,
+  eighth: 0.5,
+  "16th": 0.25,
+  "32nd": 0.125,
+  "64th": 0.0625,
+  "128th": 0.03125,
+  "256th": 0.015625,
+  "512th": 0.0078125,
+  "1024th": 0.00390625,
+};
+
+const DYNAMIC_VELOCITIES: Record<string, number> = {
+  n: 1,
+  pppppp: 10,
+  ppppp: 14,
+  pppp: 20,
+  ppp: 30,
+  pp: 42,
+  p: 54,
+  mp: 66,
+  mf: 78,
+  f: 90,
+  ff: 104,
+  fff: 116,
+  ffff: 124,
+  fffff: 126,
+  ffffff: 127,
+  fp: 72,
+  pf: 72,
+  sf: 104,
+  sfp: 76,
+  sfpp: 64,
+  sfz: 108,
+  sffz: 116,
+  fz: 104,
+  rf: 102,
+  rfz: 108,
+  sfzp: 78,
+};
+
 interface QuarterNote {
   note: number;
   start: number;
@@ -38,10 +84,14 @@ interface TempoEvent {
   bpm: number;
 }
 
-interface PartMeasure {
-  duration: number;
+interface BeatGroup {
   beats: number;
   beatType: number;
+}
+
+interface PartMeasure {
+  duration: number;
+  beatGroups: BeatGroup[];
   notes: (Omit<QuarterNote, "start" | "end"> & { start: number; end: number })[];
   tempos: { offset: number; bpm: number }[];
 }
@@ -139,6 +189,62 @@ function numberText(element: XmlElement | undefined, fallback = 0): number {
 
 function directNumber(element: XmlElement, name: string, fallback = 0): number {
   return numberText(child(element, name), fallback);
+}
+
+function firstNumber(value: string): number | undefined {
+  const match = value.match(/[+-]?(?:\d+(?:\.\d*)?|\.\d+)/);
+  if (!match) return undefined;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function timeGroups(time: XmlElement, fallback: BeatGroup[]): BeatGroup[] {
+  const result: BeatGroup[] = [];
+  let pendingBeats: number[] | undefined;
+  for (const element of children(time)) {
+    if (element.tagName === "interchangeable") break;
+    if (element.tagName === "beats") {
+      const parsed = text(element).split("+").map((token) => Number(token.trim()));
+      pendingBeats = parsed.length > 0 && parsed.every((value) => Number.isInteger(value) && value > 0)
+        ? parsed
+        : undefined;
+    } else if (element.tagName === "beat-type" && pendingBeats) {
+      const beatType = Number(text(element));
+      if (Number.isInteger(beatType) && beatType > 0) {
+        pendingBeats.forEach((beats) => result.push({ beats, beatType }));
+      }
+      pendingBeats = undefined;
+    }
+  }
+  return result.length > 0 ? result : fallback.map((group) => ({ ...group }));
+}
+
+function measureQuarters(groups: BeatGroup[]): number {
+  return groups.reduce((sum, group) => sum + group.beats * 4 / group.beatType, 0);
+}
+
+function soundDynamics(sound: XmlElement | undefined): number | undefined {
+  const raw = sound?.getAttribute("dynamics");
+  if (raw === undefined || raw === null || raw.trim() === "") return undefined;
+  const percentage = Number(raw);
+  if (!Number.isFinite(percentage) || percentage < 0) return undefined;
+  return Math.max(1, Math.min(127, Math.round(90 * percentage / 100)));
+}
+
+function directionDynamics(direction: XmlElement): number | undefined {
+  const fromSound = soundDynamics(descendants(direction, "sound")[0]);
+  if (fromSound !== undefined) return fromSound;
+  const dynamics = descendants(direction, "dynamics")[0];
+  if (!dynamics) return undefined;
+  for (const mark of children(dynamics)) {
+    const named = DYNAMIC_VELOCITIES[mark.tagName.toLowerCase()];
+    if (named !== undefined) return named;
+    if (mark.tagName === "other-dynamics") {
+      const other = DYNAMIC_VELOCITIES[text(mark).toLowerCase()];
+      if (other !== undefined) return other;
+    }
+  }
+  return undefined;
 }
 
 function endingNumbers(value: string | null): Set<number> {
@@ -333,15 +439,22 @@ function parseTempo(direction: XmlElement): number | undefined {
   const sound = descendants(direction, "sound")[0];
   const soundTempo = Number(sound?.getAttribute("tempo"));
   if (Number.isFinite(soundTempo) && soundTempo > 0) return soundTempo;
-  const perMinute = numberText(descendants(direction, "per-minute")[0], Number.NaN);
-  return Number.isFinite(perMinute) && perMinute > 0 ? perMinute : undefined;
+  const metronome = descendants(direction, "metronome")[0];
+  const perMinute = firstNumber(text(metronome ? descendants(metronome, "per-minute")[0] : undefined));
+  const unit = text(metronome ? descendants(metronome, "beat-unit")[0] : undefined).toLowerCase();
+  const unitQuarters = NOTE_TYPE_QUARTERS[unit];
+  if (perMinute === undefined || perMinute <= 0 || unitQuarters === undefined) return undefined;
+  const dots = metronome ? descendants(metronome, "beat-unit-dot").length : 0;
+  const dotMultiplier = 2 - 1 / 2 ** Math.min(dots, 8);
+  return perMinute * unitQuarters * dotMultiplier;
 }
 
 function parsePart(part: XmlElement, partName: string): PartMeasure[] {
   let divisions = 1;
-  let beats = 4;
-  let beatType = 4;
+  let activeBeatGroups: BeatGroup[] = [{ beats: 4, beatType: 4 }];
   let transpose = 0;
+  let partVelocity = 96;
+  const staffVelocities = new Map<number, number>();
   const hinted = nameHint(partName);
   const result: PartMeasure[] = [];
 
@@ -358,11 +471,15 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
         if (nextDivisions > 0) divisions = nextDivisions;
         const time = child(event, "time");
         if (time) {
-          beats = directNumber(time, "beats", beats);
-          beatType = directNumber(time, "beat-type", beatType);
+          activeBeatGroups = child(time, "senza-misura")
+            ? []
+            : timeGroups(time, activeBeatGroups.length > 0 ? activeBeatGroups : [{ beats: 4, beatType: 4 }]);
         }
         const transposeElement = child(event, "transpose");
-        if (transposeElement) transpose = directNumber(transposeElement, "chromatic", transpose);
+        if (transposeElement) {
+          transpose = directNumber(transposeElement, "chromatic", 0)
+            + 12 * directNumber(transposeElement, "octave-change", 0);
+        }
         continue;
       }
 
@@ -376,8 +493,37 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
       if (event.tagName === "direction") {
         const bpm = parseTempo(event);
         if (bpm) {
-          const offset = directNumber(event, "offset", 0) / divisions;
+          const sound = descendants(event, "sound")[0];
+          const soundOffset = sound ? child(sound, "offset") : undefined;
+          const offset = (soundOffset
+            ? numberText(soundOffset, 0)
+            : directNumber(event, "offset", 0)) / divisions;
           tempos.push({ offset: Math.max(0, cursor + offset), bpm });
+        }
+        const nextVelocity = directionDynamics(event);
+        if (nextVelocity !== undefined) {
+          const targetStaff = Math.round(directNumber(event, "staff", 0));
+          if (targetStaff > 0) staffVelocities.set(targetStaff, nextVelocity);
+          else {
+            partVelocity = nextVelocity;
+            staffVelocities.clear();
+          }
+        }
+        continue;
+      }
+
+      if (event.tagName === "sound") {
+        const bpm = Number(event.getAttribute("tempo"));
+        if (Number.isFinite(bpm) && bpm > 0) {
+          tempos.push({
+            offset: Math.max(0, cursor + directNumber(event, "offset", 0) / divisions),
+            bpm,
+          });
+        }
+        const nextVelocity = soundDynamics(event);
+        if (nextVelocity !== undefined) {
+          partVelocity = nextVelocity;
+          staffVelocities.clear();
         }
         continue;
       }
@@ -392,10 +538,11 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
       const end = start + Math.max(duration, 0.02);
       const pitch = midiPitch(event, transpose);
       const staff = Math.max(1, Math.round(directNumber(event, "staff", 1)));
-      if (pitch !== undefined && pitch >= 21 && pitch <= 108 && !child(event, "rest")) {
+      if (pitch !== undefined && pitch >= 21 && pitch <= 108 &&
+          !child(event, "rest") && !child(event, "cue")) {
         const ties = children(event, "tie").map((tie) => tie.getAttribute("type"));
-        const dynamics = descendants(event, "sound")[0]?.getAttribute("dynamics");
-        const velocity = Math.max(1, Math.min(127, Math.round(Number(dynamics) || 96)));
+        const noteVelocity = soundDynamics(descendants(event, "sound")[0]);
+        const velocity = noteVelocity ?? staffVelocities.get(staff) ?? partVelocity;
         notes.push({
           note: pitch,
           start,
@@ -413,8 +560,13 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
       maximum = Math.max(maximum, cursor, end);
     }
 
-    const expected = beats > 0 && beatType > 0 ? beats * 4 / beatType : 4;
-    result.push({ duration: maximum > 0 ? maximum : expected, beats, beatType, notes, tempos });
+    const expected = measureQuarters(activeBeatGroups);
+    result.push({
+      duration: maximum > 0 ? maximum : expected,
+      beatGroups: activeBeatGroups.map((group) => ({ ...group })),
+      notes,
+      tempos,
+    });
   }
   return result;
 }
@@ -534,13 +686,29 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
   const measureStarts = measureQuarterStarts.slice(0, -1).map(toSeconds);
   const beatMap = measureOrder.flatMap((writtenMeasureIndex, playbackMeasureIndex) => {
     const measure = parts.find((part) => part.measures[writtenMeasureIndex])?.measures[writtenMeasureIndex];
-    if (!measure) return [];
+    if (!measure || measure.beatGroups.length === 0) return [];
     const start = measureQuarterStarts[playbackMeasureIndex];
     const end = measureQuarterStarts[playbackMeasureIndex + 1];
-    const interval = measure.beatType > 0 ? 4 / measure.beatType : 1;
     const markers = [];
-    for (let quarter = start, beat = 0; quarter < end - 1e-8 && beat < 64; quarter += interval, beat += 1) {
-      markers.push({ time: toSeconds(quarter), accent: beat === 0, beat, measure: playbackMeasureIndex });
+    let quarter = start;
+    let beat = 0;
+    let groupIndex = 0;
+    let beatInGroup = 0;
+    while (quarter < end - 1e-8 && beat < 64) {
+      const group = measure.beatGroups[groupIndex] ?? { beats: 1, beatType: 4 };
+      markers.push({
+        time: toSeconds(quarter),
+        accent: beatInGroup === 0,
+        beat,
+        measure: playbackMeasureIndex,
+      });
+      quarter += 4 / group.beatType;
+      beat += 1;
+      beatInGroup += 1;
+      if (beatInGroup >= group.beats) {
+        beatInGroup = 0;
+        groupIndex = (groupIndex + 1) % measure.beatGroups.length;
+      }
     }
     return markers;
   });

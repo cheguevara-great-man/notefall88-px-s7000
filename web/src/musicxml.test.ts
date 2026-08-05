@@ -38,6 +38,8 @@ describe("MusicXML parser", () => {
       .toEqual([0, 1, 2, 3, 0, 1]);
     expect(parseMusicXml(fixture("ds-al-coda.musicxml"), "fixture.xml").measureMap)
       .toEqual([0, 1, 2, 3, 1, 2, 4]);
+    expect(parseMusicXml(fixture("meter-tempo-dynamics.musicxml"), "fixture.xml").notes)
+      .toHaveLength(3);
   });
 
   it("extracts piano notes, chords, staves, ties and tempo changes", () => {
@@ -69,6 +71,49 @@ describe("MusicXML parser", () => {
     const buffer = archive.slice().buffer as ArrayBuffer;
     expect(extractMusicXml(buffer, "piece.mxl")).toContain("Parser Etude");
     expect(parseMusicXmlFile(buffer, "piece.mxl").score.notes).toHaveLength(4);
+  });
+
+  it("honors metronome units, additive/composite meters, dynamics and silent cues", () => {
+    const score = parseMusicXml(fixture("meter-tempo-dynamics.musicxml"), "fixture.xml");
+    expect(score.notes.map((note) => [note.note, note.velocity, note.hand])).toEqual([
+      [60, 45, "right"],
+      [62, 45, "right"],
+      [64, 104, "left"],
+    ]);
+    // Eighth=120 means quarter=60, so the silent 1/8 cue advances C4 to 0.5 s.
+    expect(score.notes[0].start).toBeCloseTo(0.5);
+    expect(score.measureStarts).toEqual([0, 2.5]);
+    // The 3+2/8 grouping accents beats 0 and 3.
+    expect(score.beatMap?.slice(0, 5).map((beat) => [beat.time, beat.accent])).toEqual([
+      [0, true], [0.5, false], [1, false], [1.5, true], [2, false],
+    ]);
+    // Dotted-quarter=60 means quarter=90 in the second composite 2/4+3/8 measure.
+    expect(score.duration).toBeCloseTo(2.5 + 3.5 * 60 / 90);
+    expect(score.beatMap?.slice(5).map((beat) => beat.accent)).toEqual([true, false, true, false, false]);
+  });
+
+  it("honors measure-level sound and sound-owned direction offsets", () => {
+    const xml = `<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1">
+      <measure><attributes><divisions>1</divisions><time><beats>2</beats><beat-type>4</beat-type></time></attributes>
+        <sound dynamics="100"/>
+        <direction><offset>0</offset><sound tempo="60"><offset>1</offset></sound></direction>
+        <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration></note>
+      </measure></part></score-partwise>`;
+    const score = parseMusicXml(xml, "sound.musicxml");
+    expect(score.notes[0].velocity).toBe(90);
+    // Default 120 BPM for the first quarter, then the sound-owned offset changes to 60 BPM.
+    expect(score.duration).toBeCloseTo(1.5);
+  });
+
+  it("keeps unmetered music playable without inventing metronome beats", () => {
+    const xml = `<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1">
+      <measure><attributes><divisions>2</divisions><time><senza-misura/></time></attributes>
+        <note><pitch><step>C</step><octave>4</octave></pitch><duration>3</duration></note>
+      </measure></part></score-partwise>`;
+    const score = parseMusicXml(xml, "unmetered.musicxml");
+    expect(score.notes).toHaveLength(1);
+    expect(score.duration).toBeCloseTo(0.75);
+    expect(score.beatMap).toEqual([]);
   });
 
   it("rejects unsupported score-timewise input", () => {
