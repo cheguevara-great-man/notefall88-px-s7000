@@ -2,6 +2,8 @@ import "./style.css";
 
 import { PracticeAnalytics, PracticeSessionStore } from "./analytics";
 import type { PracticeEvent, PracticeSession } from "./analytics";
+import { recommendPractice } from "./coach";
+import type { PracticeRecommendation } from "./coach";
 import {
   clampPianoNote,
   FIRST_PIANO_NOTE,
@@ -81,6 +83,7 @@ const practicePanel = required("practice-panel");
 const practiceInsights = required("practice-insights");
 const sessionHistory = required("session-history");
 const historySummary = required("history-summary");
+const coachApply = required<HTMLButtonElement>("coach-apply");
 const settingsPanel = required("settings-panel");
 const libraryPanel = required("library-panel");
 const libraryList = required("library-list");
@@ -134,6 +137,7 @@ let midiOutBlocked = false;
 let followPlanner = new FollowAccompanimentPlanner([]);
 let analytics: PracticeAnalytics | undefined;
 let recentSessions: PracticeSession[] = [];
+let currentRecommendation: PracticeRecommendation | undefined;
 
 function canUseMidiOut(): boolean {
   return midiOutAvailable && !midiOutBlocked;
@@ -273,6 +277,28 @@ function renderPracticeHistory(): void {
   }
   const totalNotes = recentSessions.reduce((sum, session) => sum + session.summary.hits + session.summary.wrong + session.summary.missed, 0);
   historySummary.textContent = `${recentSessions.length} 次近期练习 · ${totalNotes} 个判定事件 · 数据只保存在本机`;
+  renderCoach();
+}
+
+function renderCoach(): void {
+  currentRecommendation = score ? recommendPractice(recentSessions, score.name, score.duration) : undefined;
+  const recommendation = currentRecommendation;
+  coachApply.disabled = !recommendation;
+  if (!recommendation) {
+    required("coach-title").textContent = score ? "完成一次练习后生成建议" : "先导入一首乐谱";
+    required("coach-reason").textContent = "建议只使用当前乐谱的本机历史，不会把不同曲目混在一起。";
+    required("coach-evidence").textContent = "尚无可用证据";
+    return;
+  }
+  const modeLabel = recommendation.mode === "wait" ? "等我弹" : "实时";
+  const handLabel = recommendation.hand === "both" ? "双手" : recommendation.hand === "left" ? "左手" : "右手";
+  const loopLabel = recommendation.loop
+    ? `${formatTime(recommendation.loop.start)}–${formatTime(recommendation.loop.end)}`
+    : "全曲";
+  required("coach-title").textContent = `${modeLabel} · ${handLabel} · ${Math.round(recommendation.tempo * 100)}% · ${loopLabel}`;
+  required("coach-reason").textContent = recommendation.reason;
+  const confidence = recommendation.confidence === "high" ? "高" : recommendation.confidence === "medium" ? "中" : "初步";
+  required("coach-evidence").textContent = `${recommendation.evidence.sessions} 次 / ${recommendation.evidence.events} 事件 · 历史准确率 ${recommendation.evidence.accuracy.toFixed(1)}% · 置信度 ${confidence}`;
 }
 
 async function refreshPracticeHistory(): Promise<void> {
@@ -559,6 +585,7 @@ async function activateScore(parsed: ParsedScore, xml?: string): Promise<void> {
   renderer.setScore(score);
   configureLoopInputs();
   rebuildPractice();
+  renderCoach();
 }
 
 async function loadScoreBuffer(
@@ -867,6 +894,29 @@ required("history-export").addEventListener("click", async () => {
   } catch (error) {
     historySummary.textContent = error instanceof Error ? error.message : "无法导出练习记录";
   }
+});
+coachApply.addEventListener("click", () => {
+  const recommendation = currentRecommendation;
+  if (!recommendation || !score) return;
+  mode = recommendation.mode;
+  modeSelect.value = mode;
+  hand = recommendation.hand;
+  if (mode === "follow" && hand === "both") hand = "right";
+  handSelect.value = hand;
+  tempoSelect.value = String(recommendation.tempo);
+  clock.setSpeed(recommendation.tempo, performance.now());
+  loopEnabled.checked = Boolean(recommendation.loop);
+  loopStart.disabled = !recommendation.loop;
+  loopEnd.disabled = !recommendation.loop;
+  loopControls.setAttribute("aria-disabled", String(!recommendation.loop));
+  if (recommendation.loop) {
+    loopStart.value = String(recommendation.loop.start);
+    loopEnd.value = String(recommendation.loop.end);
+  }
+  updateLoopLabels();
+  rebuildPractice();
+  coachApply.textContent = "已应用";
+  window.setTimeout(() => { coachApply.textContent = "一键应用"; }, 1_200);
 });
 required("settings-button").addEventListener("click", () => {
   practicePanel.hidden = true;
