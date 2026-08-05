@@ -12,13 +12,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Validate generated engineering package
@@ -50,7 +50,7 @@ jobs:
           python scripts/package_manufacturing.py \
             --output dist/notefall88-manufacturing-${GITHUB_REF_NAME}.zip \
             > dist/manufacturing-manifest.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: notefall88-${{ github.ref_name }}
           path: dist/*

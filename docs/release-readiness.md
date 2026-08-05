@@ -21,6 +21,8 @@ NoteFall 88 只有在数字门禁全部自动通过后才能生成候选包；�
 
 GitHub Actions 在每次 push/PR 重跑 G0，并产出 `notefall88-manufacturing` 工件；`v*` 标签另外产出带 SHA-256 清单的 OTA 包与制造包。
 
+工作流使用 Node 24 运行时的 `checkout@v6`、`setup-node@v6`、`setup-python@v6` 和 `upload-artifact@v6`；GitHub 托管 runner 满足其最低版本，不保留已弃用的 Node 20 Action 运行时警告。
+
 ## G1：台架（需要现有 ESP32 与最终线束）
 
 - 断电逐线蜂鸣、5V-GND 无短路、连接器极性与供电侧凹端子；
