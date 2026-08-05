@@ -6,6 +6,10 @@ NoteFall 88 是面向 Casio PX-S7000 的可拆卸单排琴键提示灯。钢琴�
 
 ![单排最终导轨 CAD 渲染](mechanical/renders/full_rail.png)
 
+![PX-S7000 单排灯带安装概念图](mechanical/renders/piano_installation_mockup.png)
+
+> 安装概念图基于用户实拍照片生成，用于说明体积、位置和单排点亮方式；它不是尺寸依据。打印前仍以现场测量表和参数化 CAD 为准。
+
 ## 最终架构
 
 ```text
