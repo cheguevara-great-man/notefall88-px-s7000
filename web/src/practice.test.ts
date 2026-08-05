@@ -11,6 +11,7 @@ import {
   RealtimeMatcher,
   ScoreClock,
   targetNotes,
+  WaitHitBuffer,
   WaitMatcher,
 } from "./practice";
 import type { ScoreNote } from "./types";
@@ -61,6 +62,27 @@ describe("practice engine", () => {
     expect(matcher.noteOn(60).complete).toBe(false);
     expect(matcher.noteOn(64).complete).toBe(false);
     expect(matcher.noteOff(61).complete).toBe(true);
+  });
+
+  it("commits wait-mode hits only after the complete chord is valid", () => {
+    const pending = new WaitHitBuffer();
+    pending.stage({ note: 60, hand: "right", velocity: 70, scoreTime: 1 });
+    pending.stage({ note: 64, hand: "right", velocity: 80, scoreTime: 1 });
+    pending.release(60);
+    pending.stage({ note: 60, hand: "right", velocity: 95, scoreTime: 1 });
+
+    expect(pending.commit(new Set([64, 60]))).toEqual([
+      { note: 60, hand: "right", velocity: 95, scoreTime: 1 },
+      { note: 64, hand: "right", velocity: 80, scoreTime: 1 },
+    ]);
+    expect(pending.commit(new Set([60, 64]))).toEqual([]);
+  });
+
+  it("discards every provisional wait hit when the target changes", () => {
+    const pending = new WaitHitBuffer();
+    pending.stage({ note: 60, velocity: 100, scoreTime: 1 });
+    pending.clear();
+    expect(pending.commit(new Set([60]))).toEqual([]);
   });
 
   it("preserves score time while changing speed", () => {

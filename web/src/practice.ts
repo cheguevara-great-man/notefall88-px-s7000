@@ -196,6 +196,45 @@ export class WaitMatcher {
   }
 }
 
+export interface PendingWaitHit {
+  note: number;
+  hand?: Hand;
+  velocity: number;
+  scoreTime: number;
+}
+
+/**
+ * Holds provisional hits until the entire wait/follow chord is physically
+ * valid.  Scoring a Note On immediately would let a player repeatedly tap one
+ * chord tone without ever completing the chord and still inflate the score.
+ */
+export class WaitHitBuffer {
+  private readonly hits = new Map<number, PendingWaitHit>();
+
+  stage(hit: PendingWaitHit): void {
+    this.hits.set(hit.note, { ...hit });
+  }
+
+  release(note: number): void {
+    this.hits.delete(note);
+  }
+
+  commit(expected: Set<number>): PendingWaitHit[] {
+    const committed = [...expected]
+      .sort((first, second) => first - second)
+      .flatMap((note) => {
+        const hit = this.hits.get(note);
+        return hit ? [{ ...hit }] : [];
+      });
+    this.hits.clear();
+    return committed;
+  }
+
+  clear(): void {
+    this.hits.clear();
+  }
+}
+
 export class PracticeScore {
   private hits = 0;
   private wrong = 0;

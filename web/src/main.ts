@@ -50,6 +50,7 @@ import {
   RealtimeMatcher,
   ScoreClock,
   targetNotes,
+  WaitHitBuffer,
   WaitMatcher,
 } from "./practice";
 import type { Chord, LoopRange } from "./practice";
@@ -137,6 +138,7 @@ const sheetRenderer = new SheetRenderer(sheetView);
 const device = new DeviceLink();
 const clock = new ScoreClock();
 const waitMatcher = new WaitMatcher();
+const waitHitBuffer = new WaitHitBuffer();
 const practiceScore = new PracticeScore();
 const realtimeMatcher = new RealtimeMatcher(practiceScore);
 const recorder = new PerformanceRecorder();
@@ -494,6 +496,24 @@ function renderStats(): void {
     `命中 ${stats.hits} · 错 ${stats.wrong} · 漏 ${stats.missed} · ${Math.round(stats.accuracy)}%`;
 }
 
+function setWaitChord(chord: Chord | undefined): void {
+  waitMatcher.setChord(chord);
+  waitHitBuffer.clear();
+}
+
+function commitWaitChord(): void {
+  for (const hit of waitHitBuffer.commit(waitMatcher.expectedNotes())) {
+    practiceScore.recordHit();
+    recordPracticeEvent({ kind: "hit", ...hit });
+  }
+}
+
+function completeWaitChord(): void {
+  commitWaitChord();
+  if (mode === "follow") advanceFollowMode();
+  else advanceWaitMode();
+}
+
 function updateTarget(scoreSeconds: number): void {
   const loop = selectedLoop();
   const chord = mode === "realtime"
@@ -504,7 +524,7 @@ function updateTarget(scoreSeconds: number): void {
   if (signature !== lastTargetSignature) {
     device.setTargets(currentTarget);
     lastTargetSignature = signature;
-    if (mode !== "realtime") waitMatcher.setChord(chord);
+    if (mode !== "realtime") setWaitChord(chord);
   }
 }
 
@@ -531,7 +551,7 @@ function resetPractice(resetStats = true): void {
   metronome.reset(start);
   if (resetStats) practiceScore.reset();
   realtimeMatcher.setChords(chords);
-  waitMatcher.setChord(currentWaitChord());
+  setWaitChord(currentWaitChord());
   updateTarget(start);
   playButton.textContent = mode === "realtime" ? "播放" : "开始练习";
   renderStats();
@@ -581,7 +601,7 @@ function advanceWaitMode(): void {
     if (selectedLoop() && chords.length > 0) waitIndex = 0;
     else {
       clock.seek(rangeEnd());
-      waitMatcher.setChord(undefined);
+      setWaitChord(undefined);
       lastTargetSignature = "";
       playButton.textContent = "已完成";
       void finishPracticeSession();
@@ -591,7 +611,7 @@ function advanceWaitMode(): void {
   const next = currentWaitChord();
   if (next) clock.seek(next.start);
   lastTargetSignature = "";
-  waitMatcher.setChord(next);
+  setWaitChord(next);
 }
 
 function advanceFollowMode(): void {
@@ -627,7 +647,7 @@ function advanceFollowMode(): void {
     : current.start + (rangeEnd() - current.start) + (next.start - rangeStart());
   const delayMs = followWaitMs(current.start, nextTimelineStart, speed);
   followAdvancePending = true;
-  waitMatcher.setChord(undefined);
+  setWaitChord(undefined);
   currentTarget = [];
   device.setTargets([]);
   lastTargetSignature = "";
@@ -651,10 +671,8 @@ function handleMidi(event: MidiInputEvent): void {
     if (score && mode !== "realtime" && !followAdvancePending && currentWaitChord()) {
       const result = waitMatcher.noteOn(event.note);
       if (result.newlyMatched) {
-        practiceScore.recordHit();
         const expected = currentWaitChord()?.notes.find((note) => note.note === event.note);
-        recordPracticeEvent({
-          kind: "hit",
+        waitHitBuffer.stage({
           note: event.note,
           hand: expected?.hand,
           velocity: analysisVelocity,
@@ -667,8 +685,7 @@ function handleMidi(event: MidiInputEvent): void {
         recordPracticeEvent({ kind: "wrong", note: event.note, velocity: analysisVelocity, scoreTime: lastScoreSeconds });
       }
       if (result.complete) {
-        if (mode === "follow") advanceFollowMode();
-        else advanceWaitMode();
+        completeWaitChord();
       }
     } else if (score && mode === "realtime" && clock.isRunning()) {
       const result = realtimeMatcher.noteOn(event.note, lastScoreSeconds);
@@ -690,10 +707,10 @@ function handleMidi(event: MidiInputEvent): void {
   } else {
     pressed.delete(event.note);
     wrong.delete(event.note);
+    if (waitMatcher.expectedNotes().has(event.note)) waitHitBuffer.release(event.note);
     const released = waitMatcher.noteOff(event.note);
     if (released.complete && score && mode !== "realtime" && !followAdvancePending && currentWaitChord()) {
-      if (mode === "follow") advanceFollowMode();
-      else advanceWaitMode();
+      completeWaitChord();
     }
   }
   recorder.handleMidi(event, performance.now());
@@ -711,6 +728,7 @@ function handleControl(event: MidiControlEvent): void {
     pressed.clear();
     wrong.clear();
     waitMatcher.allNotesOff();
+    waitHitBuffer.clear();
   }
 }
 
@@ -1352,6 +1370,7 @@ device.onStatus((status: DeviceStatus) => {
     pressed.clear();
     wrong.clear();
     waitMatcher.allNotesOff();
+    waitHitBuffer.clear();
     recorder.allNotesOff(performance.now());
     setStatus(sustainStatus, false, "延音踏板松开");
   }
