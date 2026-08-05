@@ -13,6 +13,7 @@ export function transposeScore(source: ParsedScore, semitones: number): ParsedSc
       .filter((note) => note.note >= 21 && note.note <= 108),
     measureStarts: source.measureStarts ? [...source.measureStarts] : undefined,
     measureMap: source.measureMap ? [...source.measureMap] : undefined,
+    beatMap: source.beatMap ? source.beatMap.map((beat) => ({ ...beat })) : undefined,
   };
 }
 

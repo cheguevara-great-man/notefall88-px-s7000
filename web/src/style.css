@@ -65,6 +65,8 @@ h1 span { color: #8ba7ff; }
 .practice-panel { left: 20px; right: auto; }
 .library-panel { width: min(620px, calc(100vw - 32px)); }
 .switch-line { grid-template-columns: 1fr auto; align-items: center; }
+.switch-line span small { display: block; margin-top: 3px; color: #747f92; font-weight: 400; }
+.sub-switch { margin-top: -10px !important; padding-left: 14px; color: #a9b3c4; }
 .loop-controls { display: grid; gap: 12px; opacity: 1; transition: opacity .15s ease; }
 .loop-controls[aria-disabled="true"] { opacity: .38; }
 .loop-controls label { display: grid; gap: 8px; }

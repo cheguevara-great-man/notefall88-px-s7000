@@ -40,6 +40,8 @@ interface TempoEvent {
 
 interface PartMeasure {
   duration: number;
+  beats: number;
+  beatType: number;
   notes: (Omit<QuarterNote, "start" | "end"> & { start: number; end: number })[];
   tempos: { offset: number; bpm: number }[];
 }
@@ -412,7 +414,7 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
     }
 
     const expected = beats > 0 && beatType > 0 ? beats * 4 / beatType : 4;
-    result.push({ duration: maximum > 0 ? maximum : expected, notes, tempos });
+    result.push({ duration: maximum > 0 ? maximum : expected, beats, beatType, notes, tempos });
   }
   return result;
 }
@@ -530,6 +532,18 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
     hand: note.hand,
   })).sort((a, b) => a.start - b.start || a.note - b.note);
   const measureStarts = measureQuarterStarts.slice(0, -1).map(toSeconds);
+  const beatMap = measureOrder.flatMap((writtenMeasureIndex, playbackMeasureIndex) => {
+    const measure = parts.find((part) => part.measures[writtenMeasureIndex])?.measures[writtenMeasureIndex];
+    if (!measure) return [];
+    const start = measureQuarterStarts[playbackMeasureIndex];
+    const end = measureQuarterStarts[playbackMeasureIndex + 1];
+    const interval = measure.beatType > 0 ? 4 / measure.beatType : 1;
+    const markers = [];
+    for (let quarter = start, beat = 0; quarter < end - 1e-8 && beat < 64; quarter += interval, beat += 1) {
+      markers.push({ time: toSeconds(quarter), accent: beat === 0, beat, measure: playbackMeasureIndex });
+    }
+    return markers;
+  });
   const duration = Math.max(
     toSeconds(measureQuarterStarts.at(-1) ?? 0),
     ...notes.map((note) => note.end),
@@ -541,6 +555,7 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
     format: "musicxml",
     measureStarts,
     measureMap: measureOrder,
+    beatMap,
   };
 }
 

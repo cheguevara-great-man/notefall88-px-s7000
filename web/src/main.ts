@@ -12,6 +12,7 @@ import {
 } from "./calibration";
 import { DeviceLink } from "./device";
 import { parseMidiFile } from "./midi";
+import { MetronomePlayer } from "./metronome";
 import { parseMusicXmlFile } from "./musicxml";
 import { ScoreLibrary } from "./library";
 import type { LibraryFolder, LibraryScore } from "./library";
@@ -20,6 +21,7 @@ import {
   recordingDuration,
   recordingToMidi,
 } from "./performance";
+import { loadPreferences, savePreferences } from "./preferences";
 import {
   chordsInRange,
   filterNotesByHand,
@@ -66,6 +68,8 @@ const viewMode = required<HTMLSelectElement>("view-mode");
 const handSelect = required<HTMLSelectElement>("hand-selection");
 const leadTime = required<HTMLInputElement>("lead-time");
 const transposeInput = required<HTMLInputElement>("transpose");
+const metronomeEnabled = required<HTMLInputElement>("metronome-enabled");
+const countInEnabled = required<HTMLInputElement>("count-in-enabled");
 const loopEnabled = required<HTMLInputElement>("loop-enabled");
 const loopStart = required<HTMLInputElement>("loop-start");
 const loopEnd = required<HTMLInputElement>("loop-end");
@@ -108,6 +112,8 @@ const realtimeMatcher = new RealtimeMatcher(practiceScore);
 const recorder = new PerformanceRecorder();
 const library = new ScoreLibrary();
 const sessionStore = new PracticeSessionStore();
+const metronome = new MetronomePlayer();
+const initialPreferences = loadPreferences();
 
 let score: ParsedScore | undefined;
 let sourceScore: ParsedScore | undefined;
@@ -117,9 +123,9 @@ let currentTarget: TargetNote[] = [];
 let lastTargetSignature = "";
 let pressed = new Set<number>();
 let wrong = new Set<number>();
-let mode: PracticeMode = "wait";
-let hand: HandSelection = "both";
-let leadMs = 900;
+let mode: PracticeMode = initialPreferences.mode;
+let hand: HandSelection = initialPreferences.hand;
+let leadMs = initialPreferences.leadMs;
 let lastScoreSeconds = 0;
 let lastStatsSignature = "";
 let lastRecording = recorder.snapshot();
@@ -138,6 +144,34 @@ let followPlanner = new FollowAccompanimentPlanner([]);
 let analytics: PracticeAnalytics | undefined;
 let recentSessions: PracticeSession[] = [];
 let currentRecommendation: PracticeRecommendation | undefined;
+let countInGeneration = 0;
+let countInTimer: number | undefined;
+let needsCountIn = true;
+
+modeSelect.value = mode;
+handSelect.value = hand;
+tempoSelect.value = String(initialPreferences.tempo);
+leadTime.value = String(leadMs);
+metronomeEnabled.checked = initialPreferences.metronome;
+countInEnabled.checked = initialPreferences.countIn;
+clock.speed = initialPreferences.tempo;
+metronome.setEnabled(initialPreferences.metronome);
+required("lead-value").textContent = `${(leadMs / 1000).toFixed(1)} 秒`;
+required("metronome-status").textContent = initialPreferences.metronome
+  ? "已开启 · 按乐谱拍号与速度"
+  : "按乐谱拍号与速度";
+
+function persistPreferences(): void {
+  savePreferences({
+    version: 1,
+    mode,
+    hand,
+    tempo: Number(tempoSelect.value),
+    leadMs,
+    metronome: metronomeEnabled.checked,
+    countIn: countInEnabled.checked,
+  });
+}
 
 function canUseMidiOut(): boolean {
   return midiOutAvailable && !midiOutBlocked;
@@ -187,6 +221,44 @@ function cancelFollowPlayback(sendPanic = true): void {
   followAdvancePending = false;
   if (sendPanic) device.panicMidi();
   midiOutOwnedByThisPage = false;
+}
+
+function cancelCountIn(): void {
+  countInGeneration += 1;
+  window.clearTimeout(countInTimer);
+  countInTimer = undefined;
+  metronome.cancel();
+}
+
+async function startRealtimePlayback(): Promise<void> {
+  if (!score) return;
+  const now = performance.now();
+  const start = clock.time(now);
+  if (metronomeEnabled.checked && countInEnabled.checked && needsCountIn) {
+    const generation = ++countInGeneration;
+    try {
+      const plan = await metronome.scheduleCountIn(score.beatMap ?? [], start, clock.speed);
+      if (generation !== countInGeneration || mode !== "realtime") return;
+      playButton.textContent = `预备 ${plan.count} 拍`;
+      countInTimer = window.setTimeout(() => {
+        if (generation !== countInGeneration || mode !== "realtime") return;
+        countInTimer = undefined;
+        metronome.reset(start);
+        clock.play(performance.now());
+        playButton.textContent = "暂停";
+      }, plan.delayMs);
+      needsCountIn = false;
+      return;
+    } catch (error) {
+      required("metronome-status").textContent = error instanceof Error ? error.message : "音频不可用";
+      metronomeEnabled.checked = false;
+      metronome.setEnabled(false);
+    }
+  }
+  metronome.reset(start);
+  clock.play(now);
+  playButton.textContent = "暂停";
+  needsCountIn = false;
 }
 
 function sessionContext() {
@@ -340,6 +412,7 @@ function updateScoreLabel(): void {
 
 function resetPractice(resetStats = true): void {
   if (resetStats) void finishPracticeSession();
+  cancelCountIn();
   cancelFollowPlayback();
   const start = rangeStart();
   clock.reset(start);
@@ -348,6 +421,8 @@ function resetPractice(resetStats = true): void {
   wrong = new Set();
   lastTargetSignature = "";
   lastScoreSeconds = start;
+  needsCountIn = true;
+  metronome.reset(start);
   if (resetStats) practiceScore.reset();
   realtimeMatcher.setChords(chords);
   waitMatcher.setChord(currentWaitChord());
@@ -816,11 +891,20 @@ playButton.addEventListener("click", () => {
   }
   if (clock.isRunning()) {
     clock.pause(performance.now());
+    metronome.cancel();
     playButton.textContent = "继续";
   } else {
-    if (lastScoreSeconds >= rangeEnd()) clock.seek(rangeStart());
-    clock.play(performance.now());
-    playButton.textContent = "暂停";
+    if (countInTimer !== undefined) {
+      cancelCountIn();
+      playButton.textContent = "播放";
+      needsCountIn = true;
+      return;
+    }
+    if (lastScoreSeconds >= rangeEnd()) {
+      clock.seek(rangeStart());
+      needsCountIn = true;
+    }
+    void startRealtimePlayback();
   }
 });
 
@@ -834,11 +918,25 @@ modeSelect.addEventListener("change", () => {
   } else {
     resetPractice(true);
   }
+  persistPreferences();
 });
 tempoSelect.addEventListener("change", () => {
   clock.setSpeed(Number(tempoSelect.value), performance.now());
   if (mode === "follow") resetPractice(true);
+  persistPreferences();
 });
+metronomeEnabled.addEventListener("change", () => {
+  metronome.setEnabled(metronomeEnabled.checked);
+  required("metronome-status").textContent = metronomeEnabled.checked
+    ? "已开启 · 按乐谱拍号与速度"
+    : "按乐谱拍号与速度";
+  if (metronomeEnabled.checked) void metronome.unlock().catch((error: unknown) => {
+    required("metronome-status").textContent = error instanceof Error ? error.message : "音频不可用";
+  });
+  else cancelCountIn();
+  persistPreferences();
+});
+countInEnabled.addEventListener("change", persistPreferences);
 handSelect.addEventListener("change", () => {
   hand = handSelect.value as HandSelection;
   if (mode === "follow" && hand === "both") {
@@ -846,11 +944,13 @@ handSelect.addEventListener("change", () => {
     handSelect.value = hand;
   }
   rebuildPractice();
+  persistPreferences();
 });
 leadTime.addEventListener("input", () => {
   leadMs = Number(leadTime.value);
   required("lead-value").textContent = `${(leadMs / 1000).toFixed(1)} 秒`;
   lastTargetSignature = "";
+  persistPreferences();
 });
 transposeInput.addEventListener("input", () => {
   transposeSemitones = Number(transposeInput.value);
@@ -915,6 +1015,7 @@ coachApply.addEventListener("click", () => {
   }
   updateLoopLabels();
   rebuildPractice();
+  persistPreferences();
   coachApply.textContent = "已应用";
   window.setTimeout(() => { coachApply.textContent = "一键应用"; }, 1_200);
 });
@@ -1078,15 +1179,21 @@ function frame(now: number): void {
       scoreSeconds = loop.start + ((scoreSeconds - loop.start) % span);
       clock.seek(scoreSeconds, now);
       realtimeMatcher.restartPass();
+      metronome.reset(scoreSeconds);
       lastTargetSignature = "";
     } else if (scoreSeconds >= score.duration) {
       recordMissedNotes(realtimeMatcher.advance(score.duration + 0.251));
       clock.pause(now);
       scoreSeconds = score.duration;
       playButton.textContent = "重播";
+      metronome.cancel();
+      needsCountIn = true;
       void finishPracticeSession();
     }
-    if (mode === "realtime" && clock.isRunning()) recordMissedNotes(realtimeMatcher.advance(scoreSeconds));
+    if (mode === "realtime" && clock.isRunning()) {
+      recordMissedNotes(realtimeMatcher.advance(scoreSeconds));
+      metronome.schedule(score.beatMap ?? [], scoreSeconds, clock.speed);
+    }
     lastScoreSeconds = scoreSeconds;
     updateTarget(scoreSeconds);
     scoreTime.textContent = `${formatTime(scoreSeconds)} / ${formatTime(score.duration)}`;

@@ -54,6 +54,8 @@ describe("MusicXML parser", () => {
     expect(tiedC.start).toBe(0);
     expect(tiedC.end).toBeCloseTo(3);
     expect(score.measureStarts).toEqual([0, 2]);
+    expect(score.beatMap?.map((beat) => beat.time)).toEqual([0, 0.5, 1, 1.5, 2, 3]);
+    expect(score.beatMap?.filter((beat) => beat.accent).map((beat) => beat.time)).toEqual([0, 2]);
     expect(score.duration).toBeCloseTo(4);
   });
 

@@ -16,5 +16,7 @@ describe("MIDI import", () => {
     expect(score.name).toBe("Test Song");
     expect(score.notes.map((note) => note.note)).toEqual([64, 48]);
     expect(score.notes[1].hand).toBe("left");
+    expect(score.beatMap?.map((beat) => beat.time)).toEqual([0, 0.5, 1]);
+    expect(score.beatMap?.[0]).toMatchObject({ accent: true, beat: 0, measure: 0 });
   });
 });

@@ -1,4 +1,5 @@
 import { Midi } from "@tonejs/midi";
+import { beatMapFromTicks } from "./beatmap";
 import type { Hand, ParsedScore, ScoreNote } from "./types";
 
 const LEFT_HINTS = ["left", "lh", "bass", "左手"];
@@ -30,10 +31,22 @@ export function parseMidiFile(buffer: ArrayBuffer, fallbackName: string): Parsed
   notes.sort((a, b) => a.start - b.start || a.note - b.note);
   const duration = notes.reduce((max, note) => Math.max(max, note.end), midi.duration || 0);
   const embeddedName = midi.header.name?.trim();
+  const durationTicks = Math.max(0, Math.ceil(midi.header.secondsToTicks(duration)));
+  const beatMap = beatMapFromTicks(
+    midi.header.timeSignatures.map((event) => ({
+      ticks: event.ticks,
+      numerator: event.timeSignature[0] ?? 4,
+      denominator: event.timeSignature[1] ?? 4,
+    })),
+    midi.header.ppq,
+    durationTicks,
+    (ticks) => midi.header.ticksToSeconds(ticks),
+  );
   return {
     name: embeddedName || fallbackName.replace(/\.(mid|midi)$/i, ""),
     duration,
     notes,
     format: "midi",
+    beatMap,
   };
 }

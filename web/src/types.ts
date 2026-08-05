@@ -10,6 +10,13 @@ export interface ScoreNote {
   hand: Hand;
 }
 
+export interface BeatMarker {
+  time: number;
+  accent: boolean;
+  beat: number;
+  measure: number;
+}
+
 export interface ParsedScore {
   name: string;
   duration: number;
@@ -17,6 +24,7 @@ export interface ParsedScore {
   format?: "midi" | "musicxml";
   measureStarts?: number[];
   measureMap?: number[];
+  beatMap?: BeatMarker[];
 }
 
 export interface TargetNote {
