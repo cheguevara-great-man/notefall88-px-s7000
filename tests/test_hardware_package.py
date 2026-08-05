@@ -48,6 +48,7 @@ def test_wiring_svg_is_valid_and_names_every_harness_interface():
         "XT30 2P",
         "USB/OTG口",
         "USB-to-UART 口供电",
+        "H7 → OTG Y 线第3供电口",
         "双端注电",
     ):
         assert label in text

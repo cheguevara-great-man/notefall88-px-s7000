@@ -15,5 +15,7 @@ H4,XT30灯带端,灯带远端5V,+5V,红,20AWG,80,焊盘焊接加热缩,不连接
 H4,XT30灯带端,灯带远端GND,GND,黑,20AWG,80,焊盘焊接加热缩,与末端电容负极同点,极性正确
 H5,3A保险丝输出,ESP32的USB-to-UART口,USB VBUS,红,24AWG或更粗,250,Micro-USB公头仅VBUS和GND,不得连接D+ D- ID；刷机时整根拔下,空载4.75至5.25V
 H5,公共地母排,ESP32的USB-to-UART口,USB GND,黑,24AWG或更粗,250,Micro-USB公头仅VBUS和GND,不得连接D+ D- ID,外壳无裸铜且极性正确
+H7,3A保险丝输出,OTG Y线第3供电口,USB VBUS,红,24AWG或更粗,250,Micro-USB公头仅VBUS和GND,给钢琴USB设备侧提供VBUS；不能替代H5,空载4.75至5.25V
+H7,公共地母排,OTG Y线第3供电口,USB GND,黑,24AWG或更粗,250,Micro-USB公头仅VBUS和GND,与H5及ESP32共地,外壳无裸铜且极性正确
 H6,3A保险丝输出,74AHCT125 VCC,+5V,红,24AWG或更粗,120,模块端子或焊接加热缩,靠近模块加0.1uF去耦,上电4.75至5.25V
 H6,公共地母排,ESP32与74AHCT125 GND,GND,黑,24AWG或更粗,120,星形公共地,不得串经灯带焊盘,端到端电阻小于0.10欧
