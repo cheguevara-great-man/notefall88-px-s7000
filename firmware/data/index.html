@@ -7,8 +7,8 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-BjRkrj0j.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-1E7x9-u4.css">
+    <script type="module" crossorigin src="./assets/index-BQQHIZG9.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Bp_eYNwz.css">
   </head>
   <body>
     <main class="app-shell">
@@ -231,6 +231,24 @@
           <input id="wifi-password" type="password" placeholder="Wi-Fi 密码" autocomplete="new-password" />
           <button id="wifi-save" type="submit">保存并重启</button>
         </form>
+        <hr />
+        <h3>设备维护</h3>
+        <p>更新只允许从设备自己的 <code>NoteFall-88</code> 热点发起，并再次校验热点密码。更新时钢琴伴奏会急停、灯光会熄灭；看到“设备确认成功”前不要断电。</p>
+        <form id="ap-password-form" class="maintenance-grid">
+          <input id="ap-current-password" type="password" placeholder="当前热点密码" autocomplete="current-password" />
+          <input id="ap-new-password" type="password" placeholder="新热点密码（8–63 字符）" autocomplete="new-password" minlength="8" maxlength="63" />
+          <button type="submit">修改热点密码</button>
+        </form>
+        <form id="update-form" class="maintenance-grid">
+          <select id="update-target">
+            <option value="firmware">固件 firmware.bin</option>
+            <option value="filesystem">网页 littlefs.bin</option>
+          </select>
+          <input id="update-file" type="file" accept=".bin,application/octet-stream" />
+          <button id="update-submit" type="submit" class="primary">验证并更新</button>
+        </form>
+        <progress id="update-progress" max="1" value="0" hidden></progress>
+        <div id="update-status" class="library-summary">正在读取更新分区…</div>
         <hr />
         <h3>设备诊断</h3>
         <dl class="diagnostic-grid">

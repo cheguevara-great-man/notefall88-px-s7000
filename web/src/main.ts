@@ -50,6 +50,13 @@ import type {
 import { WaterfallRenderer } from "./waterfall";
 import { SheetRenderer } from "./sheet";
 import { transposeLabel, transposeScore } from "./transpose";
+import {
+  changeAccessPointPassword,
+  fetchUpdateInfo,
+  uploadUpdate,
+  validateUpdateFile,
+} from "./update";
+import type { UpdateInfo, UpdateTarget } from "./update";
 
 function required<T extends HTMLElement = HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -89,6 +96,8 @@ const sessionHistory = required("session-history");
 const historySummary = required("history-summary");
 const coachApply = required<HTMLButtonElement>("coach-apply");
 const settingsPanel = required("settings-panel");
+const updateStatus = required("update-status");
+const updateProgress = required<HTMLProgressElement>("update-progress");
 const libraryPanel = required("library-panel");
 const libraryList = required("library-list");
 const librarySummary = required("library-summary");
@@ -147,6 +156,7 @@ let currentRecommendation: PracticeRecommendation | undefined;
 let countInGeneration = 0;
 let countInTimer: number | undefined;
 let needsCountIn = true;
+let updateInfo: UpdateInfo | undefined;
 
 modeSelect.value = mode;
 handSelect.value = hand;
@@ -376,6 +386,16 @@ function renderCoach(): void {
 async function refreshPracticeHistory(): Promise<void> {
   recentSessions = await sessionStore.list(50);
   renderPracticeHistory();
+}
+
+async function refreshUpdateInfo(): Promise<void> {
+  try {
+    updateInfo = await fetchUpdateInfo();
+    updateStatus.textContent = `固件 ${updateInfo.firmware} · 运行槽 ${updateInfo.running} · 固件上限 ${(updateInfo.firmwareMax / 1024 / 1024).toFixed(2)} MiB · 网页上限 ${(updateInfo.filesystemMax / 1024 / 1024).toFixed(2)} MiB`;
+  } catch (error) {
+    updateInfo = undefined;
+    updateStatus.textContent = error instanceof Error ? error.message : "无法读取更新分区";
+  }
 }
 
 function renderStats(): void {
@@ -1023,6 +1043,7 @@ required("settings-button").addEventListener("click", () => {
   practicePanel.hidden = true;
   libraryPanel.hidden = true;
   settingsPanel.hidden = false;
+  void refreshUpdateInfo();
 });
 required("settings-close").addEventListener("click", () => { settingsPanel.hidden = true; });
 required("library-button").addEventListener("click", () => {
@@ -1082,6 +1103,54 @@ required<HTMLFormElement>("wifi-form").addEventListener("submit", (event) => {
   const ssid = required<HTMLInputElement>("wifi-ssid").value.trim();
   const password = required<HTMLInputElement>("wifi-password").value;
   if (ssid) device.saveWifi(ssid, password);
+});
+
+required<HTMLFormElement>("ap-password-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const current = required<HTMLInputElement>("ap-current-password");
+  const next = required<HTMLInputElement>("ap-new-password");
+  try {
+    if (!current.value) throw new Error("请输入当前热点密码");
+    await changeAccessPointPassword(current.value, next.value);
+    updateStatus.textContent = "热点密码已保存，设备正在重启；请用新密码重新连接 NoteFall-88。";
+    current.value = "";
+    next.value = "";
+  } catch (error) {
+    updateStatus.textContent = error instanceof Error ? error.message : "无法修改热点密码";
+    current.value = "";
+  }
+});
+
+required<HTMLFormElement>("update-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const fileInput = required<HTMLInputElement>("update-file");
+  const target = required<HTMLSelectElement>("update-target").value as UpdateTarget;
+  const password = required<HTMLInputElement>("ap-current-password");
+  const submit = required<HTMLButtonElement>("update-submit");
+  const file = fileInput.files?.[0];
+  try {
+    if (!file) throw new Error("请选择 .bin 更新镜像");
+    if (!password.value) throw new Error("请在上方输入当前热点密码");
+    const validation = validateUpdateFile(file, target, updateInfo);
+    if (validation) throw new Error(validation);
+    const label = target === "firmware" ? "固件" : "网页文件系统";
+    if (!window.confirm(`确认更新${label}？上传期间不要断电；设备确认后会自动重启。`)) return;
+    submit.disabled = true;
+    updateProgress.hidden = false;
+    updateProgress.value = 0;
+    updateStatus.textContent = `正在上传${label}…`;
+    const result = await uploadUpdate(file, target, password.value, (proportion) => {
+      updateProgress.value = proportion;
+      updateStatus.textContent = `正在上传${label}… ${Math.round(proportion * 100)}%`;
+    });
+    updateStatus.textContent = `设备确认成功：写入 ${Math.ceil(result.written / 1024)} KiB，正在重启。`;
+    fileInput.value = "";
+  } catch (error) {
+    updateStatus.textContent = error instanceof Error ? error.message : "更新失败";
+  } finally {
+    password.value = "";
+    submit.disabled = false;
+  }
 });
 
 device.onConnection((connected) => {

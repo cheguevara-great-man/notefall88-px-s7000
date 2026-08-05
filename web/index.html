@@ -230,6 +230,24 @@
           <button id="wifi-save" type="submit">保存并重启</button>
         </form>
         <hr />
+        <h3>设备维护</h3>
+        <p>更新只允许从设备自己的 <code>NoteFall-88</code> 热点发起，并再次校验热点密码。更新时钢琴伴奏会急停、灯光会熄灭；看到“设备确认成功”前不要断电。</p>
+        <form id="ap-password-form" class="maintenance-grid">
+          <input id="ap-current-password" type="password" placeholder="当前热点密码" autocomplete="current-password" />
+          <input id="ap-new-password" type="password" placeholder="新热点密码（8–63 字符）" autocomplete="new-password" minlength="8" maxlength="63" />
+          <button type="submit">修改热点密码</button>
+        </form>
+        <form id="update-form" class="maintenance-grid">
+          <select id="update-target">
+            <option value="firmware">固件 firmware.bin</option>
+            <option value="filesystem">网页 littlefs.bin</option>
+          </select>
+          <input id="update-file" type="file" accept=".bin,application/octet-stream" />
+          <button id="update-submit" type="submit" class="primary">验证并更新</button>
+        </form>
+        <progress id="update-progress" max="1" value="0" hidden></progress>
+        <div id="update-status" class="library-summary">正在读取更新分区…</div>
+        <hr />
         <h3>设备诊断</h3>
         <dl class="diagnostic-grid">
           <div><dt>固件 / 协议</dt><dd id="diag-version">--</dd></div>

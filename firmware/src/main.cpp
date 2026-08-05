@@ -3,11 +3,14 @@
 #include <ESPmDNS.h>
 #include <LittleFS.h>
 #include <Preferences.h>
+#include <Update.h>
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 #include <WiFi.h>
 
 #include <algorithm>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 
 #include "Apa102Strip.h"
 #include "UsbMidiHost.h"
@@ -42,6 +45,15 @@ struct EchoGuard {
   uint8_t data2 = 0;
 };
 
+struct WebUpdateState {
+  bool authorized = false;
+  bool started = false;
+  bool success = false;
+  bool filesystemUnmounted = false;
+  size_t written = 0;
+  String error;
+};
+
 Apa102Strip strip(kPixelCount, kDataPin, kClockPin, kSpiHz);
 notefall::UsbMidiHost usbMidi;
 WebServer http(kHttpPort);
@@ -71,6 +83,8 @@ size_t nextEchoGuard = 0;
 uint32_t midiScheduleDropped = 0;
 uint32_t midiEchoSuppressed = 0;
 int16_t midiOutOwner = -1;
+String activeApPassword;
+WebUpdateState webUpdate;
 
 constexpr Rgb kLeftTarget{28, 178, 255};
 constexpr Rgb kRightTarget{255, 42, 175};
@@ -80,6 +94,7 @@ constexpr Rgb kTest{255, 210, 32};
 constexpr int8_t kMaxKeyPixelOffset = 4;
 constexpr uint32_t kMaxMidiScheduleDelayMs = 60000;
 constexpr uint32_t kEchoGuardMs = 80;
+constexpr char kUpdateAuthHeader[] = "X-NoteFall-Admin";
 
 template <typename T>
 T clampValue(T value, T low, T high) {
@@ -87,6 +102,17 @@ T clampValue(T value, T low, T high) {
 }
 
 bool validNote(int note) { return note >= kFirstMidiNote && note <= kLastMidiNote; }
+
+bool constantTimeEquals(const String& first, const String& second) {
+  const size_t maximum = std::max(first.length(), second.length());
+  uint8_t difference = static_cast<uint8_t>(first.length() ^ second.length());
+  for (size_t index = 0; index < maximum; ++index) {
+    const char a = index < first.length() ? first[index] : 0;
+    const char b = index < second.length() ? second[index] : 0;
+    difference |= static_cast<uint8_t>(a ^ b);
+  }
+  return difference == 0;
+}
 
 size_t noteIndex(uint8_t note) { return static_cast<size_t>(note - kFirstMidiNote); }
 
@@ -462,10 +488,133 @@ void webSocketEvent(uint8_t client, WStype_t type, uint8_t* payload, size_t leng
   }
 }
 
+bool requestUsesAccessPoint() {
+  return http.client().localIP() == WiFi.softAPIP();
+}
+
+bool updateRequestAuthorized() {
+  return requestUsesAccessPoint() && http.hasHeader(kUpdateAuthHeader) &&
+      constantTimeEquals(http.header(kUpdateAuthHeader), activeApPassword);
+}
+
+void sendUpdateInfo() {
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+  const esp_partition_t* filesystem = esp_partition_find_first(
+      ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr);
+  JsonDocument doc;
+  doc["firmware"] = kFirmwareVersion;
+  doc["protocol"] = kProtocolVersion;
+  doc["running"] = running ? running->label : "unknown";
+  doc["firmwareMax"] = next ? next->size : 0;
+  doc["filesystemMax"] = filesystem ? filesystem->size : 0;
+  doc["apOnly"] = true;
+  String body;
+  serializeJson(doc, body);
+  http.send(200, "application/json", body);
+}
+
+void restoreFilesystemAfterFailure() {
+  if (!webUpdate.filesystemUnmounted) return;
+  if (!LittleFS.begin(false)) Serial.println("WARN: LittleFS could not remount after failed update");
+  webUpdate.filesystemUnmounted = false;
+}
+
+void handleUpdateUpload() {
+  HTTPUpload& upload = http.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    webUpdate = WebUpdateState{};
+    webUpdate.authorized = updateRequestAuthorized();
+    if (!webUpdate.authorized) {
+      webUpdate.error = requestUsesAccessPoint() ? "wrong hotspot password" : "connect to NoteFall-88 hotspot";
+      return;
+    }
+    const String target = http.arg("target");
+    int command = U_FLASH;
+    if (target == "filesystem") {
+      command = U_SPIFFS;
+      LittleFS.end();
+      webUpdate.filesystemUnmounted = true;
+    } else if (target != "firmware") {
+      webUpdate.error = "unknown update target";
+      return;
+    }
+    clearTargets();
+    testNote = -1;
+    panicMidiOutput();
+    midiOutOwner = -1;
+    renderStrip();
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, command)) {
+      webUpdate.error = Update.errorString();
+      restoreFilesystemAfterFailure();
+      return;
+    }
+    webUpdate.started = true;
+    Serial.printf("OTA start: %s (%s)\n", target.c_str(), upload.filename.c_str());
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (!webUpdate.started || !webUpdate.error.isEmpty()) return;
+    const size_t written = Update.write(upload.buf, upload.currentSize);
+    webUpdate.written += written;
+    if (written != upload.currentSize) webUpdate.error = Update.errorString();
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (!webUpdate.started || !webUpdate.error.isEmpty()) {
+      if (webUpdate.started) Update.abort();
+      restoreFilesystemAfterFailure();
+      return;
+    }
+    webUpdate.success = Update.end(true);
+    if (!webUpdate.success) {
+      webUpdate.error = Update.errorString();
+      restoreFilesystemAfterFailure();
+    }
+    Serial.printf("OTA end: %u bytes, success=%d\n",
+                  static_cast<unsigned>(webUpdate.written), webUpdate.success);
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    if (webUpdate.started) Update.abort();
+    webUpdate.error = "upload aborted";
+    restoreFilesystemAfterFailure();
+  }
+}
+
+void finishUpdateRequest() {
+  JsonDocument doc;
+  doc["ok"] = webUpdate.success;
+  doc["written"] = webUpdate.written;
+  if (!webUpdate.success) doc["error"] = webUpdate.error.isEmpty() ? "update failed" : webUpdate.error;
+  String body;
+  serializeJson(doc, body);
+  const int status = webUpdate.success ? 200 : (webUpdate.authorized ? 400 : 403);
+  http.send(status, "application/json", body);
+  if (webUpdate.success) restartRequested = true;
+}
+
+void changeAccessPointPassword() {
+  JsonDocument doc;
+  if (!updateRequestAuthorized()) {
+    doc["ok"] = false;
+    doc["error"] = requestUsesAccessPoint() ? "current password is wrong" : "connect to NoteFall-88 hotspot";
+    String body;
+    serializeJson(doc, body);
+    http.send(403, "application/json", body);
+    return;
+  }
+  const String next = http.arg("next");
+  if (next.length() < 8 || next.length() > 63) {
+    http.send(400, "application/json", "{\"ok\":false,\"error\":\"password must be 8-63 characters\"}");
+    return;
+  }
+  preferences.putString("apPass", next);
+  activeApPassword = next;
+  http.send(200, "application/json", "{\"ok\":true,\"restart\":true}");
+  restartRequested = true;
+}
+
 void startNetwork() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.setHostname(kHostname);
-  WiFi.softAP(kApSsid, kApPassword);
+  activeApPassword = preferences.getString("apPass", kApPassword);
+  if (activeApPassword.length() < 8 || activeApPassword.length() > 63) activeApPassword = kApPassword;
+  WiFi.softAP(kApSsid, activeApPassword.c_str());
   const String ssid = preferences.getString("wifiSsid", "");
   const String password = preferences.getString("wifiPass", "");
   if (!ssid.isEmpty()) WiFi.begin(ssid.c_str(), password.c_str());
@@ -480,6 +629,11 @@ void startNetwork() {
     serializeJson(doc, body);
     http.send(200, "application/json", body);
   });
+  const char* collectedHeaders[] = {kUpdateAuthHeader};
+  http.collectHeaders(collectedHeaders, 1);
+  http.on("/api/update-info", HTTP_GET, sendUpdateInfo);
+  http.on("/api/update", HTTP_POST, finishUpdateRequest, handleUpdateUpload);
+  http.on("/api/ap-password", HTTP_POST, changeAccessPointPassword);
   // Arduino-ESP32 2.x defaults directory roots to /index.htm (without the
   // final "l"), so register our Vite entry file explicitly and serve hashed
   // assets from their own prefix.

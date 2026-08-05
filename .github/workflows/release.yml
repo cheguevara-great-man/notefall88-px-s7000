@@ -1,0 +1,52 @@
+name: release-bundle
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build embedded web app
+        working-directory: web
+        run: |
+          npm ci
+          npm test -- --run
+          npm run build
+      - name: Build firmware and LittleFS
+        run: |
+          pip install platformio==6.1.18
+          platformio run -d firmware
+          platformio run -d firmware -t buildfs
+      - name: Package checksummed update bundle
+        run: |
+          mkdir -p dist
+          cp ~/.platformio/build/notefall88/esp32-s3-devkitc-1-n8r8/firmware.bin dist/firmware.bin
+          cp ~/.platformio/build/notefall88/esp32-s3-devkitc-1-n8r8/littlefs.bin dist/littlefs.bin
+          python scripts/package_update.py \
+            --firmware dist/firmware.bin \
+            --filesystem dist/littlefs.bin \
+            --output dist/notefall88-update-${GITHUB_REF_NAME}.zip \
+            > dist/manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notefall88-${{ github.ref_name }}
+          path: dist/*
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag

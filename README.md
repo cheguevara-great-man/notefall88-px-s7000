@@ -24,6 +24,8 @@ PX-S7000 USB TO HOST <──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
 
 MusicXML 目标时间线会按常见反复、多结尾和标准 D.C./D.S./Fine/Coda 导航属性展开；五线谱光标通过播放小节到书写小节的映射正确回跳，而不是只按页面顺序判分。
 
+首次仍通过 UART 线刷；此后可在设备热点内用热点密码更新双槽固件或 LittleFS 网页。更新包由标签构建自动生成，包含两个镜像、版本/协议和 SHA-256 清单；维护入口不会从家庭 Wi-Fi 接口接受写入。详见 [安全更新说明](docs/update.md)。
+
 ## 硬件基线
 
 - 乐鑫 ESP32-S3-DevKitC-1-N8R8
@@ -51,7 +53,7 @@ MusicXML 的当前支持范围、目标时间线与 OSMD 谱面之间的边界�
 
 1. 下单前按 [一次性现场复核](docs/measurements.md) 确认琴键后方固定立面可放下 12 mm 宽灯带，不需要打印试件或购买额外灯带。
 2. 按 [BOM](docs/bom.csv) 买最终件，再按 [装配说明](docs/assembly.md) 让卖家代焊线束并组装。
-3. 按 [刷机说明](docs/flashing.md) 写入固件和网页。
+3. 按 [刷机说明](docs/flashing.md) 首次写入固件和网页，并立即修改默认热点密码。
 4. 严格依次执行 [断电检查、校准和验收](docs/testing.md)。
 
 ## 本地验证

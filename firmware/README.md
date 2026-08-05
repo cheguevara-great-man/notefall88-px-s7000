@@ -24,6 +24,7 @@ cd ..
 - 网页：`http://192.168.4.1`
 - 家庭 Wi-Fi 下：`http://notefall.local`（取决于路由器/客户端 mDNS）
 - WebSocket：端口 `81`
+- 固件：0.6.0
 - 协议：v5
 
 亮度上限 `4/31` 写在生成头文件中。修改网页滑块不能越过该值。
@@ -35,3 +36,7 @@ cd ..
 USB Host 传输回调运行在专用 FreeRTOS 任务：IN 回调只写入固定长度环形队列和原子诊断计数，OUT 由另一固定队列批量提交且同一端点最多一个在途传输。`poll()` 在 Arduino 主任务中分发 MIDI 与连接状态，网络库不会从 USB 任务中被调用。网页只传相对时间事件，固件以 `millis()` 排程；网页失联会执行 16 通道 Sustain Off 与 All Notes Off。
 
 生产网页的 JS/CSS 只保存 `.gz` 文件。Arduino-ESP32 `WebServer` 在请求原始 `.js`/`.css` URL 时自动选择同名 `.gz` 并发送正确的 `Content-Encoding: gzip`；`index.html` 保持未压缩，确保根路由和救援提示始终可读。
+
+## 无线维护
+
+双 OTA 固件槽和独立 LittleFS 分区由 `partitions.csv` 固定。`/api/update` 只接受 SoftAP 接口并再次校验热点密码；上传开始会熄灯并清空 MIDI OUT。`/api/update-info` 只读返回版本、运行槽和动态分区上限。详细操作与恢复见 `docs/update.md`。
