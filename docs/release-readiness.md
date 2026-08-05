@@ -10,7 +10,7 @@ NoteFall 88 只有在数字门禁全部自动通过后才能生成候选包；�
 | CAD 有效、尺寸与哈希一致 | Python 测试 + STL/STEP manifest | 通过 |
 | 供电/保险/压降预算 | `generated/power_budget.json` + Python 测试 | 通过 |
 | 线束防呆与 SVG 可解析 | `tests/test_hardware_package.py` | 通过 |
-| Web 练习/和弦持键与事务记分语义、25%–200% 速度规范化、手机后台暂停、节拍器音频生命周期、UTF-8 Wi-Fi 凭据边界、自建 + W3C 固定 MusicXML 语料、数据/长录制资源边界与入站协议边界 | Vitest + V8 coverage | 116 项通过；Statements 90.94%、Branches 79.98%、Functions 90.77%、Lines 94.87%，CI 最低门限 85/75/85/90% |
+| Web 练习/和弦持键与事务记分语义、25%–200% 速度规范化、手机后台暂停、设备 WebSocket 握手/重连/分批、节拍器音频生命周期、UTF-8 Wi-Fi 凭据边界、自建 + W3C 固定 MusicXML 语料、数据/长录制资源边界与入站协议边界 | Vitest + V8 coverage | 119 项通过；显式纳入除 DOM 主入口和两个浏览器渲染适配器外的全部产品模块，Statements 91.08%、Branches 79.96%、Functions 90.57%、Lines 95.08%，CI 最低门限 85/75/85/90%；排除项由 Playwright 回归 |
 | W3C MusicXML 官方完整语料 | 固定提交 `b2e6a162` + `npm run audit:musicxml` | 150/150 分类完成：149 解析，1 个非法反复文件按预期安全拒绝，0 意外异常 |
 | 厂商 MusicXML 功能语料 | MuseScore 官方提交 `d6f84b78` + eNote CC-BY-4.0 提交 `03896bf8` | 447/447 MuseScore 仓库文件无异常；100/100 跨厂商文件分类完成（97 解析、3 预期拒绝），0 意外异常 |
 | 谱面引擎互操作语料与示例总谱 | OSMD BSD-3-Clause 提交 `c663e0d3` | 317/317 测试文件 + 2/2 Finale 示例总谱解析，0 意外异常；示例音符数/小节数/时长固定断言 |

@@ -49,6 +49,16 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],
+      include: ["src/**/*.ts"],
+      exclude: [
+        "src/**/*.test.ts",
+        // These browser adapters are exercised by the Playwright desktop/mobile
+        // smoke flow. The remaining product modules, including DeviceLink, must
+        // appear in the unit-coverage denominator even before a test imports them.
+        "src/main.ts",
+        "src/sheet.ts",
+        "src/waterfall.ts",
+      ],
       thresholds: {
         statements: 85,
         branches: 75,
