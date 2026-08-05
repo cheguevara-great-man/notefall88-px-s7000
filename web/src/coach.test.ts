@@ -8,6 +8,7 @@ function session(
   endedAt: number,
   events: PracticeSession["events"],
   tempo = 1,
+  scoreFingerprint?: string,
 ): PracticeSession {
   const hits = events.filter((event) => event.kind === "hit").length;
   const wrong = events.filter((event) => event.kind === "wrong").length;
@@ -17,7 +18,7 @@ function session(
     startedAt: endedAt - 1_000,
     endedAt,
     elapsedMs: 1_000,
-    context: { scoreName: name, mode: "realtime", hand: "both", tempo, transpose: 0 },
+    context: { scoreName: name, scoreFingerprint, mode: "realtime", hand: "both", tempo, transpose: 0 },
     summary: {
       hits,
       wrong,
@@ -77,5 +78,22 @@ describe("practice coach", () => {
   it("does not infer a recommendation from another score", () => {
     expect(recommendPractice([session("Other", 1, [{ kind: "wrong", note: 60, velocity: 90, scoreTime: 0 }])], "Current", 10))
       .toBeUndefined();
+  });
+
+  it("does not mix different score contents that happen to share a title", () => {
+    const firstFingerprint = "a".repeat(64);
+    const secondFingerprint = "b".repeat(64);
+    const history = [
+      session("Sonata", 2, [{ kind: "wrong", note: 60, velocity: 90, scoreTime: 1 }], 1, firstFingerprint),
+      session("Sonata", 1, [{ kind: "hit", note: 72, hand: "right", velocity: 90, scoreTime: 1, timingMs: 10 }], 1, secondFingerprint),
+      // Legacy same-name data is deliberately excluded once an exact content identity exists.
+      session("Sonata", 0, [{ kind: "wrong", note: 61, velocity: 90, scoreTime: 1 }]),
+    ];
+    expect(recommendPractice(history, "Sonata", 10, firstFingerprint)).toMatchObject({
+      evidence: { sessions: 1, events: 1, accuracy: 0 },
+    });
+    expect(recommendPractice(history, "Sonata", 10, secondFingerprint)).toMatchObject({
+      evidence: { sessions: 1, events: 1, accuracy: 100 },
+    });
   });
 });

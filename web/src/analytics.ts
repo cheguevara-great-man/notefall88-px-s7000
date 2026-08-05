@@ -12,6 +12,8 @@ export type PracticeEvent =
 
 export interface PracticeSessionContext {
   scoreName: string;
+  /** SHA-256 of the original score bytes. Absent only on legacy records. */
+  scoreFingerprint?: string;
   mode: PracticeMode;
   hand: HandSelection;
   tempo: number;
@@ -53,7 +55,7 @@ export interface PracticeSession {
 
 export interface PracticeHistoryExport {
   product: "NoteFall 88";
-  version: 1;
+  version: 2;
   exportedAt: string;
   sessions: PracticeSession[];
 }
@@ -198,6 +200,9 @@ function validSession(value: unknown): value is PracticeSession {
     && Number.isFinite(session.endedAt)
     && !!session.context
     && typeof session.context.scoreName === "string"
+    && (session.context.scoreFingerprint === undefined
+      || (typeof session.context.scoreFingerprint === "string"
+        && /^[0-9a-f]{64}$/.test(session.context.scoreFingerprint)))
     && Array.isArray(session.events)
     && !!session.summary;
 }
@@ -267,7 +272,7 @@ export class PracticeSessionStore {
   async exportHistory(): Promise<PracticeHistoryExport> {
     return {
       product: "NoteFall 88",
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       sessions: await this.list(MAX_STORED_SESSIONS),
     };

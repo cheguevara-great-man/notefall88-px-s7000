@@ -112,9 +112,12 @@ export function recommendPractice(
   history: PracticeSession[],
   scoreName: string,
   scoreDuration: number,
+  scoreFingerprint?: string,
 ): PracticeRecommendation | undefined {
   const sessions = history
-    .filter((session) => session.context.scoreName === scoreName)
+    .filter((session) => scoreFingerprint
+      ? session.context.scoreFingerprint === scoreFingerprint
+      : session.context.scoreFingerprint === undefined && session.context.scoreName === scoreName)
     .slice(0, MAX_SOURCE_SESSIONS);
   if (sessions.length === 0) return undefined;
   const events = sessions.flatMap((session) => session.events);

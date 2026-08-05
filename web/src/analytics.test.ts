@@ -55,13 +55,24 @@ describe("practice analytics", () => {
   });
 
   it("finishes only non-empty sessions with immutable context", () => {
-    const context = { scoreName: "Etude", mode: "realtime" as const, hand: "right" as const, tempo: 0.75, transpose: 2 };
+    const context = {
+      scoreName: "Etude",
+      scoreFingerprint: "a".repeat(64),
+      mode: "realtime" as const,
+      hand: "right" as const,
+      tempo: 0.75,
+      transpose: 2,
+    };
     const analytics = new PracticeAnalytics(context, 1_000);
     expect(analytics.finish()).toBeUndefined();
     events.forEach((event) => analytics.record(event));
     context.scoreName = "mutated";
     const session = analytics.finish(4_000);
-    expect(session).toMatchObject({ elapsedMs: 3_000, context: { scoreName: "Etude" }, summary: { accuracy: 60 } });
+    expect(session).toMatchObject({
+      elapsedMs: 3_000,
+      context: { scoreName: "Etude", scoreFingerprint: "a".repeat(64) },
+      summary: { accuracy: 60 },
+    });
     expect(session?.events).not.toBe(events);
   });
 
@@ -75,8 +86,22 @@ describe("practice analytics", () => {
     expect((await history.list()).map((session) => session.context.scoreName)).toEqual(["Second", "First"]);
     await expect(history.exportHistory()).resolves.toMatchObject({
       product: "NoteFall 88",
-      version: 1,
+      version: 2,
       sessions: [{ context: { scoreName: "Second" } }, { context: { scoreName: "First" } }],
     });
+  });
+
+  it("rejects malformed score identities before persisting history", async () => {
+    const history = store();
+    const analytics = new PracticeAnalytics({
+      scoreName: "Etude",
+      scoreFingerprint: "not-a-sha256",
+      mode: "wait",
+      hand: "both",
+      tempo: 1,
+      transpose: 0,
+    }, 1_000);
+    analytics.record({ kind: "hit", note: 60, velocity: 96, scoreTime: 0 });
+    await expect(history.save(analytics.finish(2_000)!)).rejects.toThrow(/练习记录无效/);
   });
 });

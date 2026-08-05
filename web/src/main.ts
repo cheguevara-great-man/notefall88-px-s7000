@@ -24,7 +24,7 @@ import { DeviceLink } from "./device";
 import { parseMidiFile } from "./midi";
 import { MetronomePlayer } from "./metronome";
 import { parseMusicXmlFile } from "./musicxml";
-import { ScoreLibrary } from "./library";
+import { ScoreLibrary, sha256Hex } from "./library";
 import type { LibraryFolder, LibraryScore } from "./library";
 import {
   PerformanceRecorder,
@@ -153,6 +153,7 @@ let lastStatsSignature = "";
 let lastRecording = recorder.snapshot();
 let pianoWasConnected = false;
 let scoreXml: string | undefined;
+let scoreFingerprint: string | undefined;
 let transposeSemitones = 0;
 let libraryFolders: LibraryFolder[] = [];
 let libraryScores: LibraryScore[] = [];
@@ -341,6 +342,7 @@ function sessionContext() {
   const loop = selectedLoop();
   return {
     scoreName: score?.name ?? "未命名乐谱",
+    scoreFingerprint,
     mode,
     hand,
     tempo: Number(tempoSelect.value),
@@ -429,7 +431,9 @@ function renderPracticeHistory(): void {
 }
 
 function renderCoach(): void {
-  currentRecommendation = score ? recommendPractice(recentSessions, score.name, score.duration) : undefined;
+  currentRecommendation = score
+    ? recommendPractice(recentSessions, score.name, score.duration, scoreFingerprint)
+    : undefined;
   const recommendation = currentRecommendation;
   coachApply.disabled = !recommendation;
   if (!recommendation) {
@@ -728,8 +732,9 @@ function parseScoreSource(buffer: ArrayBuffer, fileName: string): { parsed: Pars
   throw new Error("支持 MIDI、MusicXML、XML 和 MXL 文件");
 }
 
-async function activateScore(parsed: ParsedScore, xml?: string): Promise<void> {
+async function activateScore(parsed: ParsedScore, xml: string | undefined, fingerprint: string): Promise<void> {
   sourceScore = parsed;
+  scoreFingerprint = fingerprint;
   score = transposeScore(parsed, transposeSemitones);
   followPlanner = new FollowAccompanimentPlanner(score.notes);
   scoreXml = xml;
@@ -754,10 +759,12 @@ async function loadScoreBuffer(
   buffer: ArrayBuffer,
   fileName: string,
   saveToLibrary: boolean,
+  knownFingerprint?: string,
 ): Promise<void> {
   const { parsed, xml } = parseScoreSource(buffer, fileName);
-  if (saveToLibrary) await library.saveScore(buffer, parsed, fileName);
-  await activateScore(parsed, xml);
+  const saved = saveToLibrary ? await library.saveScore(buffer, parsed, fileName) : undefined;
+  const fingerprint = saved?.score.sha256 ?? knownFingerprint ?? sha256Hex(buffer);
+  await activateScore(parsed, xml, fingerprint);
 }
 
 fileInput.addEventListener("change", async () => {
@@ -765,18 +772,18 @@ fileInput.addEventListener("change", async () => {
   if (files.length === 0) return;
   try {
     scoreName.textContent = "正在解析乐谱…";
-    let first: { parsed: ParsedScore; xml?: string } | undefined;
+    let first: { parsed: ParsedScore; xml?: string; fingerprint: string } | undefined;
     let added = 0;
     let duplicates = 0;
     for (const file of files) {
       const buffer = await file.arrayBuffer();
       const parsed = parseScoreSource(buffer, file.name);
-      if (!first) first = parsed;
       const saved = await library.saveScore(buffer, parsed.parsed, file.name);
+      if (!first) first = { ...parsed, fingerprint: saved.score.sha256 };
       if (saved.duplicate) duplicates += 1;
       else added += 1;
     }
-    if (first) await activateScore(first.parsed, first.xml);
+    if (first) await activateScore(first.parsed, first.xml, first.fingerprint);
     await refreshLibrary();
     if (files.length > 1) librarySummary.textContent = `批量导入完成：新增 ${added}，重复 ${duplicates}`;
   } catch (error) {
@@ -896,7 +903,7 @@ libraryList.addEventListener("click", async (event) => {
     if (button.dataset.action === "open") {
       const stored = await library.getScore(id);
       if (!stored) throw new Error("乐谱不存在");
-      await loadScoreBuffer(stored.source, stored.fileName, false);
+      await loadScoreBuffer(stored.source, stored.fileName, false, stored.sha256);
       libraryPanel.hidden = true;
     } else if (button.dataset.action === "rename") {
       const stored = libraryScores.find((item) => item.id === id);
