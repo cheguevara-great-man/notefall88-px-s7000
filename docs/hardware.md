@@ -11,7 +11,7 @@
 | DC5.5×2.1 一进三出配电线 | 1 | 按 `docs/harness.csv` 定制，20 AWG | 15–35 |
 | 3 A 带座保险丝 + 2 只备件 | 1 套 | `3A 低压 保险丝座 线束` | 7–20 |
 | 1000 µF / 10 V 低 ESR 电容 | 2 | `1000UF 10V 低ESR 电解电容 引线` | 4–12 |
-| Micro-USB 供电 OTG Y 线 | 1 | `Micro USB OTG 一分二 USB母 独立供电` | 5–20 |
+| Micro-USB OTG 转接线 | 1 | `Micro USB OTG 公转 USB母` | 5–15 |
 | USB-A 公转 USB-B 公数据线 | 1 | `打印机数据线 USB A公 B公` | 10–25 |
 | Micro-Fit 3.0 兼容 4P 锁扣线 | 1 对 | `Micro-Fit 3.0 4P 公母 预压线` | 15–35 |
 | XT30 预焊 20 AWG 线 | 1 对 | `XT30 公母 带线 20AWG` | 8–15 |
@@ -26,13 +26,15 @@
 
 ```text
 普通打印机线 USB-B 端 ─────────────> PX-S7000 的 USB TO HOST
-普通打印机线 USB-A 端 ─────────────> OTG Y 线的 USB-A 母口
-OTG Y 线 Micro-USB 公头 ───────────> ESP32 上标 USB / OTG 的 Micro-USB 口
-OTG Y 线独立供电口 ────────────────> H5：同一 5 V/5 A 电源的 Micro-USB 供电支路
-ESP32 上另一个 UART Micro-USB 口 ──> 仅刷机/调试，可平时拔掉
+普通打印机线 USB-A 端 ─────────────> OTG 转接线的 USB-A 母口
+OTG 转接线 Micro-USB 公头 ─────────> ESP32 上标 USB / OTG 的 Micro-USB 口
+H5 电源线 Micro-USB 公头 ──────────> ESP32 上标 UART / USB-to-UART 的 Micro-USB 口
+电脑数据线 ────────────────────────> 首次刷机时替换 H5 接 UART 口；刷完拔电脑线再插回 H5
 ```
 
-不要把 OTG 线插到开发板的 `UART` 口。PX-S7000 连接的是方形 USB-B `USB TO HOST` 口，而不是安装 WU-BT10 的 USB-A 口。
+不要把 OTG 线插到开发板的 `UART` 口，也不要把 H5 电源线插到 `USB/OTG` 口。PX-S7000 连接的是方形 USB-B `USB TO HOST` 口，而不是安装 WU-BT10 的 USB-A 口。
+
+乐鑫官方 [ESP32-S3-DevKitC-1 用户指南](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html) 明确说明 USB-to-UART 口可给开发板供电，两个 USB 口可单独或同时作为推荐供电入口。本设计固定由 H5 给 `USB-to-UART` 口供电，让原生 `USB/OTG` 口专职 Host 数据和设备 VBUS。不要依赖“带辅助供电”的 OTG Y 线反向给主机供电；很多此类线只给 USB 外设供电。若已购买用户截图中的 Y 线，可把它当普通 OTG 转接线使用，但辅助供电口必须留空。
 
 这是一条双向 USB-MIDI 链路：钢琴把按键/踏板发送给 ESP32，ESP32 也可把“跟随我”模式的另一只手音符送回钢琴音源。Casio [PX-S7000 用户手册](https://www.casio.com/content/dam/casio/global/support/manuals/electronic-musical-instruments/pdf/008-en/p/PXS7000_usersguide_EN.pdf) 明确说明该接口可发送和接收演奏 MIDI；固件仍会在每次连接时独立探测 OUT 端点，没有 OUT 时不盲目发送。
 
@@ -45,7 +47,7 @@ ESP32 GND ───────────────────────�
 74AHCT125 GND ────────────────────────────┼─> 灯带 GND
 5 V / 5 A 电源负极 ──────────────────────┘
 5 V / 5 A 电源正极 ─> 3 A 保险 ─┬─> 灯带左右两端 5V
-                                  ├─> OTG Y 线供电口
+                                  ├─> H5 → ESP32 USB-to-UART 供电口
                                   └─> 74AHCT125 VCC
 5 V / 5 A 电源负极 ─────────────> 灯带左右两端 GND
 ```

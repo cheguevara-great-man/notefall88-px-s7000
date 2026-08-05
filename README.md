@@ -35,7 +35,7 @@ MusicXML 目标时间线会按常见反复、多结尾和标准 D.C./D.S./Fine/C
 - 最终使用前 176 像素，覆盖约 1222 mm 的 88 键键床
 - 74AHCT125 成品电平转换模块
 - 5 V / 5 A 有认证成品电源、3 A 总保险、20 AWG 首尾两端注电
-- Micro-USB 供电 OTG Y 线和普通 USB-A 转 USB-B 打印机数据线
+- H5 给 USB-to-UART 口供电，原生 USB/OTG 口经普通 OTG 转接线和 USB-A 转 USB-B 打印机线连接钢琴
 - Micro-Fit 4P 锁扣输入线和 XT30 远端注电线；所有引脚、线色和代焊验收已固定
 
 完整采购见 [BOM 表](docs/bom.csv)，接线见 [硬件说明](docs/hardware.md)，可直接发给代焊方的规格见 [线束制造表](docs/harness.csv) 与 [线束图](docs/wiring-harness.svg)。参数化控制盒如下；它只保护 ESP32 和接线，不安装在琴键上。

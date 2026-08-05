@@ -42,5 +42,12 @@ def test_wiring_svg_is_valid_and_names_every_harness_interface():
     svg = ROOT / "docs" / "wiring-harness.svg"
     ET.parse(svg)
     text = svg.read_text(encoding="utf-8")
-    for label in ("3 A 保险丝", "Micro-Fit 4P", "XT30 2P", "OTG Y", "双端注电"):
+    for label in (
+        "3 A 保险丝",
+        "Micro-Fit 4P",
+        "XT30 2P",
+        "USB/OTG口",
+        "USB-to-UART 口供电",
+        "双端注电",
+    ):
         assert label in text

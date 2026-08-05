@@ -7,8 +7,8 @@
 保护,带座保险丝线,3A 汽车片式或慢断低压保险,1,是,3A 低压 保险丝座 线束,5-15,紧靠电源输入并保护全部下游；避免电容上电浪涌误熔断
 保护,备用保险丝,同规格3A,2,是,3A 保险丝,2-5,不可换成更大规格
 保护,电解电容,1000uF 10V 低ESR 已焊引线并绝缘,2,是,1000UF 10V 低ESR 电解电容 引线,4-12,灯带首尾各一只
-USB,供电型 OTG Y线,Micro-USB公转USB-A母并带Micro-USB独立供电口,1,是,Micro USB OTG 一分二 USB母 独立供电,5-20,接开发板USB或OTG口
-USB,5V电源转Micro-USB供电线,配电端子转Micro-USB公 仅接VBUS/GND,1,是,DC5521 转 Micro USB 供电线,5-15,给OTG Y线供电口；不得接数据线芯
+USB,Micro-USB OTG转接线,Micro-USB公转USB-A母 数据和VBUS直通,1,是,Micro USB OTG 公转 USB母,5-15,接开发板USB或OTG口；已有供电Y线也可但辅助供电口必须留空
+USB,5V电源转Micro-USB供电线,配电端子转Micro-USB公 仅接VBUS/GND,1,是,DC5521 转 Micro USB 供电线,5-15,接开发板USB-to-UART口给板子供电；刷机时拔下
 USB,打印机数据线,USB-A公转USB-B公 1至2米,1,是,打印机数据线 USB A公 B公,10-25,接PX-S7000 USB TO HOST
 连接,Micro-Fit 3.0兼容4芯锁扣公母线,4P 预压端子 带尾线,1对,是,Micro-Fit 3.0 4P 公母 预压线,15-35,灯带输入：5V GND DATA CLOCK；供电侧用凹端子
 连接,XT30公母预焊线,20AWG 额定不低于10A,1对,是,XT30 公母 带线 20AWG,8-15,灯带远端注电；供电侧用凹端子
