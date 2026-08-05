@@ -26,16 +26,16 @@ cd ..
 - 网页：`http://192.168.4.1`
 - 家庭 Wi-Fi 下：`http://notefall.local`（取决于路由器/客户端 mDNS）
 - WebSocket：端口 `81`
-- 固件：0.6.3
+- 固件：0.6.4
 - 协议：v5
 
 亮度上限 `4/31` 写在生成头文件中。修改网页滑块不能越过该值。
 
 ## 实机诊断
 
-网页“灯带校准 → 设备诊断”显示 USB VID/PID、MIDI IN/OUT 端点与包长、双向累计包数、OUT 排程深度、队列丢包、传输错误、回声抑制、连接次数、空闲堆、PSRAM、NVS、上次复位原因和 Wi-Fi RSSI。N8R8 启动时会检查 OPI PSRAM；网页应显示约 8 MiB 总量。正常连续弹奏和跟随伴奏时两组 `丢包 / 错误` 都应保持 `0 / 0`，并且不得出现 `brownout`、`panic` 或 `watchdog` 复位。
+网页“灯带校准 → 设备诊断”显示 USB VID/PID、MIDI IN/OUT 端点与包长、双向累计包数、OUT 排程深度、队列丢包、传输错误、回声抑制、USB 回调到 SPI 完成的内部延迟、ESP/浏览器拒绝消息、网页 MIDI 丢弃、连接次数、空闲堆、PSRAM、NVS、上次复位原因和 Wi-Fi RSSI。N8R8 启动时会检查 OPI PSRAM；网页应显示约 8 MiB 总量。正常连续弹奏和跟随伴奏时两组 `丢包 / 错误`、网页 MIDI 丢弃和两侧拒绝数都应保持 0，并且不得出现 `brownout`、`panic` 或 `watchdog` 复位。
 
-USB Host 传输回调运行在专用 FreeRTOS 任务：IN 回调只写入固定长度环形队列和原子诊断计数，OUT 由另一固定队列批量提交且同一端点最多一个在途传输。`poll()` 在 Arduino 主任务中分发 MIDI 与连接状态，网络库不会从 USB 任务中被调用。网页只传相对时间事件，固件以 `millis()` 排程；网页失联会执行 16 通道 Sustain Off 与 All Notes Off。
+USB Host 传输回调运行在专用 FreeRTOS 任务：IN 回调只打微秒时间戳、写入固定长度环形队列和原子诊断计数，OUT 由另一固定队列批量提交且同一端点最多一个在途传输。`poll()` 在 Arduino 主任务中合并同批 MIDI，先完成一帧灯带 SPI，再从 64 项固定网页事件队列广播；网络库不会从 USB 任务中被调用，也不会排在实体灯帧之前。网页只传相对时间事件，固件以 `millis()` 排程；网页失联会执行 16 通道 Sustain Off 与 All Notes Off。
 
 生产网页的 JS/CSS 只保存 `.gz` 文件。Arduino-ESP32 `WebServer` 在请求原始 `.js`/`.css` URL 时自动选择同名 `.gz` 并发送正确的 `Content-Encoding: gzip`；`index.html` 保持未压缩，确保根路由和救援提示始终可读。
 

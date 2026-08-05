@@ -14,7 +14,7 @@ namespace notefall {
 // per endpoint. See THIRD_PARTY_NOTICES.md.
 class UsbMidiHost {
  public:
-  using MidiCallback = void (*)(void* context, const uint8_t packet[4]);
+  using MidiCallback = void (*)(void* context, const uint8_t packet[4], uint64_t receivedUs);
   using ConnectionCallback = void (*)(void* context);
 
   struct Diagnostics {
@@ -57,6 +57,7 @@ class UsbMidiHost {
  private:
   struct Packet {
     uint8_t bytes[4];
+    uint64_t receivedUs = 0;
   };
 
   static constexpr size_t kInputQueueSize = 64;
@@ -94,7 +95,7 @@ class UsbMidiHost {
   ConnectionCallback disconnectedCallback_ = nullptr;
   void* connectionContext_ = nullptr;
 
-  bool enqueueInput(const uint8_t packet[4]);
+  bool enqueueInput(const uint8_t packet[4], uint64_t receivedUs);
   bool dequeueInput(Packet& packet);
   bool enqueueOutput(const uint8_t packet[4]);
   void clearOutputQueue();

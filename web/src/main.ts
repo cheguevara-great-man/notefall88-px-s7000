@@ -1320,7 +1320,11 @@ device.onStatus((status: DeviceStatus) => {
   required("diag-out-errors").textContent = `${status.usbOutDropped ?? "--"} / ${status.usbOutErrors ?? "--"}`;
   required("diag-echo").textContent = String(status.usbEchoSuppressed ?? "--");
   required("diag-connections").textContent = String(status.usbConnections ?? "--");
-  required("diag-web-rejected").textContent = String(status.webRejected ?? "--");
+  required("diag-web-rejected").textContent = `${status.webRejected ?? "--"} / ${device.browserRejectedMessages}`;
+  required("diag-web-midi-dropped").textContent = String(status.webMidiDropped ?? "--");
+  required("diag-led-latency").textContent = status.ledInputLatencySamples
+    ? `${((status.ledInputLatencyAvgUs ?? 0) / 1000).toFixed(2)} 平均 / ${((status.ledInputLatencyMaxUs ?? 0) / 1000).toFixed(2)} 最大 ms · ${status.ledInputLatencySamples} 次`
+    : "等待钢琴按键";
   required("diag-heap").textContent = status.freeHeap === undefined
     ? "--"
     : `${Math.round(status.freeHeap / 1024)} KiB`;

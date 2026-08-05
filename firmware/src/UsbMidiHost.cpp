@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <esp_timer.h>
 
 namespace notefall {
 
@@ -64,7 +65,7 @@ bool UsbMidiHost::begin() {
 void UsbMidiHost::poll() {
   Packet packet;
   while (dequeueInput(packet)) {
-    if (midiCallback_ != nullptr) midiCallback_(midiContext_, packet.bytes);
+    if (midiCallback_ != nullptr) midiCallback_(midiContext_, packet.bytes, packet.receivedUs);
   }
   const bool current = connected_;
   if (current != reportedConnected_) {
@@ -81,7 +82,7 @@ UsbMidiHost::Diagnostics UsbMidiHost::diagnostics() {
   return snapshot;
 }
 
-bool UsbMidiHost::enqueueInput(const uint8_t packet[4]) {
+bool UsbMidiHost::enqueueInput(const uint8_t packet[4], uint64_t receivedUs) {
   portENTER_CRITICAL(&queueMux_);
   const size_t next = (inputHead_ + 1) % kInputQueueSize;
   if (next == inputTail_) {
@@ -89,6 +90,7 @@ bool UsbMidiHost::enqueueInput(const uint8_t packet[4]) {
     return false;
   }
   std::memcpy(inputQueue_[inputHead_].bytes, packet, 4);
+  inputQueue_[inputHead_].receivedUs = receivedUs;
   inputHead_ = next;
   portEXIT_CRITICAL(&queueMux_);
   return true;
@@ -353,6 +355,7 @@ void UsbMidiHost::inputTransferComplete(usb_transfer_t* transfer) {
   auto* host = static_cast<UsbMidiHost*>(transfer->context);
   if (host == nullptr) return;
   if (transfer->status == USB_TRANSFER_STATUS_COMPLETED) {
+    const uint64_t receivedUs = static_cast<uint64_t>(esp_timer_get_time());
     for (int offset = 0; offset + 4 <= transfer->actual_num_bytes; offset += 4) {
       const uint8_t* packet = transfer->data_buffer + offset;
       if ((packet[0] & 0x0F) == 0) continue;
@@ -360,7 +363,7 @@ void UsbMidiHost::inputTransferComplete(usb_transfer_t* transfer) {
       ++host->diagnostics_.packetsReceived;
       host->diagnostics_.lastPacketMs = millis();
       portEXIT_CRITICAL(&host->queueMux_);
-      if (!host->enqueueInput(packet)) {
+      if (!host->enqueueInput(packet, receivedUs)) {
         portENTER_CRITICAL(&host->queueMux_);
         ++host->diagnostics_.packetsDropped;
         portEXIT_CRITICAL(&host->queueMux_);

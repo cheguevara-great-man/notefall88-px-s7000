@@ -8,6 +8,7 @@ import type {
   TargetNote,
 } from "./types";
 import { TargetSync } from "./target-sync";
+import { decodeDeviceMessage } from "./protocol";
 
 type Listener<T> = (value: T) => void;
 
@@ -26,6 +27,7 @@ export class DeviceLink {
   private heartbeatTimer?: number;
   private readonly targetSync = new TargetSync((targets) => this.sendTargets(targets));
   latencyMs?: number;
+  browserRejectedMessages = 0;
 
   connect(): void {
     window.clearTimeout(this.reconnectTimer);
@@ -54,43 +56,23 @@ export class DeviceLink {
   }
 
   private handleMessage(raw: string): void {
-    let message: Record<string, unknown>;
-    try {
-      message = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
+    const decoded = decodeDeviceMessage(raw);
+    if (!decoded.ok) {
+      this.browserRejectedMessages += 1;
       return;
     }
-    if (message.t === "status") {
-      this.statusListeners.forEach((listener) => listener(message as unknown as DeviceStatus));
-    } else if (message.t === "midi") {
-      const midi: MidiInputEvent = {
-        state: message.s === "on" ? "on" : "off",
-        channel: Number(message.ch ?? 1),
-        note: Number(message.n),
-        velocity: Number(message.v ?? 0),
-        timestamp: Number(message.ts ?? 0),
-      };
-      this.midiListeners.forEach((listener) => listener(midi));
-    } else if (message.t === "control") {
-      const control: MidiControlEvent = {
-        channel: Number(message.ch ?? 1),
-        controller: Number(message.c),
-        value: Number(message.v ?? 0),
-        timestamp: Number(message.ts ?? 0),
-      };
-      this.controlListeners.forEach((listener) => listener(control));
-    } else if (message.t === "calibration" && Array.isArray(message.offsets)) {
-      const calibration = { offsets: message.offsets.map(Number) };
-      this.calibrationListeners.forEach((listener) => listener(calibration));
-    } else if (message.t === "midiOutResult") {
-      const result: MidiOutResult = {
-        ok: Boolean(message.ok),
-        busy: Boolean(message.busy),
-        accepted: Number(message.accepted ?? 0),
-        queued: Number(message.queued ?? 0),
-      };
-      this.midiOutListeners.forEach((listener) => listener(result));
-    } else if (message.t === "pong") {
+    const message = decoded.message;
+    if (message.kind === "status") {
+      this.statusListeners.forEach((listener) => listener(message.value));
+    } else if (message.kind === "midi") {
+      this.midiListeners.forEach((listener) => listener(message.value));
+    } else if (message.kind === "control") {
+      this.controlListeners.forEach((listener) => listener(message.value));
+    } else if (message.kind === "calibration") {
+      this.calibrationListeners.forEach((listener) => listener(message.value));
+    } else if (message.kind === "midiOutResult") {
+      this.midiOutListeners.forEach((listener) => listener(message.value));
+    } else if (message.kind === "pong") {
       this.latencyMs = Math.max(0, performance.now() - this.lastPing);
       window.clearTimeout(this.pingTimer);
       this.pingTimer = window.setTimeout(() => this.ping(), 2000);

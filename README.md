@@ -54,7 +54,7 @@ MusicXML 目标时间线会按常见反复、多结尾和标准 D.C./D.S./Fine/C
 - `tests/`：映射、功耗和机械包络测试
 - `docs/`：接线、装配、校准、测试和开源项目技术调研
 
-MusicXML 的当前支持范围、目标时间线与 OSMD 谱面之间的边界见 [MusicXML 说明](docs/musicxml.md)；练习指标定义和本地数据边界见 [练习分析说明](docs/practice-analytics.md)；手机与 ESP32 的稳定消息边界见 [WebSocket 协议](docs/protocol.md)。
+MusicXML 的当前支持范围、目标时间线与 OSMD 谱面之间的边界见 [MusicXML 说明](docs/musicxml.md)；练习指标定义和本地数据边界见 [练习分析说明](docs/practice-analytics.md)；手机与 ESP32 的稳定消息边界见 [WebSocket 协议](docs/protocol.md)。入站消息在进入练习状态前执行长度、类型、整数范围及 88 键校准完整性验证；实体按键灯先于网页广播刷新，并在诊断中显示 USB 回调到 SPI 完成的内部延迟。
 
 ## 从这里开始
 

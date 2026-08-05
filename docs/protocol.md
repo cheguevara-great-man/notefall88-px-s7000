@@ -17,11 +17,14 @@ ESP 返回 `status` 和 `calibration`。`status` 的稳定字段包括：
 - `usbOut`、`usbOutEndpoint`、`usbOutPacketSize`；
 - `usbPackets`、`usbDropped`、`usbErrors`；
 - `usbOutPackets`、`usbOutDropped`、`usbOutErrors`、`usbOutQueued`、`usbEchoSuppressed`、`usbOutOwned`；
-- `brightness`、`offset`、`reversed`、内存、NVS 状态、启动复位原因、运行时间和 RSSI。
+- `ledInputLatencyLastUs`、`ledInputLatencyAvgUs`、`ledInputLatencyMaxUs`、`ledInputLatencySamples`；
+- `webMidiDropped`、`brightness`、`offset`、`reversed`、内存、NVS 状态、启动复位原因、运行时间和 RSSI。
 
 `resetReason` 使用稳定字符串，例如 `power-on`、`software-reset`、`panic`、`watchdog` 或 `brownout`。它记录当前这次启动的来源；若满亮度或强奏测试后出现 `brownout`/`watchdog`，应先排查供电、短路、堆栈或阻塞，不得把自动重启当作正常恢复。
 
 未知字段必须忽略。固件先把新连接标为未握手：只有收到匹配的 `hello.v` 后，才接受目标灯、校准、Wi-Fi 或 MIDI OUT 等改变状态的消息。协议不一致时只允许查看状态诊断，并返回 `{"t":"protocolError","expected":5,"received":4}`；无效 JSON、超过 8192 字节、未握手或协议不符的消息计入只读字段 `webRejected`。
+
+网页也把设备消息当作不可信输入：消息超过 65536 字节、字段类型错误、非整数/越界 MIDI、不是恰好 88 项或超出 ±4 的校准数组都会在进入练习状态前被拒绝。设备端与浏览器端拒绝数分别显示，避免把网络或版本故障静默转换成错误琴键。
 
 ## 钢琴输入
 
@@ -33,7 +36,7 @@ ESP 把 USB MIDI 标准化为：
 {"t":"control","ch":1,"c":64,"v":127,"ts":123500}
 ```
 
-`ch` 为 1–16，`n/v/c` 为 0–127，`ts` 是 ESP32 的 `millis()`。Note On 力度 0 在固件内归一化为 Note Off。CC120/123 会清除本地按键状态。
+`ch` 为 1–16，`n/v/c` 为 0–127，`ts` 是 USB 回调微秒时间戳换算出的 ESP32 启动后毫秒数。Note On 力度 0 在固件内归一化为 Note Off。CC120/123 会清除本地按键状态。
 
 ## 目标灯与校准
 
@@ -69,6 +72,8 @@ ESP 把 USB MIDI 标准化为：
 ## 延迟探测与网络配置
 
 `ping`/`pong` 只测网页到 ESP 的往返时间，不等同于按键到灯光延迟。家庭 Wi-Fi 凭据不再通过普通 WebSocket 修改：`POST /api/wifi` 只接受设备 SoftAP 本地请求，并在 `X-NoteFall-Admin` 头再次核对当前热点密码；SSID 为 1–32 字节，密码为空或 8–63 字节。ESP 始终保留 `NoteFall-88` 热点作为恢复入口。
+
+`ledInputLatency*` 测量 USB Host 传输回调收到事件到对应 SPI 灯帧发送完毕的 ESP 内部区间。固件先排空同一批 USB 事件，再只发送一帧，所以和弦不会逐音重复刷灯；该帧不再等待原来的 10 ms 周期，并且先于 WebSocket 广播。浏览器事件使用独立 64 项固定队列，溢出计入 `webMidiDropped`，不会反向阻塞或破坏实体灯。此指标不包含 PX-S7000 自身键盘扫描、USB 传输前半段与 LED 光电响应，不能替代 120 fps 端到端视频，但能定位固件排队或任务阻塞。
 
 ## 演进规则
 

@@ -39,3 +39,27 @@ def test_status_exposes_stable_reset_reason_for_power_fault_diagnosis() -> None:
     assert 'doc["resetReason"] = resetReasonName(bootResetReason)' in source
     for reason in ("power-on", "software-reset", "panic", "watchdog", "brownout"):
         assert f'return "{reason}"' in source
+
+
+def test_usb_input_latency_ends_after_immediate_spi_frame() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    assert "uint64_t pendingLedInputUs" in source
+    assert 'doc["ledInputLatencyAvgUs"]' in source
+    assert 'doc["ledInputLatencyMaxUs"]' in source
+    loop = source[source.index("void loop()") :]
+    poll = loop.index("usbMidi.poll()")
+    immediate = loop.index("if (pendingLedInputUs != 0)")
+    browser_flush = loop.index("flushBrowserMidi()")
+    network = loop.index("websocket.loop()")
+    assert poll < immediate < browser_flush < network
+    render = source[source.index("void renderStrip()") : source.index("void sendStatus")]
+    assert render.index("strip.show") < render.index("ledInputLatencyLastUs = sample")
+
+
+def test_browser_broadcast_cannot_delay_the_local_led_frame() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    handler = source[source.index("void handleMidiPacket") : source.index("void onPianoConnected")]
+    assert "queueBrowserMidi" in handler
+    assert "websocket.broadcastTXT" not in handler
+    assert "kBrowserMidiCapacity = 64" in source
+    assert 'doc["webMidiDropped"] = browserMidiDropped' in source

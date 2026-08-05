@@ -66,6 +66,11 @@ export interface DeviceStatus {
   usbEchoSuppressed?: number;
   usbOutOwned?: boolean;
   webRejected?: number;
+  webMidiDropped?: number;
+  ledInputLatencyLastUs?: number;
+  ledInputLatencyAvgUs?: number;
+  ledInputLatencyMaxUs?: number;
+  ledInputLatencySamples?: number;
 }
 
 export interface MidiOutEvent {

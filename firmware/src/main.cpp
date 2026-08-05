@@ -12,6 +12,7 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <esp_system.h>
+#include <esp_timer.h>
 
 #include "Apa102Strip.h"
 #include "UsbMidiHost.h"
@@ -55,6 +56,17 @@ struct WebUpdateState {
   String error;
 };
 
+enum class BrowserMidiKind : uint8_t { Note, Control };
+
+struct BrowserMidiEvent {
+  BrowserMidiKind kind = BrowserMidiKind::Note;
+  bool on = false;
+  uint8_t channel = 1;
+  uint8_t firstData = 0;
+  uint8_t secondData = 0;
+  uint32_t timestampMs = 0;
+};
+
 Apa102Strip strip(kPixelCount, kDataPin, kClockPin, kSpiHz);
 notefall::UsbMidiHost usbMidi;
 WebServer http(kHttpPort);
@@ -79,6 +91,7 @@ int16_t testNote = -1;
 uint32_t testUntilMs = 0;
 constexpr size_t kScheduledMidiCapacity = 256;
 constexpr size_t kEchoGuardCapacity = 48;
+constexpr size_t kBrowserMidiCapacity = 64;
 ScheduledMidiMessage scheduledMidi[kScheduledMidiCapacity]{};
 size_t scheduledMidiCount = 0;
 EchoGuard echoGuards[kEchoGuardCapacity]{};
@@ -88,6 +101,14 @@ uint32_t midiEchoSuppressed = 0;
 int16_t midiOutOwner = -1;
 bool webProtocolCompatible[256]{};
 uint32_t webMessagesRejected = 0;
+BrowserMidiEvent browserMidiEvents[kBrowserMidiCapacity]{};
+size_t browserMidiCount = 0;
+uint32_t browserMidiDropped = 0;
+uint64_t pendingLedInputUs = 0;
+uint64_t ledInputLatencyTotalUs = 0;
+uint32_t ledInputLatencyLastUs = 0;
+uint32_t ledInputLatencyMaxUs = 0;
+uint32_t ledInputLatencySamples = 0;
 String activeApPassword;
 WebUpdateState webUpdate;
 
@@ -257,6 +278,15 @@ void renderStrip() {
     strip.setPixel(static_cast<size_t>(pixel), color);
   }
   strip.show(std::min<uint8_t>(brightness, kMaxGlobalBrightness));
+  if (pendingLedInputUs != 0) {
+    const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - pendingLedInputUs;
+    const uint32_t sample = static_cast<uint32_t>(std::min<uint64_t>(elapsed, UINT32_MAX));
+    ledInputLatencyLastUs = sample;
+    ledInputLatencyMaxUs = std::max(ledInputLatencyMaxUs, sample);
+    ledInputLatencyTotalUs += sample;
+    ++ledInputLatencySamples;
+    pendingLedInputUs = 0;
+  }
 }
 
 void sendStatus(uint8_t client = 255) {
@@ -296,6 +326,13 @@ void sendStatus(uint8_t client = 255) {
   doc["usbEchoSuppressed"] = midiEchoSuppressed;
   doc["usbOutOwned"] = midiOutOwner >= 0;
   doc["webRejected"] = webMessagesRejected;
+  doc["webMidiDropped"] = browserMidiDropped;
+  doc["ledInputLatencyLastUs"] = ledInputLatencyLastUs;
+  doc["ledInputLatencyAvgUs"] = ledInputLatencySamples == 0
+      ? 0
+      : static_cast<uint32_t>(ledInputLatencyTotalUs / ledInputLatencySamples);
+  doc["ledInputLatencyMaxUs"] = ledInputLatencyMaxUs;
+  doc["ledInputLatencySamples"] = ledInputLatencySamples;
   String payload;
   serializeJson(doc, payload);
   if (client == 255) websocket.broadcastTXT(payload);
@@ -313,37 +350,65 @@ void sendCalibration(uint8_t client = 255) {
   else websocket.sendTXT(client, payload);
 }
 
-void sendMidiEvent(bool on, uint8_t channel, uint8_t note, uint8_t velocity) {
+void sendMidiEvent(bool on, uint8_t channel, uint8_t note, uint8_t velocity, uint32_t timestampMs) {
   JsonDocument doc;
   doc["t"] = "midi";
   doc["s"] = on ? "on" : "off";
   doc["ch"] = channel;
   doc["n"] = note;
   doc["v"] = velocity;
-  doc["ts"] = millis();
+  doc["ts"] = timestampMs;
   String payload;
   serializeJson(doc, payload);
   websocket.broadcastTXT(payload);
 }
 
-void sendMidiControl(uint8_t channel, uint8_t controller, uint8_t value) {
+void sendMidiControl(uint8_t channel, uint8_t controller, uint8_t value, uint32_t timestampMs) {
   JsonDocument doc;
   doc["t"] = "control";
   doc["ch"] = channel;
   doc["c"] = controller;
   doc["v"] = value;
-  doc["ts"] = millis();
+  doc["ts"] = timestampMs;
   String payload;
   serializeJson(doc, payload);
   websocket.broadcastTXT(payload);
 }
 
-void handleMidiPacket(void*, const uint8_t data[4]) {
+void queueBrowserMidi(BrowserMidiKind kind, bool on, uint8_t channel,
+                      uint8_t firstData, uint8_t secondData, uint32_t timestampMs) {
+  if (browserMidiCount >= kBrowserMidiCapacity) {
+    ++browserMidiDropped;
+    return;
+  }
+  BrowserMidiEvent& event = browserMidiEvents[browserMidiCount++];
+  event.kind = kind;
+  event.on = on;
+  event.channel = channel;
+  event.firstData = firstData;
+  event.secondData = secondData;
+  event.timestampMs = timestampMs;
+}
+
+void flushBrowserMidi() {
+  for (size_t index = 0; index < browserMidiCount; ++index) {
+    const BrowserMidiEvent& event = browserMidiEvents[index];
+    if (event.kind == BrowserMidiKind::Control) {
+      sendMidiControl(event.channel, event.firstData, event.secondData, event.timestampMs);
+    } else {
+      sendMidiEvent(event.on, event.channel, event.firstData, event.secondData, event.timestampMs);
+    }
+  }
+  browserMidiCount = 0;
+}
+
+void handleMidiPacket(void*, const uint8_t data[4], uint64_t receivedUs) {
   if (data == nullptr) return;
   const uint8_t status = data[1];
   const uint8_t command = status & 0xF0;
   const uint8_t firstData = data[2];
   const uint8_t secondData = data[3];
+  const uint32_t timestampMs = static_cast<uint32_t>(receivedUs / 1000U);
   if (consumeOutputEcho(status, firstData, secondData, millis())) return;
   if ((command == 0x80 || command == 0x90) && !validNote(firstData)) return;
   const uint8_t channel = static_cast<uint8_t>((status & 0x0F) + 1);
@@ -351,17 +416,20 @@ void handleMidiPacket(void*, const uint8_t data[4]) {
     const uint8_t note = firstData;
     notes[noteIndex(note)].pressed = true;
     notes[noteIndex(note)].velocity = secondData;
-    sendMidiEvent(true, channel, note, secondData);
+    if (pendingLedInputUs == 0 || receivedUs < pendingLedInputUs) pendingLedInputUs = receivedUs;
+    queueBrowserMidi(BrowserMidiKind::Note, true, channel, note, secondData, timestampMs);
   } else if (command == 0x80 || (command == 0x90 && secondData == 0)) {
     const uint8_t note = firstData;
     notes[noteIndex(note)].pressed = false;
     notes[noteIndex(note)].velocity = 0;
-    sendMidiEvent(false, channel, note, secondData);
+    if (pendingLedInputUs == 0 || receivedUs < pendingLedInputUs) pendingLedInputUs = receivedUs;
+    queueBrowserMidi(BrowserMidiKind::Note, false, channel, note, secondData, timestampMs);
   } else if (command == 0xB0) {
     if (firstData == 120 || firstData == 123) {
       for (auto& note : notes) note.pressed = false;
+      if (pendingLedInputUs == 0 || receivedUs < pendingLedInputUs) pendingLedInputUs = receivedUs;
     }
-    sendMidiControl(channel, firstData, secondData);
+    queueBrowserMidi(BrowserMidiKind::Control, false, channel, firstData, secondData, timestampMs);
   }
 }
 
@@ -780,6 +848,14 @@ void setup() {
 
 void loop() {
   usbMidi.poll();
+  // Flush all note changes from the just-drained USB queue in one SPI frame.
+  // This removes the former arbitrary 0-10 ms wait without issuing one frame
+  // per note in a chord. The sample ends after the physical SPI transfer.
+  if (pendingLedInputUs != 0) {
+    renderStrip();
+    lastLedRefreshMs = millis();
+  }
+  flushBrowserMidi();
   processScheduledMidi();
   http.handleClient();
   websocket.loop();
