@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "project": "NoteFall 88",
   "piano": {
     "model": "Casio PX-S7000",
@@ -38,17 +38,19 @@
     "target_stale_ms": 3000
   },
   "mechanical": {
-    "rail_total_length_mm": 1236.0,
-    "rail_segment_count": 7,
-    "rail_depth_mm": 17.0,
-    "rail_height_mm": 6.2,
-    "rail_floor_mm": 1.4,
-    "rail_wall_mm": 1.2,
-    "strip_clearance_mm": 0.4,
-    "diffuser_thickness_mm": 0.8,
-    "silicone_pad_mm": 0.8,
-    "controller_board_length_mm": 62.0,
-    "controller_board_width_mm": 25.4
+    "strip_mount": "vertical_exposed",
+    "strip_orientation_deg": 90.0,
+    "strip_bottom_clearance_mm": 1.5,
+    "optional_carrier_material": "black_PET_or_PVC",
+    "optional_carrier_length_mm": 1226.0,
+    "optional_carrier_height_mm": 14.0,
+    "optional_carrier_thickness_mm": 0.8,
+    "controller_case_length_mm": 106.0,
+    "controller_case_width_mm": 62.0,
+    "controller_case_floor_mm": 2.0,
+    "controller_case_wall_mm": 1.8,
+    "controller_case_height_mm": 18.0,
+    "controller_lid_thickness_mm": 1.8
   },
   "power": {
     "conservative_full_white_w_per_pixel": 0.30,

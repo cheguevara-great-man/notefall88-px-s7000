@@ -4,13 +4,9 @@ NoteFall 88 是面向 Casio PX-S7000 的可拆卸单排琴键提示灯。钢琴�
 
 > 钢琴上只有一排灯。瀑布流只在屏幕里显示。
 
-![单排最终导轨 CAD 渲染](mechanical/renders/full_rail.png)
+![竖直裸灯带安装原理](mechanical/renders/vertical_strip_mount.png)
 
-![PX-S7000 单排灯带安装概念图](mechanical/renders/piano_installation_mockup.png)
-
-![3D 打印导轨安装近景](mechanical/renders/piano_installation_closeup.png)
-
-> 安装概念图基于用户实拍照片生成，用于说明体积、位置和单排点亮方式。近景中，黑色部分是分段打印的 U 形 PETG 外壳，乳白色长条是扩散盖，灯带隐藏在扩散盖下方；竖向细缝是打印分段的拼接位置。效果图不是尺寸依据，打印前仍以现场测量表和参数化 CAD 为准。
+> 琴键一侧不使用贯穿全长的 3D 打印盒。灯带竖直安装、发光面朝演奏者且前方无遮挡，宽角度光束的下半部分直接照亮对应琴键。可选黑色薄承载片只负责保持灯带笔直，不包裹灯珠，也不是打印件。
 
 ## 最终架构
 
@@ -41,7 +37,7 @@ PX-S7000 USB TO HOST ──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
 
 - `firmware/`：ESP32-S3 固件、USB-MIDI Host、Wi-Fi/WebSocket 和 APA102/SK9822 驱动
 - `web/`：手机/平板/电脑通用网页，包含 MIDI 导入、瀑布流和等待练习
-- `mechanical/`：单排低矮导轨和通用控制盒的 CadQuery 参数化模型
+- `mechanical/`：可选控制器保护盒的 CadQuery 参数化模型；琴键侧没有打印导轨
 - `config/system.json`：88 键、灯带、电气和机械参数的唯一来源
 - `scripts/generate.py`：生成灯位映射、固件头文件和制造文件
 - `tests/`：映射、功耗和机械包络测试
@@ -49,7 +45,7 @@ PX-S7000 USB TO HOST ──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
 
 ## 从这里开始
 
-1. 下单前完成 [5 项一次性现场测量](docs/measurements.md)。它只决定导轨截面是否需要参数调整，不会产生额外电子原型或废灯带。
+1. 下单前按 [一次性现场复核](docs/measurements.md) 确认琴键后方固定立面可放下 12 mm 宽灯带，不需要打印试件或购买额外灯带。
 2. 按 [BOM](docs/bom.csv) 买最终件，再按 [装配说明](docs/assembly.md) 让卖家代焊线束并组装。
 3. 按 [刷机说明](docs/flashing.md) 写入固件和网页。
 4. 严格依次执行 [断电检查、校准和验收](docs/testing.md)。

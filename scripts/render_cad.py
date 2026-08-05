@@ -1,4 +1,4 @@
-"""Headless VTK renders for the generated NoteFall 88 manufacturing models."""
+"""Headless VTK renders for the vertical exposed strip and controller enclosure."""
 
 from __future__ import annotations
 
@@ -27,10 +27,8 @@ def stl_actor(path: Path, color: tuple[float, float, float], opacity: float = 1.
     actor.GetProperty().SetColor(*color)
     actor.GetProperty().SetOpacity(opacity)
     actor.GetProperty().SetInterpolationToPBR()
-    actor.GetProperty().SetMetallic(0.08)
     actor.GetProperty().SetRoughness(0.64)
     actor.GetProperty().SetAmbient(0.32)
-    actor.GetProperty().SetDiffuse(0.85)
     return actor
 
 
@@ -52,7 +50,7 @@ def cube_actor(
     actor.GetProperty().SetColor(*color)
     actor.GetProperty().SetOpacity(opacity)
     actor.GetProperty().SetInterpolationToPBR()
-    actor.GetProperty().SetRoughness(0.45)
+    actor.GetProperty().SetRoughness(0.48)
     actor.GetProperty().SetAmbient(0.38)
     return actor
 
@@ -71,16 +69,12 @@ def configure_renderer() -> tuple[vtk.vtkRenderer, vtk.vtkRenderWindow]:
 
 
 def add_lights(renderer: vtk.vtkRenderer) -> None:
-    key = vtk.vtkLight()
-    key.SetPosition(-400, -500, 650)
-    key.SetFocalPoint(0, 0, 0)
-    key.SetIntensity(1.15)
-    renderer.AddLight(key)
-    fill = vtk.vtkLight()
-    fill.SetPosition(450, 300, 220)
-    fill.SetFocalPoint(0, 0, 0)
-    fill.SetIntensity(0.7)
-    renderer.AddLight(fill)
+    for position, intensity in (((-260, -380, 420), 1.1), ((320, 180, 240), 0.75)):
+        light = vtk.vtkLight()
+        light.SetPosition(*position)
+        light.SetFocalPoint(0, 0, 0)
+        light.SetIntensity(intensity)
+        renderer.AddLight(light)
 
 
 def save(renderer: vtk.vtkRenderer, window: vtk.vtkRenderWindow, path: Path, size: tuple[int, int]) -> None:
@@ -89,7 +83,6 @@ def save(renderer: vtk.vtkRenderer, window: vtk.vtkRenderWindow, path: Path, siz
     window.Render()
     capture = vtk.vtkWindowToImageFilter()
     capture.SetInput(window)
-    capture.SetScale(1)
     capture.SetInputBufferTypeToRGBA()
     capture.ReadFrontBufferOff()
     capture.Update()
@@ -99,77 +92,61 @@ def save(renderer: vtk.vtkRenderer, window: vtk.vtkRenderWindow, path: Path, siz
     writer.Write()
 
 
-def full_rail(config: dict) -> None:
+def vertical_strip_mount(config: dict) -> None:
+    """Render a representative keyboard section; no printed rail is present."""
     renderer, window = configure_renderer()
-    mech = config["mechanical"]
-    led = config["led"]
-    total = float(mech["rail_total_length_mm"])
-    count = int(mech["rail_segment_count"])
-    segment = total / count
-    start = -total / 2 + segment / 2
-    height = float(mech["rail_height_mm"])
-    floor = float(mech["rail_floor_mm"])
+    white_pitch = float(config["piano"]["white_key_pitch_mm"])
+    led_pitch = 1000.0 / float(config["led"]["pixels_per_m"])
+    pcb_height = float(config["led"]["pcb_width_mm"])
+    carrier_height = float(config["mechanical"]["optional_carrier_height_mm"])
+    clearance = float(config["mechanical"]["strip_bottom_clearance_mm"])
+    section_width = 10 * white_pitch
 
-    for index in range(count):
-        x = start + index * segment
-        rail_file = (
-            "rail_left_end.stl"
-            if index == 0
-            else "rail_right_end.stl"
-            if index == count - 1
-            else "rail_segment.stl"
-        )
-        rail = stl_actor(EXPORTS / rail_file, (0.095, 0.11, 0.15))
-        rail.SetPosition(x, 0, 0)
-        renderer.AddActor(rail)
-        diffuser = stl_actor(EXPORTS / "diffuser_segment.stl", (0.72, 0.82, 0.98), 0.42)
-        diffuser.SetPosition(x, 0, height - float(mech["diffuser_thickness_mm"]) - 0.25)
-        renderer.AddActor(diffuser)
+    for index in range(10):
+        x = (index - 4.5) * white_pitch
+        renderer.AddActor(cube_actor((white_pitch - 0.5, 142.0, 10.0), (x, -55.0, -5.0), (0.90, 0.91, 0.92)))
+    for index in (0, 1, 3, 4, 5, 7, 8):
+        x = (index - 4.0) * white_pitch
+        renderer.AddActor(cube_actor((13.0, 88.0, 10.0), (x, -29.0, 5.0), (0.018, 0.020, 0.024)))
 
-    renderer.AddActor(cube_actor((total - 4, float(led["pcb_width_mm"]), 0.55), (0, 0, floor + 0.4), (0.04, 0.04, 0.045)))
-    pitch = 1000 / float(led["pixels_per_m"])
-    led_start = -(int(led["pixel_count"]) - 1) * pitch / 2
-    for index in range(int(led["pixel_count"])):
-        x = led_start + index * pitch
-        color = (0.12, 0.82, 1.0) if index % 12 < 5 else (1.0, 0.18, 0.68)
-        renderer.AddActor(cube_actor((2.7, 3.2, 0.8), (x, -0.2, floor + 1.05), color))
-    # A few illuminated diffuser locations communicate the single-row function
-    # without falsely suggesting that every pixel is lit simultaneously.
-    for target_index in (8, 28, 48, 65, 84, 105, 126, 148, 168):
-        x = led_start + target_index * pitch
-        color = (0.12, 0.82, 1.0) if target_index % 2 == 0 else (1.0, 0.18, 0.68)
-        renderer.AddActor(cube_actor((5.2, 8.5, 1.1), (x, 0, height + 0.25), color, 0.95))
+    carrier_z = clearance + carrier_height / 2.0
+    renderer.AddActor(cube_actor((section_width, 0.8, carrier_height), (0, 17.0, carrier_z), (0.035, 0.038, 0.045)))
+    renderer.AddActor(cube_actor((section_width, 0.55, pcb_height), (0, 16.25, clearance + pcb_height / 2.0), (0.025, 0.025, 0.028)))
+
+    led_count = round(section_width / led_pitch)
+    led_start = -(led_count - 1) * led_pitch / 2.0
+    lit = {4: (0.10, 0.78, 1.0), 14: (0.16, 0.86, 1.0), 24: (0.10, 1.0, 0.42)}
+    for index in range(led_count):
+        x = led_start + index * led_pitch
+        color = lit.get(index, (0.16, 0.16, 0.17))
+        renderer.AddActor(cube_actor((2.7, 0.9, 2.7), (x, 15.65, clearance + pcb_height / 2.0), color))
+    for index, color in lit.items():
+        x = led_start + index * led_pitch
+        renderer.AddActor(cube_actor((8.5, 90.0, 0.35), (x, -35.0, 0.2), color, 0.34))
 
     camera = renderer.GetActiveCamera()
-    camera.SetPosition(0, -650, 285)
-    camera.SetFocalPoint(0, 0, 1.8)
+    camera.SetPosition(235, -390, 105)
+    camera.SetFocalPoint(0, -20, 2.5)
     camera.SetViewUp(0, 0, 1)
     camera.ParallelProjectionOn()
-    camera.SetParallelScale(190)
-    save(renderer, window, RENDERS / "full_rail.png", (1800, 500))
+    camera.SetParallelScale(118)
+    save(renderer, window, RENDERS / "vertical_strip_mount.png", (1500, 900))
 
 
-def detail(config: dict) -> None:
+def controller_case() -> None:
     renderer, window = configure_renderer()
-    mech = config["mechanical"]
-    height = float(mech["rail_height_mm"])
-    diffuser = stl_actor(EXPORTS / "diffuser_segment.stl", (0.62, 0.77, 0.98), 0.38)
-    diffuser.SetPosition(0, 0, height - float(mech["diffuser_thickness_mm"]) - 0.25)
-    renderer.AddActor(stl_actor(EXPORTS / "rail_segment.stl", (0.095, 0.11, 0.15)))
-    renderer.AddActor(diffuser)
-    controller = stl_actor(EXPORTS / "controller_tray.stl", (0.11, 0.13, 0.18))
-    controller.SetPosition(0, 78, 0)
-    controller.RotateZ(-8)
-    renderer.AddActor(controller)
-    renderer.AddActor(cube_actor((168, 11.8, 0.55), (0, 0, float(mech["rail_floor_mm"]) + 0.4), (0.035, 0.035, 0.04)))
-
+    tray = stl_actor(EXPORTS / "controller_tray.stl", (0.09, 0.11, 0.15))
+    lid = stl_actor(EXPORTS / "controller_lid.stl", (0.12, 0.14, 0.19), 0.82)
+    lid.SetPosition(0, 0, 25)
+    renderer.AddActor(tray)
+    renderer.AddActor(lid)
     camera = renderer.GetActiveCamera()
-    camera.SetPosition(225, -265, 170)
-    camera.SetFocalPoint(0, 25, 3)
+    camera.SetPosition(145, -165, 115)
+    camera.SetFocalPoint(0, 0, 9)
     camera.SetViewUp(0, 0, 1)
     camera.ParallelProjectionOn()
-    camera.SetParallelScale(105)
-    save(renderer, window, RENDERS / "segment_detail.png", (1400, 800))
+    camera.SetParallelScale(78)
+    save(renderer, window, RENDERS / "controller_case.png", (1200, 800))
 
 
 def main() -> None:
@@ -178,10 +155,10 @@ def main() -> None:
     args = parser.parse_args()
     RENDERS.mkdir(parents=True, exist_ok=True)
     config = json.loads(args.config.read_text(encoding="utf-8"))
-    full_rail(config)
-    detail(config)
-    print(f"Rendered {RENDERS / 'full_rail.png'}")
-    print(f"Rendered {RENDERS / 'segment_detail.png'}")
+    vertical_strip_mount(config)
+    controller_case()
+    print(f"Rendered {RENDERS / 'vertical_strip_mount.png'}")
+    print(f"Rendered {RENDERS / 'controller_case.png'}")
 
 
 if __name__ == "__main__":

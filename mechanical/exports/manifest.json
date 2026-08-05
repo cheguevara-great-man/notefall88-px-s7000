@@ -1,48 +1,29 @@
 {
-  "schema_version": 2,
-  "config_sha256": "e288f61e7a739c945b570dea1a5691d9562cc6237de2361b3904eff010d6a528",
+  "schema_version": 3,
+  "config_sha256": "44d88e7c93236e77c861774d8f7ec3a1c09cc951e486caa96d56e5e4610a1c26",
   "layout_sha256": "43766ee141f3c6dd8b4b2f156b038c4ca954d6a17bb07b08a8d3222ee70a504d",
   "layout": {
     "notes": 88,
     "pixels": 176,
     "max_abs_mapping_error_mm": 3.444444444444457
   },
-  "rail": {
-    "total_length_mm": 1236.0,
-    "segment_count": 7,
-    "nominal_segment_length_mm": 176.57142857142858,
-    "print_quantities": {
-      "rail_left_end": 1,
-      "rail_segment": 5,
-      "rail_right_end": 1,
-      "diffuser_segment": 7
+  "keyboard_mount": {
+    "type": "vertical_exposed",
+    "strip_orientation_deg": 90.0,
+    "printed_parts": 0,
+    "diffuser": false,
+    "optional_carrier": {
+      "material": "black_PET_or_PVC",
+      "length_mm": 1226.0,
+      "height_mm": 14.0,
+      "thickness_mm": 0.8
     }
   },
+  "print_quantities": {
+    "controller_tray": 1,
+    "controller_lid": 1
+  },
   "parts": {
-    "rail_left_end": {
-      "x_mm": 179.571,
-      "y_mm": 17.0,
-      "z_mm": 6.2,
-      "volume_mm3": 6357.0
-    },
-    "rail_segment": {
-      "x_mm": 179.571,
-      "y_mm": 17.0,
-      "z_mm": 6.2,
-      "volume_mm3": 6334.5
-    },
-    "rail_right_end": {
-      "x_mm": 176.571,
-      "y_mm": 17.0,
-      "z_mm": 6.2,
-      "volume_mm3": 6320.7
-    },
-    "diffuser_segment": {
-      "x_mm": 175.971,
-      "y_mm": 12.65,
-      "z_mm": 0.8,
-      "volume_mm3": 1780.8
-    },
     "controller_tray": {
       "x_mm": 106.0,
       "y_mm": 62.0,
@@ -58,44 +39,12 @@
   },
   "files": [
     {
-      "file": "rail_left_end.stl",
-      "sha256": "79deb73e6e5f1cfb4f41812476ddf13d8401075b133e3fab1c1da61b378c5f5f"
-    },
-    {
-      "file": "rail_left_end.step",
-      "sha256": "84e0ce5ca0926fb675edf8d4360709f4ea5f8787759a4325eb3bf25f0f21c9ab"
-    },
-    {
-      "file": "rail_segment.stl",
-      "sha256": "44af43dbce8f745f2cc39e291d7fa16d9c862eae30c9d26bb3bd971f2cd65592"
-    },
-    {
-      "file": "rail_segment.step",
-      "sha256": "78c307750f6caf7afb3082064fe53332d40ba588c3f45e38371be61f31048893"
-    },
-    {
-      "file": "rail_right_end.stl",
-      "sha256": "02d9e930e3623ec6fb9ae441f796e2961ddf3dd5609798a115c1f8d45362401f"
-    },
-    {
-      "file": "rail_right_end.step",
-      "sha256": "9c59e560582666d88d9bf0981ae4a94af6915e68c66510217a97139a2872fe37"
-    },
-    {
-      "file": "diffuser_segment.stl",
-      "sha256": "5347c94b7286d79a0e534d582aa9c42bbfff0e742b0d9546f046f9d8b21d0fb6"
-    },
-    {
-      "file": "diffuser_segment.step",
-      "sha256": "ea54019ca6fef366f90a27ab3e189c08d6b8871cc463594eabcba1a1920aeb57"
-    },
-    {
       "file": "controller_tray.stl",
-      "sha256": "3a2dedb9f36e50fe4727034b9510d9b30973ac995b0fe12effa24e03b8b96806"
+      "sha256": "3dc2fbd4b95e9754caf2d4a741c6cad777bfb9ff564d88bcbd38d76ad87555a7"
     },
     {
       "file": "controller_tray.step",
-      "sha256": "5f8d279aac13516464aa500c883a29a7ae0ecc9baae9c0b743271a03233136a3"
+      "sha256": "5f00159a8e308c23bd9a52ef5bfd3f9666b82a87ff3e519694b6fb4405272684"
     },
     {
       "file": "controller_lid.stl",
@@ -103,11 +52,7 @@
     },
     {
       "file": "controller_lid.step",
-      "sha256": "425b8a3f7373db52ef62f83d229c03634e10228bec63bd758c28490411453cf7"
+      "sha256": "047c97270649e190e5f4fc348f7ff15049a75cb1952bde81d519a63ae46dc7b6"
     }
-  ],
-  "assembly": {
-    "file": "full_88_rail_assembly.step",
-    "purpose": "reference assembly; manufacture the hashed individual parts above"
-  }
+  ]
 }

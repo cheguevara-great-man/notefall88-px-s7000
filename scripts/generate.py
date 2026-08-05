@@ -17,7 +17,7 @@ from cadquery import exporters
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from mechanical.model import build_full_rail_assembly, build_parts, rail_dimensions  # noqa: E402
+from mechanical.model import build_parts  # noqa: E402
 
 
 CONFIG_PATH = ROOT / "config" / "system.json"
@@ -172,13 +172,9 @@ def generate(check: bool = False) -> dict[str, Any]:
                 normalize_step_header(path)
             files.append({"file": path.name, "sha256": sha256(path)})
 
-    assembly_path = EXPORT_DIR / "full_88_rail_assembly.step"
-    build_full_rail_assembly(config).save(str(assembly_path))
-    normalize_step_header(assembly_path)
-
-    dims = rail_dimensions(config)
+    mech = config["mechanical"]
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3,
         "config_sha256": sha256(CONFIG_PATH),
         "layout_sha256": sha256(layout_path),
         "layout": {
@@ -186,23 +182,21 @@ def generate(check: bool = False) -> dict[str, Any]:
             "pixels": layout["pixel_count"],
             "max_abs_mapping_error_mm": layout["max_abs_mapping_error_mm"],
         },
-        "rail": {
-            "total_length_mm": dims.total_length,
-            "segment_count": dims.segment_count,
-            "nominal_segment_length_mm": dims.segment_length,
-            "print_quantities": {
-                "rail_left_end": 1,
-                "rail_segment": dims.segment_count - 2,
-                "rail_right_end": 1,
-                "diffuser_segment": dims.segment_count,
+        "keyboard_mount": {
+            "type": mech["strip_mount"],
+            "strip_orientation_deg": float(mech["strip_orientation_deg"]),
+            "printed_parts": 0,
+            "diffuser": False,
+            "optional_carrier": {
+                "material": mech["optional_carrier_material"],
+                "length_mm": float(mech["optional_carrier_length_mm"]),
+                "height_mm": float(mech["optional_carrier_height_mm"]),
+                "thickness_mm": float(mech["optional_carrier_thickness_mm"]),
             },
         },
+        "print_quantities": {"controller_tray": 1, "controller_lid": 1},
         "parts": part_manifest,
         "files": files,
-        "assembly": {
-            "file": assembly_path.name,
-            "purpose": "reference assembly; manufacture the hashed individual parts above",
-        },
     }
     manifest_path = EXPORT_DIR / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -211,8 +205,10 @@ def generate(check: bool = False) -> dict[str, Any]:
         for name, size in part_manifest.items():
             if size["x_mm"] > 220.0 or size["y_mm"] > 220.0:
                 raise RuntimeError(f"{name} exceeds a 220x220 mm printer: {size}")
-        if abs(dims.total_length - float(config["mechanical"]["rail_total_length_mm"])) > 1e-6:
-            raise RuntimeError("rail segment sum does not match configured total")
+        if abs(float(mech["strip_orientation_deg"]) - 90.0) > 1e-6:
+            raise RuntimeError("the exposed strip must face the player at 90 degrees")
+        if float(mech["optional_carrier_height_mm"]) < float(config["led"]["pcb_width_mm"]):
+            raise RuntimeError("optional carrier is shorter than the vertical LED PCB")
     return manifest
 
 

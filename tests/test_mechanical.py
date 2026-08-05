@@ -1,4 +1,4 @@
-from mechanical.model import build_parts, rail_dimensions
+from mechanical.model import build_parts, controller_dimensions
 from scripts.generate import load_config
 
 
@@ -11,17 +11,15 @@ def test_all_printed_parts_fit_common_printer_and_are_valid():
         assert box.ylen <= 220.0
 
 
-def test_seven_segments_make_one_full_rail():
-    dims = rail_dimensions(load_config())
-    assert dims.segment_count == 7
-    assert abs(dims.segment_length * dims.segment_count - dims.total_length) < 1e-9
-    assert dims.total_length >= 1222.0
+def test_keyboard_mount_has_no_printed_rail_or_diffuser():
+    parts = build_parts(load_config())
+    assert set(parts) == {"controller_tray", "controller_lid"}
 
 
-def test_terminal_segments_are_flush_and_middle_has_one_tongue():
+def test_vertical_strip_configuration_keeps_emitters_exposed():
     cfg = load_config()
-    parts = build_parts(cfg)
-    dims = rail_dimensions(cfg)
-    assert abs(parts["rail_left_end"].val().BoundingBox().xmin + dims.segment_length / 2) < 1e-6
-    assert abs(parts["rail_right_end"].val().BoundingBox().xmax - dims.segment_length / 2) < 1e-6
-    assert parts["rail_segment"].val().BoundingBox().xmax > dims.segment_length / 2
+    mech = cfg["mechanical"]
+    assert mech["strip_mount"] == "vertical_exposed"
+    assert float(mech["strip_orientation_deg"]) == 90.0
+    assert float(mech["optional_carrier_height_mm"]) >= float(cfg["led"]["pcb_width_mm"])
+    assert controller_dimensions(cfg).length <= 220.0
