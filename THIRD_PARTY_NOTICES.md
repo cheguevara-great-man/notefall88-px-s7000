@@ -97,6 +97,7 @@ POSSIBILITY OF SUCH DAMAGE.
 - `ArduinoJson` 7.4.3 — MIT.
 - Arduino-ESP32 / ESP-IDF toolchain components — their upstream mixed licenses apply to compiled firmware.
 - CadQuery — Apache-2.0; used to generate manufacturing exports, not linked into firmware.
+- `@playwright/cli` 0.1.17 and its Playwright/Chromium test runtime — Apache-2.0/BSD-family upstream terms; used only for CI browser verification and not linked into or distributed with the firmware web bundle.
 
 Piano Trainer Studio code and assets are not copied or linked. It is an audited AGPL-3.0 product reference only; see `docs/pts-adoption-decision.md`.
 

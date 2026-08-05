@@ -37,6 +37,15 @@ jobs:
       - run: npm ci
       - run: npm run coverage
       - run: npm run build
+      - run: npx playwright-cli install-browser chromium
+      - run: npm run smoke:browser
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: notefall88-browser-smoke
+          path: output/playwright/smoke-*
+          if-no-files-found: ignore
+          include-hidden-files: true
 
   firmware:
     runs-on: ubuntu-latest

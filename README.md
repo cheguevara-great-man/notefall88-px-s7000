@@ -84,6 +84,8 @@ cd web
 npm.cmd ci
 npm.cmd test -- --run
 npm.cmd run build
+npx.cmd playwright-cli install-browser chromium
+npm.cmd run smoke:browser
 
 cd ..
 .\.venv\Scripts\platformio.exe run -d firmware
