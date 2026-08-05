@@ -16,8 +16,11 @@ interface OsmdCursor {
 
 interface OsmdInstance {
   cursor: OsmdCursor;
+  Sheet: { Transpose: number };
+  TransposeCalculator: unknown;
   load(content: string): Promise<unknown>;
   render(): void;
+  updateGraphic(): void;
   setOptions(options: Record<string, unknown>): void;
 }
 
@@ -46,8 +49,8 @@ export class SheetRenderer {
     observer.observe(container);
   }
 
-  async load(xml: string, score: ParsedScore): Promise<void> {
-    const { OpenSheetMusicDisplay } = await import("opensheetmusicdisplay");
+  async load(xml: string, score: ParsedScore, transpose = 0): Promise<void> {
+    const { OpenSheetMusicDisplay, TransposeCalculator } = await import("opensheetmusicdisplay");
     this.container.replaceChildren();
     this.osmd = new OpenSheetMusicDisplay(this.container, {
       // OSMD's internal autoResize can repeatedly retrigger layout in an
@@ -60,6 +63,11 @@ export class SheetRenderer {
       followCursor: true,
     }) as unknown as OsmdInstance;
     await this.osmd.load(xml);
+    this.osmd.TransposeCalculator = new TransposeCalculator();
+    if (transpose !== 0) {
+      this.osmd.Sheet.Transpose = transpose;
+      this.osmd.updateGraphic();
+    }
     this.osmd.render();
     this.renderedWidth = Math.round(this.container.getBoundingClientRect().width);
     this.score = score;
@@ -67,6 +75,16 @@ export class SheetRenderer {
     this.currentSeconds = 0;
     this.cursorAvailable = true;
     this.seek(0);
+  }
+
+  setTranspose(semitones: number): void {
+    if (!this.osmd) return;
+    this.osmd.Sheet.Transpose = semitones;
+    this.osmd.updateGraphic();
+    this.osmd.render();
+    this.renderedWidth = Math.round(this.container.getBoundingClientRect().width);
+    this.currentMeasure = -1;
+    this.seek(this.currentSeconds);
   }
 
   clear(): void {

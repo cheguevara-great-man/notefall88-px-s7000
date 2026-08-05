@@ -1,5 +1,11 @@
 import "./style.css";
 
+import {
+  clampPianoNote,
+  FIRST_PIANO_NOTE,
+  normalizeKeyOffsets,
+  pianoNoteName,
+} from "./calibration";
 import { DeviceLink } from "./device";
 import { parseMidiFile } from "./midi";
 import { parseMusicXmlFile } from "./musicxml";
@@ -34,6 +40,7 @@ import type {
 } from "./types";
 import { WaterfallRenderer } from "./waterfall";
 import { SheetRenderer } from "./sheet";
+import { transposeLabel, transposeScore } from "./transpose";
 
 function required<T extends HTMLElement = HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -51,6 +58,7 @@ const tempoSelect = required<HTMLSelectElement>("tempo");
 const viewMode = required<HTMLSelectElement>("view-mode");
 const handSelect = required<HTMLSelectElement>("hand-selection");
 const leadTime = required<HTMLInputElement>("lead-time");
+const transposeInput = required<HTMLInputElement>("transpose");
 const loopEnabled = required<HTMLInputElement>("loop-enabled");
 const loopStart = required<HTMLInputElement>("loop-start");
 const loopEnd = required<HTMLInputElement>("loop-end");
@@ -73,6 +81,8 @@ const libraryFolderFilter = required<HTMLSelectElement>("library-folder-filter")
 const brightness = required<HTMLInputElement>("brightness");
 const pixelOffset = required<HTMLInputElement>("pixel-offset");
 const reversed = required<HTMLInputElement>("strip-reversed");
+const keyNote = required<HTMLInputElement>("key-note");
+const keyOffset = required<HTMLInputElement>("key-offset");
 const waterfallCanvas = required<HTMLCanvasElement>("waterfall");
 const visualizerCard = required("visualizer-card");
 const sheetView = required("sheet-view");
@@ -87,6 +97,7 @@ const recorder = new PerformanceRecorder();
 const library = new ScoreLibrary();
 
 let score: ParsedScore | undefined;
+let sourceScore: ParsedScore | undefined;
 let chords: Chord[] = [];
 let waitIndex = 0;
 let currentTarget: TargetNote[] = [];
@@ -101,8 +112,10 @@ let lastStatsSignature = "";
 let lastRecording = recorder.snapshot();
 let pianoWasConnected = false;
 let scoreXml: string | undefined;
+let transposeSemitones = 0;
 let libraryFolders: LibraryFolder[] = [];
 let libraryScores: LibraryScore[] = [];
+let keyOffsets = normalizeKeyOffsets([]);
 
 function formatTime(seconds: number): string {
   const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
@@ -165,7 +178,8 @@ function updateScoreLabel(): void {
   if (!score) return;
   const selectedCount = filterNotesByHand(score.notes, hand).length;
   const suffix = selectedCount === score.notes.length ? "" : ` · 当前声部 ${selectedCount}`;
-  scoreName.textContent = `${score.name} · ${score.notes.length} 音符${suffix}`;
+  const transposeSuffix = transposeSemitones === 0 ? "" : ` · ${transposeLabel(transposeSemitones)}`;
+  scoreName.textContent = `${score.name} · ${score.notes.length} 音符${suffix}${transposeSuffix}`;
 }
 
 function resetPractice(resetStats = true): void {
@@ -320,14 +334,15 @@ function parseScoreSource(buffer: ArrayBuffer, fileName: string): { parsed: Pars
 }
 
 async function activateScore(parsed: ParsedScore, xml?: string): Promise<void> {
-  score = parsed;
+  sourceScore = parsed;
+  score = transposeScore(parsed, transposeSemitones);
   scoreXml = xml;
   if (xml) {
     viewMode.value = "sheet";
     // OSMD must render into a visible, non-zero-width container. Rendering
     // while the sheet panel is still hidden can cause pathological layout.
     updateViewMode();
-    await sheetRenderer.load(xml, parsed);
+    await sheetRenderer.load(xml, score, transposeSemitones);
   } else {
     sheetRenderer.clear();
     viewMode.value = "waterfall";
@@ -587,6 +602,15 @@ leadTime.addEventListener("input", () => {
   required("lead-value").textContent = `${(leadMs / 1000).toFixed(1)} 秒`;
   lastTargetSignature = "";
 });
+transposeInput.addEventListener("input", () => {
+  transposeSemitones = Number(transposeInput.value);
+  required("transpose-value").textContent = transposeLabel(transposeSemitones);
+  if (!sourceScore) return;
+  score = transposeScore(sourceScore, transposeSemitones);
+  renderer.setScore(score);
+  if (scoreXml) sheetRenderer.setTranspose(transposeSemitones);
+  rebuildPractice();
+});
 loopEnabled.addEventListener("change", () => {
   loopStart.disabled = !loopEnabled.checked;
   loopEnd.disabled = !loopEnabled.checked;
@@ -627,6 +651,20 @@ function sendCalibration(): void {
   required("offset-value").textContent = pixelOffset.value;
   device.configure(Number(brightness.value), Number(pixelOffset.value), reversed.checked);
 }
+
+function updateKeyCalibration(): void {
+  const note = clampPianoNote(Number(keyNote.value));
+  keyNote.value = String(note);
+  keyOffset.value = String(keyOffsets[note - FIRST_PIANO_NOTE] ?? 0);
+  required("key-note-value").textContent = `${pianoNoteName(note)} (${note})`;
+  required("key-offset-value").textContent = keyOffset.value;
+}
+
+function selectCalibrationNote(note: number): void {
+  keyNote.value = String(clampPianoNote(note));
+  updateKeyCalibration();
+}
+
 brightness.addEventListener("input", sendCalibration);
 pixelOffset.addEventListener("input", sendCalibration);
 reversed.addEventListener("change", sendCalibration);
@@ -634,6 +672,22 @@ required("test-a0").addEventListener("click", () => device.testNote(21));
 required("test-c4").addEventListener("click", () => device.testNote(60));
 required("test-c8").addEventListener("click", () => device.testNote(108));
 required("blackout").addEventListener("click", () => device.blackout());
+keyNote.addEventListener("input", updateKeyCalibration);
+keyOffset.addEventListener("input", () => {
+  const note = clampPianoNote(Number(keyNote.value));
+  const offset = Number(keyOffset.value);
+  keyOffsets[note - FIRST_PIANO_NOTE] = offset;
+  required("key-offset-value").textContent = String(offset);
+  device.setKeyOffset(note, offset);
+  device.testNote(note);
+});
+required("key-previous").addEventListener("click", () => selectCalibrationNote(Number(keyNote.value) - 1));
+required("key-next").addEventListener("click", () => selectCalibrationNote(Number(keyNote.value) + 1));
+required("key-test").addEventListener("click", () => device.testNote(Number(keyNote.value)));
+required("key-reset").addEventListener("click", () => {
+  keyOffset.value = "0";
+  keyOffset.dispatchEvent(new Event("input"));
+});
 required<HTMLFormElement>("wifi-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const ssid = required<HTMLInputElement>("wifi-ssid").value.trim();
@@ -675,13 +729,17 @@ device.onStatus((status: DeviceStatus) => {
       : "0.0"} / ${(status.psramBytes / 1024 / 1024).toFixed(1)} MiB`
     : "未检测到";
   required("diag-rssi").textContent = status.rssi ? `${status.rssi} dBm` : "热点模式";
-  if (status.protocol !== undefined && status.protocol !== 3) {
+  if (status.protocol !== undefined && status.protocol !== 4) {
     deviceStatus.textContent = `协议不兼容 v${status.protocol}`;
     deviceStatus.dataset.state = "offline";
   }
 });
 device.onMidi(handleMidi);
 device.onControl(handleControl);
+device.onCalibration((calibration) => {
+  keyOffsets = normalizeKeyOffsets(calibration.offsets);
+  updateKeyCalibration();
+});
 device.connect();
 void refreshLibrary().catch((error: unknown) => {
   librarySummary.textContent = error instanceof Error ? error.message : "无法打开曲库";

@@ -110,6 +110,10 @@
           <span>实体灯提前量：<strong id="lead-value">0.9 秒</strong></span>
           <input id="lead-time" type="range" min="300" max="2000" step="100" value="900" />
         </label>
+        <label>
+          <span>移调：<strong id="transpose-value">原调</strong></span>
+          <input id="transpose" type="range" min="-12" max="12" step="1" value="0" />
+        </label>
         <label class="switch-line">
           <span>循环 A–B 片段</span>
           <input id="loop-enabled" type="checkbox" />
@@ -153,6 +157,23 @@
           <button id="test-c4" class="primary">测试中央 C</button>
           <button id="test-c8">测试最高 C</button>
           <button id="blackout">全部熄灭</button>
+        </div>
+        <hr />
+        <h3>逐键微调</h3>
+        <p>只有个别键仍偏位时才使用。每步移动一个灯珠；先调全局偏移，再从中央 C 向两端检查。</p>
+        <label>
+          <span>当前键：<strong id="key-note-value">C4 (60)</strong></span>
+          <input id="key-note" type="range" min="21" max="108" value="60" />
+        </label>
+        <label>
+          <span>当前键修正：<strong id="key-offset-value">0</strong></span>
+          <input id="key-offset" type="range" min="-4" max="4" value="0" />
+        </label>
+        <div class="button-row">
+          <button id="key-previous">上一键</button>
+          <button id="key-test" class="primary">点亮当前键</button>
+          <button id="key-next">下一键</button>
+          <button id="key-reset">当前键归零</button>
         </div>
         <hr />
         <h3>加入家庭 Wi-Fi（可选）</h3>

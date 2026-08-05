@@ -62,6 +62,10 @@ export interface MidiControlEvent {
   timestamp: number;
 }
 
+export interface CalibrationState {
+  offsets: number[];
+}
+
 export interface PracticeStats {
   hits: number;
   wrong: number;

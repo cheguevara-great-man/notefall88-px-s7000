@@ -17,6 +17,7 @@ NoteFall 对一个乐谱保留两种互补表示：
 - MXL 读取 `META-INF/container.xml` 指定的根文件；
 - 源文件与解压总量各限 32 MiB，并在解压前检查 ZIP 中央目录声明，拦截明显 zip bomb；
 - OSMD 首次选择五线谱时才动态加载，手机瀑布流首屏不承担其解析成本。
+- 用户移调时 NoteFall 时间线和 OSMD `TransposeCalculator` 同步更新，原始 MusicXML 与曲库哈希保持不变。
 
 ## 当前明确不支持
 

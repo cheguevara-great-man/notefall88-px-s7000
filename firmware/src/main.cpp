@@ -41,6 +41,7 @@ bool restartRequested = false;
 uint8_t webClients = 0;
 uint8_t brightness = kDefaultGlobalBrightness;
 int8_t pixelOffset = 0;
+int8_t keyPixelOffsets[kNoteCount]{};
 bool stripReversed = false;
 uint32_t lastTargetMs = 0;
 uint32_t lastLedRefreshMs = 0;
@@ -53,6 +54,7 @@ constexpr Rgb kRightTarget{255, 42, 175};
 constexpr Rgb kCorrect{35, 255, 104};
 constexpr Rgb kWrong{255, 55, 28};
 constexpr Rgb kTest{255, 210, 32};
+constexpr int8_t kMaxKeyPixelOffset = 4;
 
 template <typename T>
 T clampValue(T value, T low, T high) {
@@ -65,7 +67,8 @@ size_t noteIndex(uint8_t note) { return static_cast<size_t>(note - kFirstMidiNot
 
 int mappedPixel(uint8_t note) {
   if (!validNote(note)) return -1;
-  int pixel = static_cast<int>(kPixelByNote[noteIndex(note)]) + pixelOffset;
+  const size_t index = noteIndex(note);
+  int pixel = static_cast<int>(kPixelByNote[index]) + pixelOffset + keyPixelOffsets[index];
   if (stripReversed) pixel = static_cast<int>(kPixelCount) - 1 - pixel;
   return pixel >= 0 && pixel < static_cast<int>(kPixelCount) ? pixel : -1;
 }
@@ -121,6 +124,17 @@ void sendStatus(uint8_t client = 255) {
   doc["usbPid"] = usb.productId;
   doc["usbEndpoint"] = usb.endpointAddress;
   doc["usbPacketSize"] = usb.endpointPacketSize;
+  String payload;
+  serializeJson(doc, payload);
+  if (client == 255) websocket.broadcastTXT(payload);
+  else websocket.sendTXT(client, payload);
+}
+
+void sendCalibration(uint8_t client = 255) {
+  JsonDocument doc;
+  doc["t"] = "calibration";
+  JsonArray offsets = doc["offsets"].to<JsonArray>();
+  for (const int8_t offset : keyPixelOffsets) offsets.add(offset);
   String payload;
   serializeJson(doc, payload);
   if (client == 255) websocket.broadcastTXT(payload);
@@ -205,6 +219,7 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
 
   if (strcmp(type, "hello") == 0) {
     sendStatus(client);
+    sendCalibration(client);
   } else if (strcmp(type, "target") == 0) {
     clearTargets();
     const JsonArray targets = doc["notes"].as<JsonArray>();
@@ -224,6 +239,14 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
     stripReversed = doc["reversed"] | stripReversed;
     saveCalibration();
     sendStatus();
+  } else if (strcmp(type, "keyOffset") == 0) {
+    const int note = doc["n"] | -1;
+    if (!validNote(note)) return;
+    const size_t index = noteIndex(static_cast<uint8_t>(note));
+    keyPixelOffsets[index] = static_cast<int8_t>(clampValue<int>(
+        doc["offset"] | keyPixelOffsets[index], -kMaxKeyPixelOffset, kMaxKeyPixelOffset));
+    preferences.putBytes("keyOffsets", keyPixelOffsets, sizeof(keyPixelOffsets));
+    sendCalibration();
   } else if (strcmp(type, "test") == 0) {
     const int note = doc["n"] | -1;
     if (validNote(note)) {
@@ -322,6 +345,9 @@ void setup() {
   pixelOffset = static_cast<int8_t>(clampValue<int>(preferences.getChar("offset", 0),
                                                     kMinPixelOffset, kMaxPixelOffset));
   stripReversed = preferences.getBool("reversed", false);
+  if (preferences.getBytesLength("keyOffsets") == sizeof(keyPixelOffsets)) {
+    preferences.getBytes("keyOffsets", keyPixelOffsets, sizeof(keyPixelOffsets));
+  }
 
   if (!strip.begin()) Serial.println("FATAL: LED strip allocation failed");
   if (!LittleFS.begin(true)) Serial.println("WARN: LittleFS unavailable; web UI will not load");

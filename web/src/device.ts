@@ -1,4 +1,10 @@
-import type { DeviceStatus, MidiControlEvent, MidiInputEvent, TargetNote } from "./types";
+import type {
+  CalibrationState,
+  DeviceStatus,
+  MidiControlEvent,
+  MidiInputEvent,
+  TargetNote,
+} from "./types";
 import { TargetSync } from "./target-sync";
 
 type Listener<T> = (value: T) => void;
@@ -9,6 +15,7 @@ export class DeviceLink {
   private statusListeners: Listener<DeviceStatus>[] = [];
   private midiListeners: Listener<MidiInputEvent>[] = [];
   private controlListeners: Listener<MidiControlEvent>[] = [];
+  private calibrationListeners: Listener<CalibrationState>[] = [];
   private connectionListeners: Listener<boolean>[] = [];
   private lastPing = 0;
   private pingTimer?: number;
@@ -25,7 +32,7 @@ export class DeviceLink {
       this.reconnectAttempt = 0;
       window.clearTimeout(this.pingTimer);
       this.connectionListeners.forEach((listener) => listener(true));
-      this.send({ t: "hello", v: 3 });
+      this.send({ t: "hello", v: 4 });
       this.targetSync.reconnect();
       if (this.heartbeatTimer === undefined) {
         this.heartbeatTimer = window.setInterval(() => this.targetSync.heartbeat(), 250);
@@ -69,6 +76,9 @@ export class DeviceLink {
         timestamp: Number(message.ts ?? 0),
       };
       this.controlListeners.forEach((listener) => listener(control));
+    } else if (message.t === "calibration" && Array.isArray(message.offsets)) {
+      const calibration = { offsets: message.offsets.map(Number) };
+      this.calibrationListeners.forEach((listener) => listener(calibration));
     } else if (message.t === "pong") {
       this.latencyMs = Math.max(0, performance.now() - this.lastPing);
       window.clearTimeout(this.pingTimer);
@@ -101,6 +111,10 @@ export class DeviceLink {
     this.send({ t: "config", brightness, offset, reversed });
   }
 
+  setKeyOffset(note: number, offset: number): void {
+    this.send({ t: "keyOffset", n: note, offset });
+  }
+
   testNote(note: number): void {
     this.send({ t: "test", n: note });
   }
@@ -123,6 +137,10 @@ export class DeviceLink {
 
   onControl(listener: Listener<MidiControlEvent>): void {
     this.controlListeners.push(listener);
+  }
+
+  onCalibration(listener: Listener<CalibrationState>): void {
+    this.calibrationListeners.push(listener);
   }
 
   onConnection(listener: Listener<boolean>): void {
