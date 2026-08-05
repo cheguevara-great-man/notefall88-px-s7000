@@ -168,18 +168,31 @@ export class WaitMatcher {
     if (correct) this.matched.add(note);
     else this.wrong.add(note);
     return {
-      complete: this.expected.size > 0 && this.matched.size === this.expected.size,
+      complete: this.isComplete(),
       correct,
       newlyMatched,
     };
   }
 
-  noteOff(note: number): void {
-    this.wrong.delete(note);
+  noteOff(note: number): { complete: boolean } {
+    if (this.expected.has(note)) this.matched.delete(note);
+    else this.wrong.delete(note);
+    return { complete: this.isComplete() };
+  }
+
+  allNotesOff(): void {
+    this.matched.clear();
+    this.wrong.clear();
   }
 
   expectedNotes(): Set<number> {
     return new Set(this.expected);
+  }
+
+  private isComplete(): boolean {
+    return this.expected.size > 0
+      && this.matched.size === this.expected.size
+      && this.wrong.size === 0;
   }
 }
 

@@ -690,7 +690,11 @@ function handleMidi(event: MidiInputEvent): void {
   } else {
     pressed.delete(event.note);
     wrong.delete(event.note);
-    waitMatcher.noteOff(event.note);
+    const released = waitMatcher.noteOff(event.note);
+    if (released.complete && score && mode !== "realtime" && !followAdvancePending && currentWaitChord()) {
+      if (mode === "follow") advanceFollowMode();
+      else advanceWaitMode();
+    }
   }
   recorder.handleMidi(event, performance.now());
   finishTruncatedRecording();
@@ -706,6 +710,7 @@ function handleControl(event: MidiControlEvent): void {
   } else if (event.controller === 120 || event.controller === 123) {
     pressed.clear();
     wrong.clear();
+    waitMatcher.allNotesOff();
   }
 }
 
@@ -1346,6 +1351,7 @@ device.onStatus((status: DeviceStatus) => {
     cancelFollowPlayback(false);
     pressed.clear();
     wrong.clear();
+    waitMatcher.allNotesOff();
     recorder.allNotesOff(performance.now());
     setStatus(sustainStatus, false, "延音踏板松开");
   }

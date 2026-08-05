@@ -39,7 +39,28 @@ describe("practice engine", () => {
     expect(matcher.noteOn(60)).toEqual({ complete: false, correct: true, newlyMatched: true });
     expect(matcher.noteOn(60)).toEqual({ complete: false, correct: true, newlyMatched: false });
     expect(matcher.noteOn(61)).toEqual({ complete: false, correct: false, newlyMatched: false });
-    expect(matcher.noteOn(64)).toEqual({ complete: true, correct: true, newlyMatched: true });
+    expect(matcher.noteOn(64)).toEqual({ complete: false, correct: true, newlyMatched: true });
+    expect(matcher.noteOff(61)).toEqual({ complete: true });
+  });
+
+  it("does not accept a chord assembled from keys that were already released", () => {
+    const matcher = new WaitMatcher();
+    matcher.setChord(groupChords(notes)[0]);
+    expect(matcher.noteOn(60).complete).toBe(false);
+    expect(matcher.noteOff(60).complete).toBe(false);
+    expect(matcher.noteOn(64).complete).toBe(false);
+    expect(matcher.noteOn(60).complete).toBe(true);
+    matcher.allNotesOff();
+    expect(matcher.noteOn(60).complete).toBe(false);
+  });
+
+  it("waits for a held wrong key to be released while preserving the correct chord", () => {
+    const matcher = new WaitMatcher();
+    matcher.setChord(groupChords(notes)[0]);
+    expect(matcher.noteOn(61)).toMatchObject({ correct: false, complete: false });
+    expect(matcher.noteOn(60).complete).toBe(false);
+    expect(matcher.noteOn(64).complete).toBe(false);
+    expect(matcher.noteOff(61).complete).toBe(true);
   });
 
   it("preserves score time while changing speed", () => {
