@@ -32,6 +32,8 @@ ESP32 上另一个 UART Micro-USB 口 ──> 仅刷机/调试，可平时拔掉
 
 不要把 OTG 线插到开发板的 `UART` 口。PX-S7000 连接的是方形 USB-B `USB TO HOST` 口，而不是安装 WU-BT10 的 USB-A 口。
 
+这是一条双向 USB-MIDI 链路：钢琴把按键/踏板发送给 ESP32，ESP32 也可把“跟随我”模式的另一只手音符送回钢琴音源。Casio [PX-S7000 用户手册](https://www.casio.com/content/dam/casio/global/support/manuals/electronic-musical-instruments/pdf/008-en/p/PXS7000_usersguide_EN.pdf) 明确说明该接口可发送和接收演奏 MIDI；固件仍会在每次连接时独立探测 OUT 端点，没有 OUT 时不盲目发送。
+
 ## 灯带接线
 
 ```text

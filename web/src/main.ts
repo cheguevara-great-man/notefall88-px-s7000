@@ -19,6 +19,8 @@ import {
 import {
   chordsInRange,
   filterNotesByHand,
+  FollowAccompanimentPlanner,
+  followWaitMs,
   groupChords,
   nextRealtimeChord,
   normalizeLoop,
@@ -31,6 +33,7 @@ import {
 import type { Chord, LoopRange } from "./practice";
 import type {
   DeviceStatus,
+  Hand,
   HandSelection,
   MidiControlEvent,
   MidiInputEvent,
@@ -65,6 +68,7 @@ const loopEnd = required<HTMLInputElement>("loop-end");
 const loopControls = required("loop-controls");
 const deviceStatus = required<HTMLSpanElement>("device-status");
 const pianoStatus = required<HTMLSpanElement>("piano-status");
+const midiOutStatus = required<HTMLSpanElement>("midi-out-status");
 const sustainStatus = required<HTMLSpanElement>("sustain-status");
 const scoreName = required("score-name");
 const scoreTime = required("score-time");
@@ -116,6 +120,16 @@ let transposeSemitones = 0;
 let libraryFolders: LibraryFolder[] = [];
 let libraryScores: LibraryScore[] = [];
 let keyOffsets = normalizeKeyOffsets([]);
+let followAdvanceTimer: number | undefined;
+let followAdvancePending = false;
+let midiOutAvailable = false;
+let midiOutOwnedByThisPage = false;
+let midiOutBlocked = false;
+let followPlanner = new FollowAccompanimentPlanner([]);
+
+function canUseMidiOut(): boolean {
+  return midiOutAvailable && !midiOutBlocked;
+}
 
 function formatTime(seconds: number): string {
   const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
@@ -151,6 +165,18 @@ function currentWaitChord(): Chord | undefined {
   return chords[waitIndex];
 }
 
+function practicedFollowHand(): Hand {
+  return hand === "left" ? "left" : "right";
+}
+
+function cancelFollowPlayback(sendPanic = true): void {
+  window.clearTimeout(followAdvanceTimer);
+  followAdvanceTimer = undefined;
+  followAdvancePending = false;
+  if (sendPanic) device.panicMidi();
+  midiOutOwnedByThisPage = false;
+}
+
 function renderStats(): void {
   const stats = practiceScore.snapshot();
   const signature = `${stats.hits}:${stats.wrong}:${stats.missed}:${stats.accuracy.toFixed(1)}`;
@@ -162,15 +188,15 @@ function renderStats(): void {
 
 function updateTarget(scoreSeconds: number): void {
   const loop = selectedLoop();
-  const chord = mode === "wait"
-    ? currentWaitChord()
-    : nextRealtimeChord(chords, scoreSeconds, leadMs, loop);
+  const chord = mode === "realtime"
+    ? nextRealtimeChord(chords, scoreSeconds, leadMs, loop)
+    : (followAdvancePending ? undefined : currentWaitChord());
   currentTarget = targetNotes(chord);
   const signature = currentTarget.map((target) => `${target.note}:${target.hand}`).join(",");
   if (signature !== lastTargetSignature) {
     device.setTargets(currentTarget);
     lastTargetSignature = signature;
-    if (mode === "wait") waitMatcher.setChord(chord);
+    if (mode !== "realtime") waitMatcher.setChord(chord);
   }
 }
 
@@ -183,6 +209,7 @@ function updateScoreLabel(): void {
 }
 
 function resetPractice(resetStats = true): void {
+  cancelFollowPlayback();
   const start = rangeStart();
   clock.reset(start);
   waitIndex = 0;
@@ -194,7 +221,7 @@ function resetPractice(resetStats = true): void {
   realtimeMatcher.setChords(chords);
   waitMatcher.setChord(currentWaitChord());
   updateTarget(start);
-  playButton.textContent = mode === "wait" ? "开始练习" : "播放";
+  playButton.textContent = mode === "realtime" ? "播放" : "开始练习";
   renderStats();
 }
 
@@ -253,18 +280,67 @@ function advanceWaitMode(): void {
   waitMatcher.setChord(next);
 }
 
+function advanceFollowMode(): void {
+  const current = currentWaitChord();
+  if (!score || !current || followAdvancePending) return;
+  const loop = selectedLoop();
+  const directNext = chords[waitIndex + 1];
+  const wrappedNext = !directNext && loop && chords.length > 0 ? chords[0] : undefined;
+  const next = directNext ?? wrappedNext;
+  const windowEnd = directNext?.start ?? rangeEnd();
+  const speed = Number(tempoSelect.value);
+  const accompaniment = followPlanner.events(
+    practicedFollowHand(),
+    current.start,
+    windowEnd,
+    speed,
+  );
+  if (canUseMidiOut() && accompaniment.length > 0) device.scheduleMidi(accompaniment);
+
+  if (!next) {
+    advanceWaitMode();
+    if (canUseMidiOut() && accompaniment.length > 0) {
+      const releaseDelay = Math.max(...accompaniment.map((event) => event.delayMs)) + 120;
+      followAdvanceTimer = window.setTimeout(() => {
+        device.panicMidi();
+        midiOutOwnedByThisPage = false;
+      }, releaseDelay);
+    }
+    return;
+  }
+  const nextTimelineStart = directNext
+    ? directNext.start
+    : current.start + (rangeEnd() - current.start) + (next.start - rangeStart());
+  const delayMs = followWaitMs(current.start, nextTimelineStart, speed);
+  followAdvancePending = true;
+  waitMatcher.setChord(undefined);
+  currentTarget = [];
+  device.setTargets([]);
+  lastTargetSignature = "";
+  playButton.textContent = canUseMidiOut() ? "跟随中" : "跟随中（无钢琴输出）";
+  followAdvanceTimer = window.setTimeout(() => {
+    if (mode !== "follow" || !followAdvancePending) return;
+    followAdvancePending = false;
+    advanceWaitMode();
+    updateTarget(currentWaitChord()?.start ?? rangeEnd());
+  }, delayMs);
+}
+
 function handleMidi(event: MidiInputEvent): void {
   if (event.note < 21 || event.note > 108) return;
   if (event.state === "on") {
     pressed.add(event.note);
-    if (score && mode === "wait" && currentWaitChord()) {
+    if (score && mode !== "realtime" && !followAdvancePending && currentWaitChord()) {
       const result = waitMatcher.noteOn(event.note);
       if (result.newlyMatched) practiceScore.recordHit();
       else if (!result.correct) {
         practiceScore.recordWrong();
         wrong.add(event.note);
       }
-      if (result.complete) advanceWaitMode();
+      if (result.complete) {
+        if (mode === "follow") advanceFollowMode();
+        else advanceWaitMode();
+      }
     } else if (score && mode === "realtime" && clock.isRunning()) {
       const result = realtimeMatcher.noteOn(event.note, lastScoreSeconds);
       if (!result.correct) wrong.add(event.note);
@@ -336,6 +412,7 @@ function parseScoreSource(buffer: ArrayBuffer, fileName: string): { parsed: Pars
 async function activateScore(parsed: ParsedScore, xml?: string): Promise<void> {
   sourceScore = parsed;
   score = transposeScore(parsed, transposeSemitones);
+  followPlanner = new FollowAccompanimentPlanner(score.notes);
   scoreXml = xml;
   if (xml) {
     viewMode.value = "sheet";
@@ -572,9 +649,11 @@ required<HTMLInputElement>("library-restore").addEventListener("change", async (
 
 playButton.addEventListener("click", () => {
   if (!score || chords.length === 0) return;
-  if (mode === "wait") {
+  if (mode !== "realtime") {
     clock.seek(currentWaitChord()?.start ?? rangeEnd());
-    playButton.textContent = "等待你弹";
+    playButton.textContent = mode === "follow"
+      ? (canUseMidiOut() ? "等待你弹（钢琴伴奏）" : "等待你弹（无钢琴输出）")
+      : "等待你弹";
     return;
   }
   if (clock.isRunning()) {
@@ -590,11 +669,24 @@ playButton.addEventListener("click", () => {
 resetButton.addEventListener("click", () => resetPractice(true));
 modeSelect.addEventListener("change", () => {
   mode = modeSelect.value as PracticeMode;
-  resetPractice(true);
+  if (mode === "follow" && hand === "both") {
+    hand = "right";
+    handSelect.value = hand;
+    rebuildPractice();
+  } else {
+    resetPractice(true);
+  }
 });
-tempoSelect.addEventListener("change", () => clock.setSpeed(Number(tempoSelect.value), performance.now()));
+tempoSelect.addEventListener("change", () => {
+  clock.setSpeed(Number(tempoSelect.value), performance.now());
+  if (mode === "follow") resetPractice(true);
+});
 handSelect.addEventListener("change", () => {
   hand = handSelect.value as HandSelection;
+  if (mode === "follow" && hand === "both") {
+    hand = "right";
+    handSelect.value = hand;
+  }
   rebuildPractice();
 });
 leadTime.addEventListener("input", () => {
@@ -607,6 +699,7 @@ transposeInput.addEventListener("input", () => {
   required("transpose-value").textContent = transposeLabel(transposeSemitones);
   if (!sourceScore) return;
   score = transposeScore(sourceScore, transposeSemitones);
+  followPlanner = new FollowAccompanimentPlanner(score.notes);
   renderer.setScore(score);
   if (scoreXml) sheetRenderer.setTranspose(transposeSemitones);
   rebuildPractice();
@@ -696,11 +789,26 @@ required<HTMLFormElement>("wifi-form").addEventListener("submit", (event) => {
 });
 
 device.onConnection((connected) => {
+  if (!connected) {
+    cancelFollowPlayback(false);
+    midiOutOwnedByThisPage = false;
+  }
   setStatus(deviceStatus, connected, connected ? "ESP 已连接" : "ESP 未连接");
 });
 device.onStatus((status: DeviceStatus) => {
+  midiOutAvailable = Boolean(status.usbOut);
+  const midiOutOwnedElsewhere = Boolean(status.usbOutOwned) && !midiOutOwnedByThisPage;
+  midiOutBlocked = midiOutOwnedElsewhere;
+  setStatus(
+    midiOutStatus,
+    midiOutAvailable && !midiOutOwnedElsewhere,
+    !midiOutAvailable
+      ? "钢琴伴奏不可用"
+      : (midiOutOwnedByThisPage ? "钢琴伴奏输出中" : (midiOutOwnedElsewhere ? "伴奏被其他页面占用" : "钢琴伴奏可用")),
+  );
   setStatus(pianoStatus, status.piano, status.piano ? "钢琴 USB 已连接" : "钢琴未连接");
   if (pianoWasConnected && !status.piano) {
+    cancelFollowPlayback(false);
     pressed.clear();
     wrong.clear();
     recorder.allNotesOff(performance.now());
@@ -717,8 +825,14 @@ device.onStatus((status: DeviceStatus) => {
   required("diag-endpoint").textContent = status.usbEndpoint
     ? `0x${formatHex(status.usbEndpoint, 2)} / ${status.usbPacketSize ?? "--"} B`
     : "--";
+  required("diag-out-endpoint").textContent = status.usbOutEndpoint
+    ? `0x${formatHex(status.usbOutEndpoint, 2)} / ${status.usbOutPacketSize ?? "--"} B`
+    : (status.piano ? "设备未提供" : "--");
   required("diag-packets").textContent = String(status.usbPackets ?? "--");
   required("diag-errors").textContent = `${status.usbDropped ?? "--"} / ${status.usbErrors ?? "--"}`;
+  required("diag-out-packets").textContent = `${status.usbOutPackets ?? "--"} / ${status.usbOutQueued ?? "--"}`;
+  required("diag-out-errors").textContent = `${status.usbOutDropped ?? "--"} / ${status.usbOutErrors ?? "--"}`;
+  required("diag-echo").textContent = String(status.usbEchoSuppressed ?? "--");
   required("diag-connections").textContent = String(status.usbConnections ?? "--");
   required("diag-heap").textContent = status.freeHeap === undefined
     ? "--"
@@ -729,7 +843,7 @@ device.onStatus((status: DeviceStatus) => {
       : "0.0"} / ${(status.psramBytes / 1024 / 1024).toFixed(1)} MiB`
     : "未检测到";
   required("diag-rssi").textContent = status.rssi ? `${status.rssi} dBm` : "热点模式";
-  if (status.protocol !== undefined && status.protocol !== 4) {
+  if (status.protocol !== undefined && status.protocol !== 5) {
     deviceStatus.textContent = `协议不兼容 v${status.protocol}`;
     deviceStatus.dataset.state = "offline";
   }
@@ -740,6 +854,15 @@ device.onCalibration((calibration) => {
   keyOffsets = normalizeKeyOffsets(calibration.offsets);
   updateKeyCalibration();
 });
+device.onMidiOutResult((result) => {
+  midiOutOwnedByThisPage = result.ok;
+  midiOutBlocked = result.busy;
+  if (result.busy) {
+    setStatus(midiOutStatus, false, "伴奏被其他页面占用");
+  } else if (result.ok) {
+    setStatus(midiOutStatus, true, `钢琴伴奏输出中 · 队列 ${result.queued}`);
+  }
+});
 device.connect();
 void refreshLibrary().catch((error: unknown) => {
   librarySummary.textContent = error instanceof Error ? error.message : "无法打开曲库";
@@ -749,7 +872,7 @@ function frame(now: number): void {
   let scoreSeconds = clock.time(now);
   if (score) {
     const loop = selectedLoop();
-    if (mode === "wait") {
+    if (mode !== "realtime") {
       scoreSeconds = currentWaitChord()?.start ?? rangeEnd();
     } else if (clock.isRunning() && loop && scoreSeconds >= loop.end) {
       realtimeMatcher.advance(loop.end + 0.251);

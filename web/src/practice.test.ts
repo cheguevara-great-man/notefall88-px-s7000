@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   chordsInRange,
   filterNotesByHand,
+  followAccompanimentEvents,
+  followWaitMs,
   groupChords,
   nextRealtimeChord,
   normalizeLoop,
@@ -73,5 +75,53 @@ describe("practice engine", () => {
     const result = score.snapshot();
     expect(result).toMatchObject({ hits: 1, wrong: 1, missed: 1 });
     expect(result.accuracy).toBeCloseTo(100 / 3);
+  });
+
+  it("paces Follow Me from the player's hit time at the selected tempo", () => {
+    expect(followWaitMs(1, 2, 1)).toBe(1000);
+    expect(followWaitMs(1, 2, 0.5)).toBe(2000);
+    expect(followWaitMs(2, 1, 1)).toBe(0);
+  });
+
+  it("schedules only the opposite hand as timestamped MIDI output", () => {
+    const events = followAccompanimentEvents(notes, "right", 0.9, 2.5, 1);
+    expect(events).toEqual([
+      { delayMs: 1100, status: 0x90, data1: 48, data2: 90 },
+      { delayMs: 1500, status: 0x80, data1: 48, data2: 0 },
+    ]);
+  });
+
+  it("scales accompaniment note timing without mutating the score", () => {
+    const original = structuredClone(notes);
+    const events = followAccompanimentEvents(notes, "left", 1, 2, 0.5);
+    expect(events.slice(0, 2)).toEqual([
+      { delayMs: 0, status: 0x90, data1: 60, data2: 100 },
+      { delayMs: 60, status: 0x90, data1: 64, data2: 100 },
+    ]);
+    expect(notes).toEqual(original);
+  });
+
+  it("ends a repeated accompaniment pitch before retriggering it", () => {
+    const repeated: ScoreNote[] = [
+      { note: 72, start: 1, end: 3, velocity: 90, hand: "right" },
+      { note: 72, start: 2, end: 2.4, velocity: 95, hand: "right" },
+    ];
+    const events = followAccompanimentEvents(repeated, "left", 1, 3, 1);
+    expect(events.slice(0, 3)).toEqual([
+      { delayMs: 0, status: 0x90, data1: 72, data2: 90 },
+      { delayMs: 1000, status: 0x80, data1: 72, data2: 0 },
+      { delayMs: 1000, status: 0x90, data1: 72, data2: 95 },
+    ]);
+  });
+
+  it("merges duplicate unisons from multiple score voices", () => {
+    const unison: ScoreNote[] = [
+      { note: 67, start: 1, end: 1.3, velocity: 70, hand: "right" },
+      { note: 67, start: 1, end: 1.8, velocity: 100, hand: "right" },
+    ];
+    expect(followAccompanimentEvents(unison, "left", 1, 2, 1)).toEqual([
+      { delayMs: 0, status: 0x90, data1: 67, data2: 100 },
+      { delayMs: 800, status: 0x80, data1: 67, data2: 0 },
+    ]);
   });
 });

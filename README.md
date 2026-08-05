@@ -11,7 +11,7 @@ NoteFall 88 是面向 Casio PX-S7000 的可拆卸单排琴键提示灯。钢琴�
 ## 最终架构
 
 ```text
-PX-S7000 USB TO HOST ──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
+PX-S7000 USB TO HOST <──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
                                              │
                                 SPI ──> 74AHCT125 ──> 单排灯带
                                              │
@@ -20,7 +20,7 @@ PX-S7000 USB TO HOST ──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
                               手机 / 平板 / 电脑浏览器
 ```
 
-网页端可直接导入 MIDI、MusicXML、XML 和 MXL，按需显示瀑布流或五线谱，并提供实时/等待练习、左右手筛选、变速、±12 半音同步移调、A–B 循环和命中/错键/漏键统计。IndexedDB 曲库支持文件夹、内容去重和带 SHA-256 校验的完整备份；演奏录制包含力度、MIDI 通道和延音踏板，可导出标准 MIDI。钢琴按键数据走 USB 直达 ESP32，因此按键反馈不依赖无线链路。ESP32 默认建立 `NoteFall-88` 热点，浏览器打开 `http://192.168.4.1` 即可使用。
+网页端可直接导入 MIDI、MusicXML、XML 和 MXL，按需显示瀑布流或五线谱，并提供实时、等我弹和跟随我三种练习模式、左右手筛选、变速、±12 半音同步移调、A–B 循环和命中/错键/漏键统计。跟随我模式只要求用户弹一只手，另一只手经带时间戳的 USB-MIDI OUT 队列由 PX-S7000 自身音源演奏；若实机没有 OUT 端点则明确降级为无伴奏跟随。IndexedDB 曲库支持文件夹、内容去重和带 SHA-256 校验的完整备份；演奏录制包含力度、MIDI 通道和延音踏板，可导出标准 MIDI。钢琴按键数据走 USB 直达 ESP32，因此按键反馈不依赖无线链路。ESP32 默认建立 `NoteFall-88` 热点，浏览器打开 `http://192.168.4.1` 即可使用。
 
 ## 硬件基线
 
@@ -43,7 +43,7 @@ PX-S7000 USB TO HOST ──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
 - `tests/`：映射、功耗和机械包络测试
 - `docs/`：接线、装配、校准、测试和开源项目技术调研
 
-MusicXML 的当前支持范围、目标时间线与 OSMD 谱面之间的边界见 [MusicXML 说明](docs/musicxml.md)。
+MusicXML 的当前支持范围、目标时间线与 OSMD 谱面之间的边界见 [MusicXML 说明](docs/musicxml.md)；手机与 ESP32 的稳定消息边界见 [WebSocket 协议](docs/protocol.md)。
 
 ## 从这里开始
 
@@ -74,6 +74,6 @@ python scripts/render_cad.py
 
 ## 当前事实边界
 
-软件、映射、CAD 和固件可以数字验证；PX-S7000 与具体灯带批次的 USB 枚举、实际灯位偏移、温升和琴漆材料相容性仍必须在实物上完成最终验收。网页校准允许反向灯带、修正全局像素偏移，并为个别琴键做 ±4 像素微调，不需要重新写固件。
+软件、映射、CAD 和固件可以数字验证；Casio 官方文档确认 PX-S7000 的 USB-B 可双向发送/接收 MIDI 并驱动琴内音源，但具体实机的端点地址、批量伴奏与回声行为仍需验收。实际灯位偏移、温升和琴漆材料相容性也必须在实物上完成最终确认。网页校准允许反向灯带、修正全局像素偏移，并为个别琴键做 ±4 像素微调，不需要重新写固件。
 
 项目采用 MIT 许可证。现有项目的硬件拓扑、通信方式、功能、优缺点和采用边界见 [开源项目技术调研](docs/open-source-review.md)；为什么把 AGPL-3.0 的 Piano Trainer Studio 提升为第一软件参考但不直接 fork，见 [PTS 采用决策](docs/pts-adoption-decision.md)。

@@ -18,6 +18,7 @@
         <div class="status-row">
           <span class="status-pill" id="device-status" data-state="offline">ESP 未连接</span>
           <span class="status-pill" id="piano-status" data-state="offline">钢琴未连接</span>
+          <span class="status-pill" id="midi-out-status" data-state="offline">钢琴伴奏不可用</span>
           <span class="status-pill" id="sustain-status" data-state="offline">延音踏板松开</span>
         </div>
       </header>
@@ -35,6 +36,7 @@
           <span>模式</span>
           <select id="practice-mode">
             <option value="wait">等我弹</option>
+            <option value="follow">跟随我（钢琴伴奏）</option>
             <option value="realtime">实时</option>
           </select>
         </label>
@@ -128,7 +130,7 @@
             <input id="loop-end" type="range" min="0" max="1" step="0.1" value="1" disabled />
           </label>
         </div>
-        <p>实时模式按 ±180/250 ms 窗口判定；等我弹模式不会因思考时间判错。切换声部或循环范围会重新开始本次练习。</p>
+        <p>实时模式按 ±180/250 ms 窗口判定；等我弹模式不会因思考时间判错；跟随我模式只练一只手，另一只手由 PX-S7000 按你的实际速度伴奏。切换声部或循环范围会重新开始本次练习。</p>
       </aside>
 
       <aside id="settings-panel" class="settings-panel" hidden>
@@ -187,9 +189,13 @@
         <dl class="diagnostic-grid">
           <div><dt>固件 / 协议</dt><dd id="diag-version">--</dd></div>
           <div><dt>USB VID:PID</dt><dd id="diag-usb-id">--</dd></div>
-          <div><dt>USB 端点</dt><dd id="diag-endpoint">--</dd></div>
+          <div><dt>USB MIDI IN</dt><dd id="diag-endpoint">--</dd></div>
+          <div><dt>USB MIDI OUT</dt><dd id="diag-out-endpoint">--</dd></div>
           <div><dt>MIDI 包</dt><dd id="diag-packets">--</dd></div>
           <div><dt>丢包 / 错误</dt><dd id="diag-errors">--</dd></div>
+          <div><dt>OUT 发送 / 队列</dt><dd id="diag-out-packets">--</dd></div>
+          <div><dt>OUT 丢弃 / 错误</dt><dd id="diag-out-errors">--</dd></div>
+          <div><dt>抑制回声</dt><dd id="diag-echo">--</dd></div>
           <div><dt>连接次数</dt><dd id="diag-connections">--</dd></div>
           <div><dt>可用内存</dt><dd id="diag-heap">--</dd></div>
           <div><dt>PSRAM</dt><dd id="diag-psram">--</dd></div>

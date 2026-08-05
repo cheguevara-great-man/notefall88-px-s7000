@@ -3,6 +3,8 @@ import type {
   DeviceStatus,
   MidiControlEvent,
   MidiInputEvent,
+  MidiOutEvent,
+  MidiOutResult,
   TargetNote,
 } from "./types";
 import { TargetSync } from "./target-sync";
@@ -16,6 +18,7 @@ export class DeviceLink {
   private midiListeners: Listener<MidiInputEvent>[] = [];
   private controlListeners: Listener<MidiControlEvent>[] = [];
   private calibrationListeners: Listener<CalibrationState>[] = [];
+  private midiOutListeners: Listener<MidiOutResult>[] = [];
   private connectionListeners: Listener<boolean>[] = [];
   private lastPing = 0;
   private pingTimer?: number;
@@ -32,7 +35,7 @@ export class DeviceLink {
       this.reconnectAttempt = 0;
       window.clearTimeout(this.pingTimer);
       this.connectionListeners.forEach((listener) => listener(true));
-      this.send({ t: "hello", v: 4 });
+      this.send({ t: "hello", v: 5 });
       this.targetSync.reconnect();
       if (this.heartbeatTimer === undefined) {
         this.heartbeatTimer = window.setInterval(() => this.targetSync.heartbeat(), 250);
@@ -79,6 +82,14 @@ export class DeviceLink {
     } else if (message.t === "calibration" && Array.isArray(message.offsets)) {
       const calibration = { offsets: message.offsets.map(Number) };
       this.calibrationListeners.forEach((listener) => listener(calibration));
+    } else if (message.t === "midiOutResult") {
+      const result: MidiOutResult = {
+        ok: Boolean(message.ok),
+        busy: Boolean(message.busy),
+        accepted: Number(message.accepted ?? 0),
+        queued: Number(message.queued ?? 0),
+      };
+      this.midiOutListeners.forEach((listener) => listener(result));
     } else if (message.t === "pong") {
       this.latencyMs = Math.max(0, performance.now() - this.lastPing);
       window.clearTimeout(this.pingTimer);
@@ -123,6 +134,24 @@ export class DeviceLink {
     this.send({ t: "blackout" });
   }
 
+  scheduleMidi(events: MidiOutEvent[]): void {
+    for (let offset = 0; offset < events.length; offset += 48) {
+      this.send({
+        t: "midiOut",
+        events: events.slice(offset, offset + 48).map((event) => ({
+          delay: Math.max(0, Math.min(60000, Math.round(event.delayMs))),
+          s: event.status & 0xff,
+          d1: event.data1 & 0x7f,
+          d2: event.data2 & 0x7f,
+        })),
+      });
+    }
+  }
+
+  panicMidi(): void {
+    this.send({ t: "midiPanic" });
+  }
+
   saveWifi(ssid: string, password: string): void {
     this.send({ t: "wifi", ssid, password });
   }
@@ -141,6 +170,10 @@ export class DeviceLink {
 
   onCalibration(listener: Listener<CalibrationState>): void {
     this.calibrationListeners.push(listener);
+  }
+
+  onMidiOutResult(listener: Listener<MidiOutResult>): void {
+    this.midiOutListeners.push(listener);
   }
 
   onConnection(listener: Listener<boolean>): void {

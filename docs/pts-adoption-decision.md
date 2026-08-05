@@ -44,7 +44,8 @@ flowchart LR
 ```mermaid
 flowchart LR
     SCORE["MIDI / MusicXML / MXL"] --> B["手机 / 平板 / 电脑浏览器<br/>参考音符、谱面、练习状态"]
-    P["PX-S7000"] -->|"USB-MIDI"| E["ESP32-S3<br/>实际演奏事件 + 灯光实时层"]
+    P["PX-S7000"] -->|"USB-MIDI IN"| E["ESP32-S3<br/>实际演奏事件 + 灯光实时层"]
+    E -->|"USB-MIDI OUT<br/>跟随伴奏"| P
     E -->|"SPI"| LED["APA102 / SK9822 单排灯带"]
     E -->|"WebSocket：实际演奏音符"| B
     B -->|"WebSocket：语义目标音符"| E
@@ -64,7 +65,7 @@ flowchart LR
 
 | 维度 | 直接 fork PTS 网页（AGPL） | NoteFall 独立实现（MIT，已选） |
 |---|---|---|
-| 首批成熟功能 | MusicXML、三模式、谱面、曲库和校准可较快获得 | MIDI/MusicXML/MXL、谱面、实时/等待、循环、左右手、曲库和录制已有独立实现；Follow/移调/逐键校准待补 |
+| 首批成熟功能 | MusicXML、三模式、谱面、曲库和校准可较快获得 | MIDI/MusicXML/MXL、谱面、三模式、循环、左右手、移调、曲库、录制和逐键校准已有独立实现 |
 | 许可证 | 衍生前端必须遵守 AGPL；网络交互版本须显著提供相应源码 | 自写核心保持 MIT；每个第三方依赖按自己的许可证归档 |
 | 与现有硬件的匹配 | 默认 Web MIDI → 浏览器 → WLED；需重写输入、灯光和连接状态 | 原生就是 PX-S7000 → ESP32 → APA102/SK9822 |
 | iOS/Android | iOS MIDI 需 MIDIWeb，WLED 场景还可能需 PC/Mac helper | 移动浏览器只连 ESP WebSocket，不需要 Web MIDI/helper |
@@ -97,7 +98,7 @@ PTS 原本就不是把网页、OSMD、webmscore、曲库和练习引擎放进 WL
 |---|---|---|
 | MusicXML/MXL + 谱面 | 已独立集成 OSMD（BSD-3-Clause）与自己的安全解压/时间线/谱面适配层 | 不复制 PTS 的 OSMD 包装和 trainer-core |
 | MIDI/MuseScore/Guitar Pro 转换 | MIDI 保留 `@tonejs/midi`；重型格式转换后置到可选桌面包 | 不把 24 MB webmscore 塞入 ESP |
-| Realtime / Wait / Follow | 在现有 TypeScript 练习引擎上补 Follow Me 和踏板语义 | 用测试定义行为，不复制状态机代码 |
+| Realtime / Wait / Follow | 已在现有 TypeScript 引擎独立实现；Follow 将另一手相对时间事件交给 ESP 固定队列，再由 PX-S7000 自身音源播放 | 用测试定义节拍、同音重触发和降级行为，不复制状态机代码 |
 | 左右手/循环/变速/移调/得分 | 左右手、循环、变速、±12 半音目标/OSMD 同步移调和得分已实现 | 目标灯、判分、瀑布流和谱面消费同一变换结果 |
 | IndexedDB 曲库/备份 | 已独立实现版本化 schema、文件夹、最近使用、内容去重和 SHA-256 可校验备份 | 借鉴产品需求，不复制对象结构或 UI 代码 |
 | LED 逐键校准 | 已用真实琴键几何 + 方向/全局偏移 + 88 键独立 ±4 像素修正实现 | 灯位真相和 NVS 持久化在 ESP；浏览器只操作语义参数 |
@@ -120,7 +121,7 @@ PTS 原本就不是把网页、OSMD、webmscore、曲库和练习引擎放进 WL
 2. **已完成**：IndexedDB 曲库、文件夹、内容去重、版本化校验备份与失败预验证。
 3. **已完成数字验收**：OSMD、MusicXML/MXL 安全解压、统一时间线、gzip 固件资源，以及桌面/390 px 手机浏览器渲染。
 4. **下一阶段**：用多来源真实钢琴曲建立兼容性语料；实现反复/跳转顺序后再把这些曲目纳入正式判分。
-5. **进行中**：逐键微调和同步移调已完成；下一步补 Follow Me，并决定伴奏输出走 PX-S7000 USB MIDI OUT 还是可选浏览器合成器。
+5. **已完成数字验收**：逐键微调、同步移调和 Follow Me 已完成；伴奏选择 PX-S7000 USB MIDI OUT，包含端点能力探测、固件本地排程、全音符关闭、回声防护及无 OUT 端点降级。Casio 官方说明确认 USB MIDI 可双向收发并能由外部 MIDI 播放琴内音源，端点与回声行为仍列入实机验收。
 6. **后续独立决策**：对比 Studio/PWA/原生壳与独立 AGPL PTS Studio；webmscore 不能成为钢琴前日常练习的必需联网步骤。
 
 ## 参考资料
@@ -131,3 +132,5 @@ PTS 原本就不是把网页、OSMD、webmscore、曲库和练习引擎放进 WL
 - [GNU AGPL-3.0 正文](https://www.gnu.org/licenses/agpl-3.0.en.html)
 - [GNU GPL FAQ：AGPL 网络交互](https://www.gnu.org/licenses/gpl-faq.en.html#AGPLv3InteractingRemotely)
 - [OpenSheetMusicDisplay 官方仓库（BSD-3-Clause）](https://github.com/opensheetmusicdisplay/opensheetmusicdisplay)
+- [Casio PX-S7000 用户手册：USB MIDI 双向收发](https://www.casio.com/content/dam/casio/global/support/manuals/electronic-musical-instruments/pdf/008-en/p/PXS7000_usersguide_EN.pdf)
+- [Casio PX-S6000/PX-S7000 MIDI Implementation](https://www.casio.com/content/dam/casio/global/support/manuals/electronic-musical-instruments/pdf/008-nl/p/PX-S7000_midi_implementation_NL.pdf)

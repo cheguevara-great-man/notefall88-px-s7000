@@ -1,4 +1,4 @@
-import type { HandSelection, PracticeStats, ScoreNote, TargetNote } from "./types";
+import type { Hand, HandSelection, MidiOutEvent, PracticeStats, ScoreNote, TargetNote } from "./types";
 
 export interface Chord {
   start: number;
@@ -61,6 +61,94 @@ export function targetNotes(chord: Chord | undefined): TargetNote[] {
   const unique = new Map<number, TargetNote>();
   for (const note of chord.notes) unique.set(note.note, { note: note.note, hand: note.hand });
   return [...unique.values()].sort((a, b) => a.note - b.note);
+}
+
+export function followWaitMs(currentStart: number, nextStart: number, speed: number): number {
+  const safeSpeed = Number.isFinite(speed) && speed > 0 ? speed : 1;
+  return Math.max(0, Math.min(60000, Math.round(((nextStart - currentStart) / safeSpeed) * 1000)));
+}
+
+export function followAccompanimentEvents(
+  notes: ScoreNote[],
+  practicedHand: Hand,
+  windowStart: number,
+  windowEnd: number,
+  speed: number,
+): MidiOutEvent[] {
+  return new FollowAccompanimentPlanner(notes).events(practicedHand, windowStart, windowEnd, speed);
+}
+
+interface IndexedFollowNote {
+  note: ScoreNote;
+  nextSamePitchStart: number;
+}
+
+export class FollowAccompanimentPlanner {
+  private readonly byHand: Record<Hand, IndexedFollowNote[]>;
+
+  constructor(notes: ScoreNote[]) {
+    this.byHand = {
+      left: this.indexHand(notes.filter((note) => note.hand === "left")),
+      right: this.indexHand(notes.filter((note) => note.hand === "right")),
+    };
+  }
+
+  private indexHand(notes: ScoreNote[]): IndexedFollowNote[] {
+    const sorted = [...notes].sort((first, second) => first.start - second.start || first.note - second.note);
+    const merged: ScoreNote[] = [];
+    for (const note of sorted) {
+      const previous = merged.at(-1);
+      if (previous && previous.note === note.note && Math.abs(previous.start - note.start) <= 0.001) {
+        previous.end = Math.max(previous.end, note.end);
+        previous.velocity = Math.max(previous.velocity, note.velocity);
+      } else {
+        merged.push({ ...note });
+      }
+    }
+    const nextByPitch = new Map<number, number>();
+    const indexed = new Array<IndexedFollowNote>(merged.length);
+    for (let index = merged.length - 1; index >= 0; index -= 1) {
+      const note = merged[index];
+      indexed[index] = {
+        note,
+        nextSamePitchStart: nextByPitch.get(note.note) ?? Number.POSITIVE_INFINITY,
+      };
+      nextByPitch.set(note.note, note.start);
+    }
+    return indexed;
+  }
+
+  events(practicedHand: Hand, windowStart: number, windowEnd: number, speed: number): MidiOutEvent[] {
+    const safeSpeed = Number.isFinite(speed) && speed > 0 ? speed : 1;
+    const events: MidiOutEvent[] = [];
+    const companion = this.byHand[practicedHand === "left" ? "right" : "left"];
+    let low = 0;
+    let high = companion.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (companion[middle].note.start < windowStart - 0.001) low = middle + 1;
+      else high = middle;
+    }
+    for (let index = low; index < companion.length; index += 1) {
+      const { note, nextSamePitchStart } = companion[index];
+      if (note.start >= windowEnd - 0.001) break;
+      const delayMs = Math.max(0, Math.round(((note.start - windowStart) / safeSpeed) * 1000));
+      const effectiveEnd = Math.min(note.end, nextSamePitchStart);
+      const durationMs = Math.max(
+        35,
+        Math.min(60000, Math.round(((effectiveEnd - note.start) / safeSpeed) * 1000)),
+      );
+      const velocity = Math.max(1, Math.min(127, Math.round(note.velocity || 96)));
+      events.push({ delayMs, status: 0x90, data1: note.note, data2: velocity });
+      events.push({ delayMs: delayMs + durationMs, status: 0x80, data1: note.note, data2: 0 });
+    }
+    return events.sort((first, second) => {
+      if (first.delayMs !== second.delayMs) return first.delayMs - second.delayMs;
+      const firstOff = (first.status & 0xf0) === 0x80;
+      const secondOff = (second.status & 0xf0) === 0x80;
+      return Number(secondOff) - Number(firstOff);
+    });
+  }
 }
 
 export class WaitMatcher {
