@@ -17,10 +17,23 @@ class UsbMidiHost {
   using MidiCallback = void (*)(void* context, const uint8_t packet[4]);
   using ConnectionCallback = void (*)(void* context);
 
+  struct Diagnostics {
+    uint32_t packetsReceived = 0;
+    uint32_t packetsDropped = 0;
+    uint32_t transferErrors = 0;
+    uint32_t connections = 0;
+    uint32_t lastPacketMs = 0;
+    uint16_t vendorId = 0;
+    uint16_t productId = 0;
+    uint16_t endpointPacketSize = 0;
+    uint8_t endpointAddress = 0;
+  };
+
   bool begin();
   void poll();
   bool connected() const { return connected_; }
   const String& lastError() const { return lastError_; }
+  Diagnostics diagnostics();
 
   void setMidiCallback(MidiCallback callback, void* context) {
     midiCallback_ = callback;
@@ -52,7 +65,10 @@ class UsbMidiHost {
   uint8_t alternateSetting_ = 0;
   uint8_t endpointAddress_ = 0;
   volatile bool connected_ = false;
+  volatile bool resubmitPending_ = false;
+  bool reportedConnected_ = false;
   String lastError_;
+  Diagnostics diagnostics_;
 
   MidiCallback midiCallback_ = nullptr;
   void* midiContext_ = nullptr;

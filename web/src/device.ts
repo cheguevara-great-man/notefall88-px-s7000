@@ -1,4 +1,5 @@
 import type { DeviceStatus, MidiInputEvent, TargetNote } from "./types";
+import { TargetSync } from "./target-sync";
 
 type Listener<T> = (value: T) => void;
 
@@ -9,6 +10,10 @@ export class DeviceLink {
   private midiListeners: Listener<MidiInputEvent>[] = [];
   private connectionListeners: Listener<boolean>[] = [];
   private lastPing = 0;
+  private pingTimer?: number;
+  private reconnectAttempt = 0;
+  private heartbeatTimer?: number;
+  private readonly targetSync = new TargetSync((targets) => this.sendTargets(targets));
   latencyMs?: number;
 
   connect(): void {
@@ -16,13 +21,22 @@ export class DeviceLink {
     const host = window.location.hostname || "192.168.4.1";
     this.socket = new WebSocket(`ws://${host}:81/`);
     this.socket.onopen = () => {
+      this.reconnectAttempt = 0;
+      window.clearTimeout(this.pingTimer);
       this.connectionListeners.forEach((listener) => listener(true));
-      this.send({ t: "hello", v: 1 });
+      this.send({ t: "hello", v: 2 });
+      this.targetSync.reconnect();
+      if (this.heartbeatTimer === undefined) {
+        this.heartbeatTimer = window.setInterval(() => this.targetSync.heartbeat(), 250);
+      }
       this.ping();
     };
     this.socket.onclose = () => {
+      window.clearTimeout(this.pingTimer);
       this.connectionListeners.forEach((listener) => listener(false));
-      this.reconnectTimer = window.setTimeout(() => this.connect(), 1500);
+      const delay = Math.min(1000 * 2 ** this.reconnectAttempt, 10000);
+      this.reconnectAttempt += 1;
+      this.reconnectTimer = window.setTimeout(() => this.connect(), delay);
     };
     this.socket.onerror = () => this.socket?.close();
     this.socket.onmessage = (event) => this.handleMessage(String(event.data));
@@ -47,7 +61,8 @@ export class DeviceLink {
       this.midiListeners.forEach((listener) => listener(midi));
     } else if (message.t === "pong") {
       this.latencyMs = Math.max(0, performance.now() - this.lastPing);
-      window.setTimeout(() => this.ping(), 2000);
+      window.clearTimeout(this.pingTimer);
+      this.pingTimer = window.setTimeout(() => this.ping(), 2000);
     }
   }
 
@@ -56,11 +71,16 @@ export class DeviceLink {
   }
 
   ping(): void {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
     this.lastPing = performance.now();
     this.send({ t: "ping", ts: Math.round(this.lastPing) });
   }
 
   setTargets(notes: TargetNote[]): void {
+    this.targetSync.update(notes);
+  }
+
+  private sendTargets(notes: TargetNote[]): void {
     this.send({
       t: "target",
       notes: notes.map((target) => ({ n: target.note, h: target.hand === "left" ? 0 : 1 })),

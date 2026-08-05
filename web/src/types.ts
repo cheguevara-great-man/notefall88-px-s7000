@@ -1,4 +1,5 @@
 export type Hand = "left" | "right";
+export type HandSelection = "both" | Hand;
 export type PracticeMode = "realtime" | "wait";
 
 export interface ScoreNote {
@@ -21,6 +22,8 @@ export interface TargetNote {
 }
 
 export interface DeviceStatus {
+  protocol?: number;
+  firmware?: string;
   piano: boolean;
   clients: number;
   brightness: number;
@@ -28,6 +31,16 @@ export interface DeviceStatus {
   reversed: boolean;
   rssi?: number;
   uptimeMs?: number;
+  freeHeap?: number;
+  usbPackets?: number;
+  usbDropped?: number;
+  usbErrors?: number;
+  usbConnections?: number;
+  usbLastPacketMs?: number;
+  usbVid?: number;
+  usbPid?: number;
+  usbEndpoint?: number;
+  usbPacketSize?: number;
 }
 
 export interface MidiInputEvent {
@@ -35,4 +48,11 @@ export interface MidiInputEvent {
   note: number;
   velocity: number;
   timestamp: number;
+}
+
+export interface PracticeStats {
+  hits: number;
+  wrong: number;
+  missed: number;
+  accuracy: number;
 }

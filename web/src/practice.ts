@@ -1,8 +1,31 @@
-import type { ScoreNote, TargetNote } from "./types";
+import type { HandSelection, PracticeStats, ScoreNote, TargetNote } from "./types";
 
 export interface Chord {
   start: number;
   notes: ScoreNote[];
+}
+
+export interface LoopRange {
+  start: number;
+  end: number;
+}
+
+export function filterNotesByHand(notes: ScoreNote[], hand: HandSelection): ScoreNote[] {
+  return hand === "both" ? [...notes] : notes.filter((note) => note.hand === hand);
+}
+
+export function normalizeLoop(start: number, end: number, duration: number): LoopRange {
+  const safeDuration = Math.max(0, duration);
+  if (safeDuration === 0) return { start: 0, end: 0 };
+  const minimum = Math.min(0.5, safeDuration);
+  const safeStart = Math.min(Math.max(0, start), safeDuration - minimum);
+  const safeEnd = Math.min(Math.max(safeStart + minimum, end), safeDuration);
+  return { start: safeStart, end: safeEnd };
+}
+
+export function chordsInRange(chords: Chord[], range: LoopRange | undefined): Chord[] {
+  if (!range) return [...chords];
+  return chords.filter((chord) => chord.start >= range.start && chord.start < range.end);
 }
 
 export function groupChords(notes: ScoreNote[], windowMs = 55): Chord[] {
@@ -23,10 +46,14 @@ export function nextRealtimeChord(
   chords: Chord[],
   scoreTime: number,
   leadMs: number,
+  loop?: LoopRange,
 ): Chord | undefined {
   const earliest = scoreTime - 0.08;
   const latest = scoreTime + leadMs / 1000;
-  return chords.find((chord) => chord.start >= earliest && chord.start <= latest);
+  const direct = chords.find((chord) => chord.start >= earliest && chord.start <= latest);
+  if (direct || !loop || latest < loop.end) return direct;
+  const wrappedLatest = loop.start + (latest - loop.end);
+  return chords.find((chord) => chord.start >= loop.start && chord.start <= wrappedLatest);
 }
 
 export function targetNotes(chord: Chord | undefined): TargetNote[] {
@@ -47,11 +74,16 @@ export class WaitMatcher {
     this.wrong.clear();
   }
 
-  noteOn(note: number): { complete: boolean; correct: boolean } {
+  noteOn(note: number): { complete: boolean; correct: boolean; newlyMatched: boolean } {
     const correct = this.expected.has(note);
+    const newlyMatched = correct && !this.matched.has(note);
     if (correct) this.matched.add(note);
     else this.wrong.add(note);
-    return { complete: this.expected.size > 0 && this.matched.size === this.expected.size, correct };
+    return {
+      complete: this.expected.size > 0 && this.matched.size === this.expected.size,
+      correct,
+      newlyMatched,
+    };
   }
 
   noteOff(note: number): void {
@@ -60,6 +92,105 @@ export class WaitMatcher {
 
   expectedNotes(): Set<number> {
     return new Set(this.expected);
+  }
+}
+
+export class PracticeScore {
+  private hits = 0;
+  private wrong = 0;
+  private missed = 0;
+
+  reset(): void {
+    this.hits = 0;
+    this.wrong = 0;
+    this.missed = 0;
+  }
+
+  recordHit(): void {
+    this.hits += 1;
+  }
+
+  recordWrong(): void {
+    this.wrong += 1;
+  }
+
+  recordMiss(count = 1): void {
+    this.missed += Math.max(0, count);
+  }
+
+  snapshot(): PracticeStats {
+    const attempts = this.hits + this.wrong + this.missed;
+    return {
+      hits: this.hits,
+      wrong: this.wrong,
+      missed: this.missed,
+      accuracy: attempts === 0 ? 100 : (this.hits / attempts) * 100,
+    };
+  }
+}
+
+export class RealtimeMatcher {
+  private chords: Chord[] = [];
+  private matched: Set<number>[] = [];
+  private cursor = 0;
+
+  constructor(
+    private readonly score: PracticeScore,
+    private readonly earlyMs = 180,
+    private readonly lateMs = 250,
+  ) {}
+
+  setChords(chords: Chord[]): void {
+    this.chords = chords;
+    this.restartPass();
+  }
+
+  restartPass(): void {
+    this.matched = this.chords.map(() => new Set<number>());
+    this.cursor = 0;
+  }
+
+  noteOn(note: number, scoreTime: number): { correct: boolean; newlyMatched: boolean } {
+    this.advance(scoreTime);
+    const earlySeconds = this.earlyMs / 1000;
+    const lateSeconds = this.lateMs / 1000;
+    let bestIndex = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (let index = this.cursor; index < this.chords.length; index += 1) {
+      const chord = this.chords[index];
+      if (chord.start > scoreTime + earlySeconds) break;
+      if (chord.start < scoreTime - lateSeconds) continue;
+      if (!chord.notes.some((candidate) => candidate.note === note)) continue;
+      const distance = Math.abs(chord.start - scoreTime);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    }
+
+    if (bestIndex < 0) {
+      this.score.recordWrong();
+      return { correct: false, newlyMatched: false };
+    }
+    if (this.matched[bestIndex].has(note)) return { correct: true, newlyMatched: false };
+    this.matched[bestIndex].add(note);
+    this.score.recordHit();
+    return { correct: true, newlyMatched: true };
+  }
+
+  advance(scoreTime: number): void {
+    const lateSeconds = this.lateMs / 1000;
+    while (this.cursor < this.chords.length &&
+           this.chords[this.cursor].start < scoreTime - lateSeconds) {
+      const expected = new Set(this.chords[this.cursor].notes.map((note) => note.note));
+      let missed = 0;
+      for (const note of expected) {
+        if (!this.matched[this.cursor].has(note)) missed += 1;
+      }
+      this.score.recordMiss(missed);
+      this.cursor += 1;
+    }
   }
 }
 

@@ -77,7 +77,10 @@ void clearTargets() {
 void renderStrip() {
   strip.clear();
   const uint32_t now = millis();
-  if (lastTargetMs != 0 && now - lastTargetMs > kTargetStaleMs) clearTargets();
+  if (lastTargetMs != 0 && now - lastTargetMs > kTargetStaleMs) {
+    clearTargets();
+    lastTargetMs = 0;
+  }
   if (testNote >= 0 && now >= testUntilMs) testNote = -1;
 
   for (uint8_t midiNote = kFirstMidiNote; midiNote <= kLastMidiNote; ++midiNote) {
@@ -94,8 +97,11 @@ void renderStrip() {
 }
 
 void sendStatus(uint8_t client = 255) {
+  const auto usb = usbMidi.diagnostics();
   JsonDocument doc;
   doc["t"] = "status";
+  doc["protocol"] = kProtocolVersion;
+  doc["firmware"] = kFirmwareVersion;
   doc["piano"] = pianoConnected;
   doc["clients"] = webClients;
   doc["brightness"] = brightness;
@@ -103,6 +109,16 @@ void sendStatus(uint8_t client = 255) {
   doc["reversed"] = stripReversed;
   doc["rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
   doc["uptimeMs"] = millis();
+  doc["freeHeap"] = ESP.getFreeHeap();
+  doc["usbPackets"] = usb.packetsReceived;
+  doc["usbDropped"] = usb.packetsDropped;
+  doc["usbErrors"] = usb.transferErrors;
+  doc["usbConnections"] = usb.connections;
+  doc["usbLastPacketMs"] = usb.lastPacketMs;
+  doc["usbVid"] = usb.vendorId;
+  doc["usbPid"] = usb.productId;
+  doc["usbEndpoint"] = usb.endpointAddress;
+  doc["usbPacketSize"] = usb.endpointPacketSize;
   String payload;
   serializeJson(doc, payload);
   if (client == 255) websocket.broadcastTXT(payload);
@@ -147,6 +163,8 @@ void onPianoConnected(void*) {
 void onPianoDisconnected(void*) {
   pianoConnected = false;
   for (auto& note : notes) note.pressed = false;
+  clearTargets();
+  lastTargetMs = 0;
   sendStatus();
 }
 

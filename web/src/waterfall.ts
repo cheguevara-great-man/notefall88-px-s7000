@@ -1,5 +1,6 @@
 import { pianoKeys } from "./layout";
-import type { ParsedScore } from "./types";
+import type { LoopRange } from "./practice";
+import type { HandSelection, ParsedScore } from "./types";
 
 const LEFT = "#28d7ff";
 const RIGHT = "#ff4fc8";
@@ -12,6 +13,8 @@ export class WaterfallRenderer {
   private pressed = new Set<number>();
   private expected = new Set<number>();
   private wrong = new Set<number>();
+  private hand: HandSelection = "both";
+  private loop?: LoopRange;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext("2d");
@@ -27,6 +30,11 @@ export class WaterfallRenderer {
     this.pressed = pressed;
     this.expected = expected;
     this.wrong = wrong;
+  }
+
+  setPracticeView(hand: HandSelection, loop: LoopRange | undefined): void {
+    this.hand = hand;
+    this.loop = loop;
   }
 
   resize(): void {
@@ -79,7 +87,7 @@ export class WaterfallRenderer {
         const noteHeight = Math.max(5, (duration / visibleSeconds) * rollHeight);
         const y = bottom - noteHeight;
         ctx.fillStyle = note.hand === "left" ? LEFT : RIGHT;
-        ctx.globalAlpha = 0.86;
+        ctx.globalAlpha = this.hand === "both" || this.hand === note.hand ? 0.86 : 0.16;
         ctx.beginPath();
         ctx.roundRect(x, y, noteWidth, noteHeight, Math.min(5, noteWidth / 3));
         ctx.fill();
@@ -87,9 +95,41 @@ export class WaterfallRenderer {
       ctx.globalAlpha = 1;
     }
 
+    if (this.loop) {
+      this.drawLoopBoundary(this.loop.start, scoreTime, keyboardTop, rollHeight, visibleSeconds, width, "A");
+      this.drawLoopBoundary(this.loop.end, scoreTime, keyboardTop, rollHeight, visibleSeconds, width, "B");
+    }
+
     ctx.fillStyle = "rgba(255,255,255,.13)";
     ctx.fillRect(0, keyboardTop - 2, width, 2);
     this.drawKeyboard(keyboardTop, keyboardHeight, width);
+  }
+
+  private drawLoopBoundary(
+    boundary: number,
+    scoreTime: number,
+    keyboardTop: number,
+    rollHeight: number,
+    visibleSeconds: number,
+    width: number,
+    label: string,
+  ): void {
+    const delta = boundary - scoreTime;
+    if (delta < 0 || delta > visibleSeconds) return;
+    const y = keyboardTop - (delta / visibleSeconds) * rollHeight;
+    this.context.save();
+    this.context.strokeStyle = "rgba(255, 210, 76, .85)";
+    this.context.fillStyle = "#ffd24c";
+    this.context.lineWidth = 2;
+    this.context.setLineDash([8, 6]);
+    this.context.beginPath();
+    this.context.moveTo(0, y);
+    this.context.lineTo(width, y);
+    this.context.stroke();
+    this.context.setLineDash([]);
+    this.context.font = "700 12px system-ui";
+    this.context.fillText(label, 10, Math.max(14, y - 6));
+    this.context.restore();
   }
 
   private drawKeyboard(top: number, height: number, width: number): void {

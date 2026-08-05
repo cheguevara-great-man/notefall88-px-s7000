@@ -29,10 +29,14 @@ bool UsbMidiHost::begin() {
   result = usb_host_client_register(&clientConfig, &client_);
   if (result != ESP_OK) {
     lastError_ = "usb_host_client_register failed: " + String(result);
+    usb_host_uninstall();
     return false;
   }
   if (xTaskCreatePinnedToCore(hostTask, "usb_midi_host", 4096, this, 5, &task_, 0) != pdPASS) {
     lastError_ = "USB host task allocation failed";
+    usb_host_client_deregister(client_);
+    client_ = nullptr;
+    usb_host_uninstall();
     return false;
   }
   lastError_ = "";
@@ -44,6 +48,19 @@ void UsbMidiHost::poll() {
   while (dequeue(packet)) {
     if (midiCallback_ != nullptr) midiCallback_(midiContext_, packet.bytes);
   }
+  const bool current = connected_;
+  if (current != reportedConnected_) {
+    reportedConnected_ = current;
+    ConnectionCallback callback = current ? connectedCallback_ : disconnectedCallback_;
+    if (callback != nullptr) callback(connectionContext_);
+  }
+}
+
+UsbMidiHost::Diagnostics UsbMidiHost::diagnostics() {
+  portENTER_CRITICAL(&queueMux_);
+  const Diagnostics snapshot = diagnostics_;
+  portEXIT_CRITICAL(&queueMux_);
+  return snapshot;
 }
 
 bool UsbMidiHost::enqueue(const uint8_t packet[4]) {
@@ -77,22 +94,25 @@ void UsbMidiHost::hostTask(void* argument) {
     uint32_t eventFlags = 0;
     usb_host_lib_handle_events(pdMS_TO_TICKS(20), &eventFlags);
     usb_host_client_handle_events(host->client_, pdMS_TO_TICKS(20));
+    if (host->resubmitPending_ && host->connected_ && host->transfer_ != nullptr) {
+      const esp_err_t result = usb_host_transfer_submit(host->transfer_);
+      if (result == ESP_OK) {
+        host->resubmitPending_ = false;
+      } else {
+        portENTER_CRITICAL(&host->queueMux_);
+        ++host->diagnostics_.transferErrors;
+        portEXIT_CRITICAL(&host->queueMux_);
+      }
+    }
   }
 }
 
 void UsbMidiHost::clientEvent(const usb_host_client_event_msg_t* event, void* argument) {
   auto* host = static_cast<UsbMidiHost*>(argument);
   if (event->event == USB_HOST_CLIENT_EVENT_NEW_DEV) {
-    if (host->openMidiInterface(event->new_dev.address)) {
-      if (host->connectedCallback_ != nullptr) {
-        host->connectedCallback_(host->connectionContext_);
-      }
-    }
+    host->openMidiInterface(event->new_dev.address);
   } else if (event->event == USB_HOST_CLIENT_EVENT_DEV_GONE) {
     host->closeDevice();
-    if (host->disconnectedCallback_ != nullptr) {
-      host->disconnectedCallback_(host->connectionContext_);
-    }
   }
 }
 
@@ -102,6 +122,15 @@ bool UsbMidiHost::openMidiInterface(uint8_t address) {
   if (result != ESP_OK) {
     lastError_ = "USB device open failed: " + String(result);
     return false;
+  }
+
+  const usb_device_desc_t* deviceDescriptor = nullptr;
+  if (usb_host_get_device_descriptor(device_, &deviceDescriptor) == ESP_OK &&
+      deviceDescriptor != nullptr) {
+    portENTER_CRITICAL(&queueMux_);
+    diagnostics_.vendorId = deviceDescriptor->idVendor;
+    diagnostics_.productId = deviceDescriptor->idProduct;
+    portEXIT_CRITICAL(&queueMux_);
   }
 
   const usb_config_desc_t* config = nullptr;
@@ -129,8 +158,11 @@ bool UsbMidiHost::openMidiInterface(uint8_t address) {
         if (endpointLength < 2 || endpointOffset + endpointLength > total) break;
         const uint8_t descriptorType = bytes[endpointOffset + 1];
         if (descriptorType == USB_B_DESCRIPTOR_TYPE_INTERFACE) break;
+        const bool isBulkEndpoint =
+            endpointLength >= 7 && (bytes[endpointOffset + 3] & 0x03U) == 0x02U;
         if (descriptorType == USB_B_DESCRIPTOR_TYPE_ENDPOINT && endpointLength >= 7 &&
-            endpointCount > 0 && (bytes[endpointOffset + 2] & USB_B_ENDPOINT_ADDRESS_EP_DIR_MASK)) {
+            endpointCount > 0 && isBulkEndpoint &&
+            (bytes[endpointOffset + 2] & USB_B_ENDPOINT_ADDRESS_EP_DIR_MASK)) {
           endpointAddress_ = bytes[endpointOffset + 2];
           uint16_t packetSize = static_cast<uint16_t>(bytes[endpointOffset + 4]) |
                                 (static_cast<uint16_t>(bytes[endpointOffset + 5]) << 8U);
@@ -150,6 +182,11 @@ bool UsbMidiHost::openMidiInterface(uint8_t address) {
           connected_ = true;
           result = usb_host_transfer_submit(transfer_);
           if (result == ESP_OK) {
+            portENTER_CRITICAL(&queueMux_);
+            ++diagnostics_.connections;
+            diagnostics_.endpointAddress = endpointAddress_;
+            diagnostics_.endpointPacketSize = packetSize;
+            portEXIT_CRITICAL(&queueMux_);
             lastError_ = "";
             return true;
           }
@@ -177,17 +214,37 @@ void UsbMidiHost::transferComplete(usb_transfer_t* transfer) {
   if (transfer->status == USB_TRANSFER_STATUS_COMPLETED) {
     for (int offset = 0; offset + 4 <= transfer->actual_num_bytes; offset += 4) {
       const uint8_t* packet = transfer->data_buffer + offset;
-      if ((packet[0] & 0x0F) != 0) host->enqueue(packet);
+      if ((packet[0] & 0x0F) == 0) continue;
+      portENTER_CRITICAL(&host->queueMux_);
+      ++host->diagnostics_.packetsReceived;
+      host->diagnostics_.lastPacketMs = millis();
+      portEXIT_CRITICAL(&host->queueMux_);
+      if (!host->enqueue(packet)) {
+        portENTER_CRITICAL(&host->queueMux_);
+        ++host->diagnostics_.packetsDropped;
+        portEXIT_CRITICAL(&host->queueMux_);
+      }
     }
+  } else {
+    portENTER_CRITICAL(&host->queueMux_);
+    ++host->diagnostics_.transferErrors;
+    portEXIT_CRITICAL(&host->queueMux_);
   }
   if (host->connected_) {
     const esp_err_t result = usb_host_transfer_submit(transfer);
-    if (result != ESP_OK) host->lastError_ = "USB MIDI transfer resubmit failed: " + String(result);
+    if (result != ESP_OK) {
+      portENTER_CRITICAL(&host->queueMux_);
+      ++host->diagnostics_.transferErrors;
+      portEXIT_CRITICAL(&host->queueMux_);
+      host->lastError_ = "USB MIDI transfer resubmit failed: " + String(result);
+      host->resubmitPending_ = true;
+    }
   }
 }
 
 void UsbMidiHost::closeDevice() {
   connected_ = false;
+  resubmitPending_ = false;
   if (transfer_ != nullptr) {
     usb_host_endpoint_halt(device_, endpointAddress_);
     usb_host_endpoint_flush(device_, endpointAddress_);
