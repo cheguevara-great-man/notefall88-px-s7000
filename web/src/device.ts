@@ -1,4 +1,4 @@
-import type { DeviceStatus, MidiInputEvent, TargetNote } from "./types";
+import type { DeviceStatus, MidiControlEvent, MidiInputEvent, TargetNote } from "./types";
 import { TargetSync } from "./target-sync";
 
 type Listener<T> = (value: T) => void;
@@ -8,6 +8,7 @@ export class DeviceLink {
   private reconnectTimer?: number;
   private statusListeners: Listener<DeviceStatus>[] = [];
   private midiListeners: Listener<MidiInputEvent>[] = [];
+  private controlListeners: Listener<MidiControlEvent>[] = [];
   private connectionListeners: Listener<boolean>[] = [];
   private lastPing = 0;
   private pingTimer?: number;
@@ -24,7 +25,7 @@ export class DeviceLink {
       this.reconnectAttempt = 0;
       window.clearTimeout(this.pingTimer);
       this.connectionListeners.forEach((listener) => listener(true));
-      this.send({ t: "hello", v: 2 });
+      this.send({ t: "hello", v: 3 });
       this.targetSync.reconnect();
       if (this.heartbeatTimer === undefined) {
         this.heartbeatTimer = window.setInterval(() => this.targetSync.heartbeat(), 250);
@@ -54,11 +55,20 @@ export class DeviceLink {
     } else if (message.t === "midi") {
       const midi: MidiInputEvent = {
         state: message.s === "on" ? "on" : "off",
+        channel: Number(message.ch ?? 1),
         note: Number(message.n),
         velocity: Number(message.v ?? 0),
         timestamp: Number(message.ts ?? 0),
       };
       this.midiListeners.forEach((listener) => listener(midi));
+    } else if (message.t === "control") {
+      const control: MidiControlEvent = {
+        channel: Number(message.ch ?? 1),
+        controller: Number(message.c),
+        value: Number(message.v ?? 0),
+        timestamp: Number(message.ts ?? 0),
+      };
+      this.controlListeners.forEach((listener) => listener(control));
     } else if (message.t === "pong") {
       this.latencyMs = Math.max(0, performance.now() - this.lastPing);
       window.clearTimeout(this.pingTimer);
@@ -109,6 +119,10 @@ export class DeviceLink {
 
   onMidi(listener: Listener<MidiInputEvent>): void {
     this.midiListeners.push(listener);
+  }
+
+  onControl(listener: Listener<MidiControlEvent>): void {
+    this.controlListeners.push(listener);
   }
 
   onConnection(listener: Listener<boolean>): void {

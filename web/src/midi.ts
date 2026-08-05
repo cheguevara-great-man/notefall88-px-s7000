@@ -34,5 +34,6 @@ export function parseMidiFile(buffer: ArrayBuffer, fallbackName: string): Parsed
     name: embeddedName || fallbackName.replace(/\.(mid|midi)$/i, ""),
     duration,
     notes,
+    format: "midi",
   };
 }

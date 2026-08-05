@@ -110,6 +110,8 @@ void sendStatus(uint8_t client = 255) {
   doc["rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
   doc["uptimeMs"] = millis();
   doc["freeHeap"] = ESP.getFreeHeap();
+  doc["psramBytes"] = ESP.getPsramSize();
+  doc["freePsram"] = ESP.getFreePsram();
   doc["usbPackets"] = usb.packetsReceived;
   doc["usbDropped"] = usb.packetsDropped;
   doc["usbErrors"] = usb.transferErrors;
@@ -125,12 +127,25 @@ void sendStatus(uint8_t client = 255) {
   else websocket.sendTXT(client, payload);
 }
 
-void sendMidiEvent(bool on, uint8_t note, uint8_t velocity) {
+void sendMidiEvent(bool on, uint8_t channel, uint8_t note, uint8_t velocity) {
   JsonDocument doc;
   doc["t"] = "midi";
   doc["s"] = on ? "on" : "off";
+  doc["ch"] = channel;
   doc["n"] = note;
   doc["v"] = velocity;
+  doc["ts"] = millis();
+  String payload;
+  serializeJson(doc, payload);
+  websocket.broadcastTXT(payload);
+}
+
+void sendMidiControl(uint8_t channel, uint8_t controller, uint8_t value) {
+  JsonDocument doc;
+  doc["t"] = "control";
+  doc["ch"] = channel;
+  doc["c"] = controller;
+  doc["v"] = value;
   doc["ts"] = millis();
   String payload;
   serializeJson(doc, payload);
@@ -140,18 +155,26 @@ void sendMidiEvent(bool on, uint8_t note, uint8_t velocity) {
 void handleMidiPacket(void*, const uint8_t data[4]) {
   if (data == nullptr) return;
   const uint8_t status = data[1];
-  const uint8_t note = data[2];
-  const uint8_t velocity = data[3];
-  if (!validNote(note)) return;
   const uint8_t command = status & 0xF0;
-  if (command == 0x90 && velocity > 0) {
+  const uint8_t firstData = data[2];
+  const uint8_t secondData = data[3];
+  if ((command == 0x80 || command == 0x90) && !validNote(firstData)) return;
+  const uint8_t channel = static_cast<uint8_t>((status & 0x0F) + 1);
+  if (command == 0x90 && secondData > 0) {
+    const uint8_t note = firstData;
     notes[noteIndex(note)].pressed = true;
-    notes[noteIndex(note)].velocity = velocity;
-    sendMidiEvent(true, note, velocity);
-  } else if (command == 0x80 || (command == 0x90 && velocity == 0)) {
+    notes[noteIndex(note)].velocity = secondData;
+    sendMidiEvent(true, channel, note, secondData);
+  } else if (command == 0x80 || (command == 0x90 && secondData == 0)) {
+    const uint8_t note = firstData;
     notes[noteIndex(note)].pressed = false;
     notes[noteIndex(note)].velocity = 0;
-    sendMidiEvent(false, note, velocity);
+    sendMidiEvent(false, channel, note, secondData);
+  } else if (command == 0xB0) {
+    if (firstData == 120 || firstData == 123) {
+      for (auto& note : notes) note.pressed = false;
+    }
+    sendMidiControl(channel, firstData, secondData);
   }
 }
 
@@ -288,6 +311,11 @@ void startNetwork() {
 void setup() {
   Serial.begin(115200);
   delay(150);
+  if (ESP.getPsramSize() == 0) {
+    Serial.println("WARN: N8R8 PSRAM not detected; verify qio_opi/OPI board settings");
+  } else {
+    Serial.printf("PSRAM ready: %u bytes\n", ESP.getPsramSize());
+  }
   preferences.begin("notefall", false);
   brightness = clampValue<uint8_t>(preferences.getUChar("brightness", kDefaultGlobalBrightness),
                                    static_cast<uint8_t>(1), kMaxGlobalBrightness);

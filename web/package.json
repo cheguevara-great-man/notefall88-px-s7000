@@ -10,10 +10,14 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@tonejs/midi": "2.0.28"
+    "@tonejs/midi": "2.0.28",
+    "@xmldom/xmldom": "0.9.10",
+    "fflate": "0.8.2",
+    "opensheetmusicdisplay": "1.9.9"
   },
   "devDependencies": {
     "@types/node": "24.2.0",
+    "fake-indexeddb": "6.2.2",
     "typescript": "5.9.2",
     "vite": "8.2.0",
     "vitest": "4.1.10"

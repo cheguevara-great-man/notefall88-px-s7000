@@ -14,6 +14,8 @@ export interface ParsedScore {
   name: string;
   duration: number;
   notes: ScoreNote[];
+  format?: "midi" | "musicxml";
+  measureStarts?: number[];
 }
 
 export interface TargetNote {
@@ -32,6 +34,8 @@ export interface DeviceStatus {
   rssi?: number;
   uptimeMs?: number;
   freeHeap?: number;
+  psramBytes?: number;
+  freePsram?: number;
   usbPackets?: number;
   usbDropped?: number;
   usbErrors?: number;
@@ -45,8 +49,16 @@ export interface DeviceStatus {
 
 export interface MidiInputEvent {
   state: "on" | "off";
+  channel: number;
   note: number;
   velocity: number;
+  timestamp: number;
+}
+
+export interface MidiControlEvent {
+  channel: number;
+  controller: number;
+  value: number;
   timestamp: number;
 }
 

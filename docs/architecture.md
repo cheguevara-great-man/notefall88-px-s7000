@@ -9,8 +9,8 @@ flowchart LR
   P["PX-S7000 USB TO HOST"] -->|"USB-MIDI，按键事件"| E["ESP32-S3 N8R8"]
   E -->|"SPI DATA + CLOCK"| L["74AHCT125 + 176 像素单排灯带"]
   E <-->|"本地 Wi-Fi + WebSocket"| W["手机 / 平板 / 电脑网页"]
-  F["MIDI 文件"] --> W
-  W --> V["屏幕瀑布流 / 实时与等待练习 / A-B 循环 / 校准"]
+  F["MIDI / MusicXML / MXL"] --> W
+  W --> V["五线谱 / 瀑布流 / 曲库 / 练习 / 录制 / 校准"]
 ```
 
 ## 时序分工
@@ -31,13 +31,19 @@ flowchart LR
 | 参考/目标音符 | 浏览器加载的 MIDI 或 MusicXML/MXL | 浏览器练习引擎、ESP32 目标灯层 | 现在或将来应该弹哪些键 |
 | 实际演奏音符 | PX-S7000 USB-MIDI → ESP32 | ESP32 即时按键灯、浏览器判分/录制 | 用户实际上弹了哪些键、力度和踏板状态 |
 
-浏览器比较目标与实际演奏并计算命中、漏键、等待推进和 Follow Me 状态。ESP32 不解析完整乐谱，但保留目标集合的短期副本用于实体提示；同时它直接处理实际演奏事件，因此即使 Wi-Fi 短暂抖动，按键即时反馈仍可工作。
+浏览器比较目标与实际演奏并计算命中、漏键和等待推进。ESP32 不解析完整乐谱，但保留目标集合的短期副本用于实体提示；同时它直接处理实际演奏事件，因此即使 Wi-Fi 短暂抖动，按键即时反馈仍可工作。
 
 这与 Piano Trainer Studio 的“浏览器计算目标和判分、WLED 通常只收 RGB 帧”思路有相同的职责原则，但物理边界不同：NoteFall 由 ESP32 直接做 PX-S7000 USB Host 和 APA102/SK9822 驱动，不要求手机浏览器支持 Web MIDI，也不需要 WLED/helper。
 
 ## 软件实现与许可证边界
 
-Piano Trainer Studio 是第一软件/产品参考，但采用 AGPL-3.0 且默认硬件拓扑不同。本仓库保持 MIT 独立实现，不 fork 或复制其主代码。MusicXML/MXL 将通过单独评估并保留 BSD-3-Clause 许可证的 OSMD 接入；约 24 MB 的 webmscore 转换资源不进入只有 2.875 MiB 的 LittleFS。完整比较见 [PTS 采用决策](pts-adoption-decision.md)。
+Piano Trainer Studio 是第一软件/产品参考，但采用 AGPL-3.0 且默认硬件拓扑不同。本仓库保持 MIT 独立实现，不 fork 或复制其主代码。MusicXML/MXL 已通过独立时间线解析器与 BSD-3-Clause 的 OSMD 接入；完整比较见 [PTS 采用决策](pts-adoption-decision.md)。
+
+### Core / Studio 演进边界
+
+当前固件内置的是可离线使用的 **NoteFall Core**：USB Host、实时灯光、安全/诊断，以及足以在手机上完成日常练习的网页。PTS 的重型谱面与转换资源本来也运行在浏览器而不是 WLED；因此资源是否能塞进 LittleFS 不是采用或拒绝 PTS 前端的决定性理由。
+
+未来若需要 MuseScore/Guitar Pro 原地转换、大型曲库分析或更复杂音频，可增加独立的 **NoteFall Studio**（预安装 PWA、原生移动壳或桌面应用），仍通过同一语义协议连接 Core。这样重型资源由手机/平板/电脑存储，ESP 继续保留轻量救援网页。外部 HTTPS PWA 访问局域网明文 WebSocket/私网设备时存在浏览器安全策略差异，因此发布前必须分别验证 iOS、Android；若策略不可控，原生壳是确定性更高的交付方式。
 
 ## 练习引擎
 
@@ -49,7 +55,7 @@ Piano Trainer Studio 是第一软件/产品参考，但采用 AGPL-3.0 且默认
 
 ## 协议与诊断
 
-当前 WebSocket 协议版本为 `2`。ESP32 每秒上报固件版本、USB 连接状态、VID/PID、IN 端点、端点包长、累计 MIDI 包、队列丢包、传输错误、连接次数、空闲堆和 Wi-Fi RSSI。诊断只读，不包含 Wi-Fi 密码。
+当前 WebSocket 协议版本为 `3`。ESP32 每秒上报固件版本、USB 连接状态、VID/PID、IN 端点、端点包长、累计 MIDI 包、队列丢包、传输错误、连接次数、空闲堆、PSRAM 总量/余量和 Wi-Fi RSSI。音符事件包含 1–16 通道；控制事件包含 CC 编号和值，当前使用 CC64 延音以及 CC120/123 全部音符关闭。诊断只读，不包含 Wi-Fi 密码。
 
 ## 灯位映射
 

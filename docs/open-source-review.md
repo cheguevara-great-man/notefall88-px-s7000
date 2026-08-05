@@ -310,7 +310,7 @@ flowchart LR
 
 PTS 默认要求浏览器自己收到钢琴 MIDI：桌面浏览器使用 Web MIDI；iPhone/iPad 因 Safari/Chrome 不提供 Web MIDI，需要 MIDIWeb。WLED 默认走浏览器 HTTP JSON，低延迟 DDP 需要 PC/Mac helper；官方说明还指出 iOS 的 WLED 使用场景需要 helper。NoteFall 88 则让 PX-S7000 直接接 ESP32-S3，实体按键反馈不经过浏览器或 Wi-Fi，ESP32 再把标准化按键事件发给任意手机/平板页面，因此移动端不需要 Web MIDI 权限。
 
-PTS 的完整发布包也不适合原样塞进 N8R8：审计快照中的 webmscore 资源约 24.2 MB、OSMD 压缩脚本约 1.2 MB，而 NoteFall 当前为保留双 OTA 应用只给 LittleFS 分配 2.875 MB。OSMD 单独加入仍有工程空间；完整 webmscore 转换器必须作为可选电脑端能力、外部 App 资源或后续更大存储版本，不能假装可以直接嵌入。
+PTS 的完整发布包本来也不以塞进 WLED 为目标：网页、OSMD、webmscore、曲库和练习引擎通常运行/存储在手机、平板或电脑，WLED 主要收像素帧。审计快照中的 webmscore 资源约 24.2 MB、OSMD 压缩脚本约 1.2 MB，只说明它们不能原样随 NoteFall Core 烧进 2.875 MiB LittleFS，不能作为拒绝 PTS 前端路线的单独理由。当前 Core 已把 OSMD gzip 到约 306 kB 并通过 buildfs；未来 webmscore 可进入预安装 PWA、原生 App 或电脑 Studio，而不占 ESP Flash。
 
 #### 许可证边界与采用结论
 
@@ -356,8 +356,8 @@ NoteFall 88 因此采用两层映射：
 | 机械安装 | 灯带竖直面向演奏者/琴键方向；不采用全长 3D 打印盒或导轨 | 保留光线直接照到键面的效果，减少高度和遮光 |
 | 键位映射 | 参数化真实键位中心 + 少量现场校准 | 改进现有项目常见的线性偏移模型 |
 | 软件形态 | ESP32 托管响应式 Web/PWA 核心；需要商店安装时再用 Capacitor 封装 | 一份代码覆盖手机、平板和电脑；ESP 作为 MIDI 网关后，iOS 不需要 Web MIDI/MIDIWeb |
-| 软件参考与许可证 | PTS 为第一软件参考；MIT 独立实现，不 fork/复制 AGPL 主代码 | fork 能较快获得成熟功能，但会引入 AGPL 发布义务、拓扑重构和资源体积问题 |
-| 谱面与格式 | 独立引入 BSD-3-Clause 的 OSMD 支持 MusicXML/MXL；MIDI 继续直接解析；24 MB 级 webmscore 转换器不嵌入首版固件 | PTS 验证 MusicXML-first 产品路线；N8R8 的 2.875 MB LittleFS 无法原样容纳完整转换资源 |
+| 软件参考与许可证 | PTS 为第一软件参考；MIT 独立实现，不 fork/复制 AGPL 主代码 | fork 能较快获得成熟功能，但会引入 AGPL 发布义务和 MIDI/灯控拓扑重构；资源可由外部 Studio 承载，不是决定性反对项 |
+| 谱面与格式 | 已独立引入 BSD-3-Clause OSMD、MusicXML/MXL 安全解压和统一时间线；MIDI 继续直接解析 | PTS 验证 MusicXML-first 产品路线；Core 只嵌入日常必需资源，重型转换器可放 Studio |
 | 练习引擎 | 统一时间线，谱面、屏幕瀑布流和实体灯带使用不同渲染器 | 学习 PTS/Openthesia 的公开行为和状态边界，不复制 AGPL/GPL 代码 |
 | 首版传输范围 | 只启用 USB MIDI；BLE/RTP/OSC 等留作未来插件 | ESP32_Host_MIDI 的广度有参考价值，但不是首版需求 |
 

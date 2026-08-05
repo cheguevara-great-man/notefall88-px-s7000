@@ -20,7 +20,7 @@ PX-S7000 USB TO HOST ──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
                               手机 / 平板 / 电脑浏览器
 ```
 
-网页端导入 MIDI 文件、绘制瀑布流并提供实时/等待练习、左右手筛选、可调提前量、A–B 循环和命中/错键/漏键统计；钢琴按键数据走 USB 直达 ESP32，因此按键反馈不依赖无线链路。ESP32 默认建立 `NoteFall-88` 热点，浏览器打开 `http://192.168.4.1` 即可使用。
+网页端可直接导入 MIDI、MusicXML、XML 和 MXL，按需显示瀑布流或五线谱，并提供实时/等待练习、左右手筛选、变速、A–B 循环和命中/错键/漏键统计。IndexedDB 曲库支持文件夹、内容去重和带 SHA-256 校验的完整备份；演奏录制包含力度、MIDI 通道和延音踏板，可导出标准 MIDI。钢琴按键数据走 USB 直达 ESP32，因此按键反馈不依赖无线链路。ESP32 默认建立 `NoteFall-88` 热点，浏览器打开 `http://192.168.4.1` 即可使用。
 
 ## 硬件基线
 
@@ -36,12 +36,14 @@ PX-S7000 USB TO HOST ──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
 ## 仓库内容
 
 - `firmware/`：ESP32-S3 固件、USB-MIDI Host、Wi-Fi/WebSocket 和 APA102/SK9822 驱动
-- `web/`：手机/平板/电脑通用网页，包含 MIDI 导入、瀑布流和等待练习
+- `web/`：手机/平板/电脑通用网页，包含乐谱、曲库、练习、录制、诊断和校准
 - `mechanical/`：可选控制器保护盒的 CadQuery 参数化模型；琴键侧没有打印导轨
 - `config/system.json`：88 键、灯带、电气和机械参数的唯一来源
 - `scripts/generate.py`：生成灯位映射、固件头文件和制造文件
 - `tests/`：映射、功耗和机械包络测试
 - `docs/`：接线、装配、校准、测试和开源项目技术调研
+
+MusicXML 的当前支持范围、目标时间线与 OSMD 谱面之间的边界见 [MusicXML 说明](docs/musicxml.md)。
 
 ## 从这里开始
 
@@ -68,7 +70,7 @@ cd ..
 python scripts/render_cad.py
 ```
 
-网页构建结果直接写入 `firmware/data/`，随后可用 `platformio run -d firmware -t uploadfs` 写入开发板文件系统。
+网页构建结果直接写入 `firmware/data/`。JS/CSS 以预压缩 `.gz` 存储，ESP32 按原 URL 和正确 MIME/Content-Encoding 提供，既节省 Flash 也避开旧版 `mklittlefs` 的长文件名限制。随后可用 `platformio run -d firmware -t uploadfs` 写入开发板文件系统。
 
 ## 当前事实边界
 

@@ -44,3 +44,12 @@ jobs:
       - run: pip install platformio==6.1.19
       - run: platformio run -d firmware
       - run: platformio run -d firmware -t buildfs
+      - name: Verify LittleFS image contents
+        run: |
+          ~/.platformio/packages/tool-mklittlefs/mklittlefs \
+            -b 4096 -p 256 -s 3014656 -l \
+            ~/.platformio/build/notefall88/esp32-s3-devkitc-1-n8r8/littlefs.bin \
+            | tee /tmp/notefall-littlefs.txt
+          grep -q '/index.html' /tmp/notefall-littlefs.txt
+          grep -q '/assets/.*\.js\.gz' /tmp/notefall-littlefs.txt
+          grep -q '/assets/.*\.css\.gz' /tmp/notefall-littlefs.txt

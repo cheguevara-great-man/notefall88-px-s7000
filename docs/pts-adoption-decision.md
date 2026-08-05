@@ -64,40 +64,42 @@ flowchart LR
 
 | 维度 | 直接 fork PTS 网页（AGPL） | NoteFall 独立实现（MIT，已选） |
 |---|---|---|
-| 首批成熟功能 | MusicXML、三模式、谱面、曲库和校准可较快获得 | 需要逐项实现；MIDI 实时/等待、循环、左右手和得分已有基线 |
+| 首批成熟功能 | MusicXML、三模式、谱面、曲库和校准可较快获得 | MIDI/MusicXML/MXL、谱面、实时/等待、循环、左右手、曲库和录制已有独立实现；Follow/移调/逐键校准待补 |
 | 许可证 | 衍生前端必须遵守 AGPL；网络交互版本须显著提供相应源码 | 自写核心保持 MIT；每个第三方依赖按自己的许可证归档 |
 | 与现有硬件的匹配 | 默认 Web MIDI → 浏览器 → WLED；需重写输入、灯光和连接状态 | 原生就是 PX-S7000 → ESP32 → APA102/SK9822 |
 | iOS/Android | iOS MIDI 需 MIDIWeb，WLED 场景还可能需 PC/Mac helper | 移动浏览器只连 ESP WebSocket，不需要 Web MIDI/helper |
 | 实时灯光 | 浏览器生成 RGB 帧并经网络发往 WLED | ESP 直接处理实际按键；目标音符才经 Wi-Fi 提前下发 |
-| 固件容量 | PTS 快照含约 24.2 MB webmscore、1.2 MB OSMD，无法原样进入 2.875 MB LittleFS | 只加入需要的库；OSMD 可评估嵌入，重型转换器放到可选电脑端 |
+| 部署资源 | PTS 重型资源通常运行/存储在手机、平板或电脑，不要求进入 WLED；若坚持 ESP 单机托管才受 LittleFS 限制 | Core 内置离线网页与 gzip OSMD；未来 Studio 可由预装 PWA、原生壳或桌面端承载重型资源 |
 | 工程结构 | Plain JS + 多个全局模块；核心/LED 大文件，适配会是侵入式改造 | TypeScript 模块、协议版本、单元测试和固件 CI 已建立 |
 | 长期维护 | 能获得上游修复，但每次合并都要处理自定义硬件分叉 | 需要自己实现功能，但边界更小、设备行为更确定 |
 | 最终用户步骤 | 可能需要浏览器 MIDI 权限、MIDIWeb 或 helper | 预期只需钢琴接 ESP、手机连设备 Wi-Fi 并打开页面 |
 
-结论不是“AGPL 不好”，而是 PTS 的许可证和默认拓扑都对应另一种产品。即使接受 AGPL，仍需大规模改写 MIDI 输入、WLED 帧输出、设备诊断和移动端路径；fork 并不能直接变成 NoteFall 成品。
+结论不是“AGPL 不好”，也不是“PTS 太大所以不能用”，而是 PTS 的许可证和默认拓扑都对应另一种产品。即使接受 AGPL，仍需大规模改写 MIDI 输入、WLED 帧输出、设备诊断和移动端路径；fork 并不能直接变成 NoteFall 成品。若未来的功能差距证明独立实现成本失控，可把 PTS 改造版作为单独 AGPL Studio 重新评估，而不推翻已经稳定的 ESP Core。
 
-## 资源容量结论
+## 资源容量与运行位置
 
-当前 ESP32-S3 N8R8 分区为双 OTA 应用各 `0x280000`，LittleFS 为 `0x2E0000`（2.875 MiB）。PTS 固定快照中：
+PTS 原本就不是把网页、OSMD、webmscore、曲库和练习引擎放进 WLED ESP32；这些资源运行在浏览器，WLED 主要接收灯光帧。以下数据只回答“哪些资源能随 NoteFall Core 一起烧进 N8R8”，不能单独决定是否采用 PTS 前端。
+
+当前 ESP32-S3 N8R8 分区为双 OTA 应用各 `0x280000`，LittleFS 为 `0x2E0000`（2.875 MiB）：
 
 | 资源 | 审计大小 | NoteFall 处理 |
 |---|---:|---|
-| OSMD 压缩脚本 | 1,206,484 bytes | 可单独评估并嵌入；需做实际 buildfs 和移动端性能测试 |
+| OSMD 压缩脚本 | 1,206,484 bytes | 已独立集成 1.9.9；生产 gzip 为约 306 kB，buildfs 与 390 px 手机渲染已通过 |
 | Tone.js | 349,169 bytes | 不需要；PX-S7000 自己发声 |
 | webmscore 目录 | 24,173,611 bytes | 不嵌入固件；后续可做可选电脑端转换包 |
 | PTS 自写 JS/CSS/HTML/helper | 约 15,720 非空行 | 只研究功能与边界，不复制 |
 
-因此首个 MusicXML 版本采用“MusicXML/XML/MXL 原生导入 + MIDI 原生导入”。MuseScore/Guitar Pro 用户可先导出 MusicXML；浏览器内重型转换列为可选桌面扩展，而不是阻塞钢琴前的手机体验。
+因此当前 Core 采用“MusicXML/XML/MXL 原生导入 + MIDI 原生导入”。MuseScore/Guitar Pro 用户可先导出 MusicXML。若增加重型转换器，它应进入预安装的 Studio 层并离线缓存，不必进入 ESP；同时必须实测 iOS/Android 对本地私网和明文 WebSocket 的策略，必要时使用原生壳。
 
 ## 分功能采用计划
 
 | PTS 已验证的能力 | NoteFall 做法 | 采用边界 |
 |---|---|---|
-| MusicXML/MXL + 谱面 | 独立集成 OSMD（BSD-3-Clause），建立自己的谱面适配层 | 不复制 PTS 的 OSMD 包装和 trainer-core |
+| MusicXML/MXL + 谱面 | 已独立集成 OSMD（BSD-3-Clause）与自己的安全解压/时间线/谱面适配层 | 不复制 PTS 的 OSMD 包装和 trainer-core |
 | MIDI/MuseScore/Guitar Pro 转换 | MIDI 保留 `@tonejs/midi`；重型格式转换后置到可选桌面包 | 不把 24 MB webmscore 塞入 ESP |
 | Realtime / Wait / Follow | 在现有 TypeScript 练习引擎上补 Follow Me 和踏板语义 | 用测试定义行为，不复制状态机代码 |
 | 左右手/循环/变速/移调/得分 | 延续统一时间线和声部过滤；加入版本化练习配置 | 目标灯与判分消费同一过滤结果 |
-| IndexedDB 曲库/备份 | 独立设计版本化 schema、文件夹、最近使用和可校验备份 | 借鉴产品需求，不复制对象结构或 UI 代码 |
+| IndexedDB 曲库/备份 | 已独立实现版本化 schema、文件夹、最近使用、内容去重和 SHA-256 可校验备份 | 借鉴产品需求，不复制对象结构或 UI 代码 |
 | LED 逐键校准 | 先用真实琴键几何 + 原点/方向/全局偏移；实测不足时再加逐键微调 | 灯位真相在 ESP；浏览器只操作语义参数 |
 | WLED HTTP/DDP | 不作为主链路 | ESP 直接 SPI 驱动 APA102/SK9822，无 helper |
 | Web MIDI/MIDIWeb | 不作为 PX-S7000 主链路；未来可作为无硬件演示输入 | 手机只消费 ESP 标准化事件 |
@@ -112,14 +114,14 @@ flowchart LR
 
 因为当前工程人员已经阅读过 PTS 源码，本方案不宣称是由隔离团队执行的 formal clean-room 工程；准确说法是“源码可审计后的独立实现，并禁止复制”。
 
-## 继续开发的顺序
+## 进度与继续开发顺序
 
-1. 完成延音踏板（CC64）、All Notes Off 和演奏事件录制基础，保证实际演奏流完整。
-2. 实现独立的 IndexedDB 曲库、版本化备份与恢复，并为失败/迁移写测试。
-3. 引入官方 OSMD 包并做 MusicXML/MXL 解析与谱面渲染适配；先用真实钢琴曲测试移动端内存和首屏时间。
-4. 把 MusicXML 音符、谱表和声部标准化到现有时间线，确保谱面、目标灯和判分共享同一数据源。
-5. 补 Follow Me、移调和逐键微调，再做手机/平板实机验收。
-6. 最后评估可选电脑端 webmscore 转换器；它不能成为钢琴前日常练习的必需步骤。
+1. **已完成**：延音踏板（CC64）、All Notes Off、通道化演奏录制和 MIDI 导出。
+2. **已完成**：IndexedDB 曲库、文件夹、内容去重、版本化校验备份与失败预验证。
+3. **已完成数字验收**：OSMD、MusicXML/MXL 安全解压、统一时间线、gzip 固件资源，以及桌面/390 px 手机浏览器渲染。
+4. **下一阶段**：用多来源真实钢琴曲建立兼容性语料；实现反复/跳转顺序后再把这些曲目纳入正式判分。
+5. **下一阶段**：补 Follow Me、移调和逐键微调，并决定伴奏输出走 PX-S7000 USB MIDI OUT 还是可选浏览器合成器。
+6. **后续独立决策**：对比 Studio/PWA/原生壳与独立 AGPL PTS Studio；webmscore 不能成为钢琴前日常练习的必需联网步骤。
 
 ## 参考资料
 
@@ -129,4 +131,3 @@ flowchart LR
 - [GNU AGPL-3.0 正文](https://www.gnu.org/licenses/agpl-3.0.en.html)
 - [GNU GPL FAQ：AGPL 网络交互](https://www.gnu.org/licenses/gpl-faq.en.html#AGPLv3InteractingRemotely)
 - [OpenSheetMusicDisplay 官方仓库（BSD-3-Clause）](https://github.com/opensheetmusicdisplay/opensheetmusicdisplay)
-

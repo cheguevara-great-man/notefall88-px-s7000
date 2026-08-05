@@ -24,12 +24,14 @@ cd ..
 - 网页：`http://192.168.4.1`
 - 家庭 Wi-Fi 下：`http://notefall.local`（取决于路由器/客户端 mDNS）
 - WebSocket：端口 `81`
-- 协议：v2
+- 协议：v3
 
 亮度上限 `4/31` 写在生成头文件中。修改网页滑块不能越过该值。
 
 ## 实机诊断
 
-网页“灯带校准 → 设备诊断”显示 USB VID/PID、MIDI IN 端点、端点包长、累计 MIDI 包、队列丢包、传输错误、连接次数、空闲堆和 Wi-Fi RSSI。正常连续弹奏时 `丢包 / 错误` 应保持 `0 / 0`。
+网页“灯带校准 → 设备诊断”显示 USB VID/PID、MIDI IN 端点、端点包长、累计 MIDI 包、队列丢包、传输错误、连接次数、空闲堆、PSRAM 和 Wi-Fi RSSI。N8R8 启动时会检查 OPI PSRAM；网页应显示约 8 MiB 总量。正常连续弹奏时 `丢包 / 错误` 应保持 `0 / 0`。
 
 USB Host 传输回调运行在专用 FreeRTOS 任务，只写入固定长度环形队列和原子诊断计数。`poll()` 在 Arduino 主任务中分发 MIDI 与连接状态，网络库不会从 USB 任务中被调用。
+
+生产网页的 JS/CSS 只保存 `.gz` 文件。Arduino-ESP32 `WebServer` 在请求原始 `.js`/`.css` URL 时自动选择同名 `.gz` 并发送正确的 `Content-Encoding: gzip`；`index.html` 保持未压缩，确保根路由和救援提示始终可读。
