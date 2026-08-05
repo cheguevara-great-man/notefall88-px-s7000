@@ -156,6 +156,22 @@ describe("MusicXML parser", () => {
     expect(() => extractMusicXml(archive.buffer, "bomb.mxl")).toThrow(/解压体积/);
   });
 
+  it.each([
+    ["UTF-16LE with BOM", true, [0xFF, 0xFE]],
+    ["UTF-16LE from its XML byte pattern", true, []],
+    ["UTF-16BE with BOM", false, [0xFE, 0xFF]],
+    ["UTF-16BE from its XML byte pattern", false, []],
+  ] as const)("decodes %s MusicXML exported by notation software", (_name, littleEndian, bom) => {
+    const xml = `<?xml version="1.0" encoding="UTF-16"?><score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note></measure></part></score-partwise>`;
+    const bytes = new Uint8Array(bom.length + xml.length * 2);
+    bytes.set(bom, 0);
+    const view = new DataView(bytes.buffer);
+    [...xml].forEach((character, index) =>
+      view.setUint16(bom.length + index * 2, character.charCodeAt(0), littleEndian));
+    expect(parseMusicXmlFile(bytes.buffer, "vendor.xml").score.notes.map((note) => note.note))
+      .toEqual([60]);
+  });
+
   it("expands a repeat with first and second endings into playback order", () => {
     const repeatXml = `<score-partwise version="4.0">
       <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
@@ -215,6 +231,23 @@ describe("MusicXML parser", () => {
       </part></score-partwise>`;
     expect(() => parseMusicXml(invalid, "overlapping-endings.musicxml"))
       .toThrow(/结尾编号 2.*重叠/);
+  });
+
+  it("keeps a later implicit repeat alive while crossing an earlier volta group", () => {
+    const repeatXml = `<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1">
+      <measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note></measure>
+      <measure number="2"><barline><ending number="1" type="start"/></barline><note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration></note><barline><ending number="1" type="stop"/><repeat direction="backward"/></barline></measure>
+      <measure number="3"><barline><ending number="2" type="start"/></barline><note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration></note><barline><ending number="2" type="discontinue"/></barline></measure>
+      <measure number="4"><note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration></note></measure>
+      <measure number="5"><note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration></note></measure>
+      <measure number="6"><barline><ending number="1" type="start"/></barline><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration></note></measure>
+      <measure number="7"><note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration></note><barline><ending number="1" type="stop"/><repeat direction="backward"/></barline></measure>
+      <measure number="8"><barline><ending number="2" type="start"/></barline><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration></note></measure>
+      <measure number="9"><note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration></note><barline><ending number="2" type="discontinue"/></barline></measure>
+      <measure number="10"><note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration></note></measure>
+    </part></score-partwise>`;
+    expect(parseMusicXml(repeatXml, "two-voltas.musicxml").measureMap)
+      .toEqual([0, 1, 0, 2, 3, 4, 5, 6, 0, 2, 3, 4, 7, 8, 9]);
   });
 
   it("follows D.C. al Fine without looping forever", () => {

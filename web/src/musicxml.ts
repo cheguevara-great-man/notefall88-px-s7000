@@ -3,7 +3,7 @@ import {
   type Document as XmlDocument,
   type Element as XmlElement,
 } from "@xmldom/xmldom";
-import { strFromU8, unzipSync } from "fflate";
+import { unzipSync } from "fflate";
 
 import type { Hand, ParsedScore, ScoreNote } from "./types";
 
@@ -19,6 +19,26 @@ const STEP_TO_SEMITONE: Record<string, number> = {
   A: 9,
   B: 11,
 };
+
+function decodeXmlBytes(bytes: Uint8Array): string {
+  if (bytes.byteLength >= 2) {
+    if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
+      return new TextDecoder("utf-16le").decode(bytes);
+    }
+    if (bytes[0] === 0xFE && bytes[1] === 0xFF) {
+      return new TextDecoder("utf-16be").decode(bytes);
+    }
+  }
+  if (bytes.byteLength >= 4) {
+    if (bytes[0] === 0x3C && bytes[1] === 0x00 && bytes[2] === 0x3F && bytes[3] === 0x00) {
+      return new TextDecoder("utf-16le").decode(bytes);
+    }
+    if (bytes[0] === 0x00 && bytes[1] === 0x3C && bytes[2] === 0x00 && bytes[3] === 0x3F) {
+      return new TextDecoder("utf-16be").decode(bytes);
+    }
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
 
 const NOTE_TYPE_QUARTERS: Record<string, number> = {
   maxima: 32,
@@ -114,6 +134,8 @@ interface RepeatFrame {
   start: number;
   pass: number;
   times: number;
+  alternativeEnd?: number;
+  forwardIndex?: number;
 }
 
 export interface MusicXmlScore {
@@ -338,24 +360,38 @@ function mergedMeasureControls(parts: XmlElement[], measureCount: number): Measu
 
 function expandMeasureOrder(controls: MeasureControl[]): number[] {
   if (controls.length === 0) return [];
-  let endingPasses = new Set<number>();
+  interface EndingGroup {
+    passes: Set<number>;
+    end: number;
+  }
+  const endingGroupByMeasure = new Map<number, EndingGroup>();
+  let endingGroup: EndingGroup | undefined;
   let previousEndingKey = "";
-  for (const control of controls) {
+  let previousEndings = new Set<number>();
+  controls.forEach((control, measureIndex) => {
     const endingKey = [...control.endings].sort((left, right) => left - right).join(",");
     if (!endingKey) {
-      endingPasses = new Set<number>();
+      endingGroup = undefined;
       previousEndingKey = "";
-      continue;
+      previousEndings = new Set<number>();
+      return;
     }
-    if (endingKey === previousEndingKey) continue;
-    for (const pass of control.endings) {
-      if (endingPasses.has(pass)) {
-        throw new Error(`MusicXML 反复结尾编号 ${pass} 在同一组中重叠`);
+    const numberingRestarted = endingKey !== previousEndingKey
+      && control.endings.has(1) && !previousEndings.has(1);
+    if (!endingGroup || numberingRestarted) endingGroup = { passes: new Set<number>(), end: measureIndex };
+    if (endingKey !== previousEndingKey) {
+      for (const pass of control.endings) {
+        if (endingGroup.passes.has(pass)) {
+          throw new Error(`MusicXML 反复结尾编号 ${pass} 在同一组中重叠`);
+        }
+        endingGroup.passes.add(pass);
       }
-      endingPasses.add(pass);
     }
+    endingGroup.end = measureIndex;
+    endingGroupByMeasure.set(measureIndex, endingGroup);
     previousEndingKey = endingKey;
-  }
+    previousEndings = control.endings;
+  });
   const segnos = new Map<string, number>();
   const codas = new Map<string, number>();
   controls.forEach((control, measureIndex) => {
@@ -380,27 +416,27 @@ function expandMeasureOrder(controls: MeasureControl[]): number[] {
   let steps = 0;
   const maximumSteps = Math.max(128, controls.length * 32);
 
-  const alternativePassCount = (backwardIndex: number): number => {
-    if (controls[backwardIndex].endings.size === 0) return 0;
-    let first = backwardIndex;
-    while (first > 0 && controls[first - 1].endings.size > 0) first -= 1;
-    let last = backwardIndex;
-    while (last + 1 < controls.length && controls[last + 1].endings.size > 0) last += 1;
-    let maximum = 0;
-    for (let endingIndex = first; endingIndex <= last; endingIndex += 1) {
-      for (const pass of controls[endingIndex].endings) maximum = Math.max(maximum, pass);
-    }
-    return maximum;
+  const alternativeGroup = (backwardIndex: number): { passes: number; end?: number } => {
+    const group = endingGroupByMeasure.get(backwardIndex);
+    return group
+      ? { passes: Math.max(0, ...group.passes), end: group.end }
+      : { passes: 0 };
   };
 
   while (index < controls.length && steps < maximumSteps && order.length < 10_000) {
     steps += 1;
     const control = controls[index];
     if (!control.endings.size && previousHadEnding && stack.length === 0) lastCompletedPass = 1;
+    const currentEndingGroup = endingGroupByMeasure.get(index);
+    if (currentEndingGroup && currentEndingGroup !== endingGroupByMeasure.get(index - 1)
+      && stack.length === 0) {
+      lastCompletedPass = 1;
+    }
     const pass = stack.at(-1)?.pass ?? lastCompletedPass;
     const shouldPlay = control.endings.size === 0 || control.endings.has(pass);
-    if (!ignoreRepeats && shouldPlay && control.repeatForward && stack.at(-1)?.start !== index) {
-      stack.push({ start: index, pass: 1, times: 2 });
+    if (!ignoreRepeats && shouldPlay && control.repeatForward
+      && stack.at(-1)?.forwardIndex !== index) {
+      stack.push({ start: index, pass: 1, times: 2, forwardIndex: index });
     }
     if (shouldPlay) order.push(index);
     previousHadEnding = control.endings.size > 0;
@@ -433,7 +469,9 @@ function expandMeasureOrder(controls: MeasureControl[]): number[] {
         frame = { start: 0, pass: 1, times: control.repeatTimes };
         stack.push(frame);
       }
-      frame.times = Math.max(frame.times, control.repeatTimes, alternativePassCount(index));
+      const alternatives = alternativeGroup(index);
+      frame.times = Math.max(frame.times, control.repeatTimes, alternatives.passes);
+      if (alternatives.end !== undefined) frame.alternativeEnd = alternatives.end;
       if (frame.pass < frame.times) {
         frame.pass += 1;
         lastCompletedPass = frame.pass;
@@ -445,9 +483,8 @@ function expandMeasureOrder(controls: MeasureControl[]): number[] {
       }
     } else {
       const frame = stack.at(-1);
-      const alternativesEndHere = control.endings.size > 0
-        && (controls[index + 1]?.endings.size ?? 0) === 0;
-      if (shouldPlay && alternativesEndHere && frame && frame.pass >= frame.times) {
+      const alternativesEndHere = frame?.alternativeEnd === index;
+      if (shouldPlay && alternativesEndHere && frame.pass >= frame.times) {
         lastCompletedPass = frame.pass;
         stack.pop();
       }
@@ -806,7 +843,7 @@ export function extractMusicXml(buffer: ArrayBuffer, fileName: string): string {
   if (buffer.byteLength > MAX_SOURCE_BYTES) throw new Error("乐谱文件超过 32 MB 安全上限");
   const bytes = new Uint8Array(buffer);
   const zipped = /\.mxl$/i.test(fileName) || (bytes[0] === 0x50 && bytes[1] === 0x4B);
-  if (!zipped) return new TextDecoder().decode(bytes);
+  if (!zipped) return decodeXmlBytes(bytes);
 
   // Check declared sizes before inflation so a small zip bomb cannot force a
   // large allocation before the post-decompression limit is evaluated.
@@ -817,7 +854,7 @@ export function extractMusicXml(buffer: ArrayBuffer, fileName: string): string {
   let scorePath = "";
   const container = archive["META-INF/container.xml"];
   if (container) {
-    const containerDocument = new DOMParser().parseFromString(strFromU8(container), "application/xml");
+    const containerDocument = new DOMParser().parseFromString(decodeXmlBytes(container), "application/xml");
     scorePath = containerDocument.getElementsByTagName("rootfile").item(0)?.getAttribute("full-path") ?? "";
   }
   if (!scorePath || !archive[scorePath]) {
@@ -825,7 +862,7 @@ export function extractMusicXml(buffer: ArrayBuffer, fileName: string): string {
       !path.startsWith("META-INF/") && /\.(musicxml|xml)$/i.test(path)) ?? "";
   }
   if (!scorePath || !archive[scorePath]) throw new Error("MXL 中找不到 MusicXML 主文件");
-  return strFromU8(archive[scorePath]);
+  return decodeXmlBytes(archive[scorePath]);
 }
 
 export function parseMusicXmlFile(buffer: ArrayBuffer, fileName: string): MusicXmlScore {
