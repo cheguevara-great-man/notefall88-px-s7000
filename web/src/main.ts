@@ -63,6 +63,7 @@ import { transposeLabel, transposeScore } from "./transpose";
 import {
   changeAccessPointPassword,
   fetchUpdateInfo,
+  saveStationWifi,
   uploadUpdate,
   validateUpdateFile,
 } from "./update";
@@ -1208,11 +1209,20 @@ required("key-reset").addEventListener("click", () => {
   keyOffset.value = "0";
   keyOffset.dispatchEvent(new Event("input"));
 });
-required<HTMLFormElement>("wifi-form").addEventListener("submit", (event) => {
+required<HTMLFormElement>("wifi-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const ssid = required<HTMLInputElement>("wifi-ssid").value.trim();
   const password = required<HTMLInputElement>("wifi-password").value;
-  if (ssid) device.saveWifi(ssid, password);
+  const current = required<HTMLInputElement>("ap-current-password");
+  try {
+    await saveStationWifi(ssid, password, current.value);
+    updateStatus.textContent = "家庭 Wi-Fi 已保存，设备正在重启；NoteFall-88 热点仍会保留。";
+    required<HTMLInputElement>("wifi-password").value = "";
+    current.value = "";
+  } catch (error) {
+    updateStatus.textContent = error instanceof Error ? error.message : "无法保存家庭 Wi-Fi";
+    current.value = "";
+  }
 });
 
 required<HTMLFormElement>("ap-password-form").addEventListener("submit", async (event) => {
@@ -1310,6 +1320,7 @@ device.onStatus((status: DeviceStatus) => {
   required("diag-out-errors").textContent = `${status.usbOutDropped ?? "--"} / ${status.usbOutErrors ?? "--"}`;
   required("diag-echo").textContent = String(status.usbEchoSuppressed ?? "--");
   required("diag-connections").textContent = String(status.usbConnections ?? "--");
+  required("diag-web-rejected").textContent = String(status.webRejected ?? "--");
   required("diag-heap").textContent = status.freeHeap === undefined
     ? "--"
     : `${Math.round(status.freeHeap / 1024)} KiB`;

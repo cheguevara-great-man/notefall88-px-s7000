@@ -83,6 +83,8 @@ size_t nextEchoGuard = 0;
 uint32_t midiScheduleDropped = 0;
 uint32_t midiEchoSuppressed = 0;
 int16_t midiOutOwner = -1;
+bool webProtocolCompatible[256]{};
+uint32_t webMessagesRejected = 0;
 String activeApPassword;
 WebUpdateState webUpdate;
 
@@ -94,6 +96,7 @@ constexpr Rgb kTest{255, 210, 32};
 constexpr int8_t kMaxKeyPixelOffset = 4;
 constexpr uint32_t kMaxMidiScheduleDelayMs = 60000;
 constexpr uint32_t kEchoGuardMs = 80;
+constexpr size_t kMaxWebMessageBytes = 8192;
 constexpr char kUpdateAuthHeader[] = "X-NoteFall-Admin";
 
 template <typename T>
@@ -271,6 +274,7 @@ void sendStatus(uint8_t client = 255) {
   doc["usbOutQueued"] = scheduledMidiCount;
   doc["usbEchoSuppressed"] = midiEchoSuppressed;
   doc["usbOutOwned"] = midiOutOwner >= 0;
+  doc["webRejected"] = webMessagesRejected;
   String payload;
   serializeJson(doc, payload);
   if (client == 255) websocket.broadcastTXT(payload);
@@ -363,15 +367,45 @@ void saveCalibration() {
 }
 
 void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
+  if (length == 0 || length > kMaxWebMessageBytes) {
+    ++webMessagesRejected;
+    return;
+  }
   JsonDocument doc;
   const DeserializationError error = deserializeJson(doc, payload, length);
-  if (error) return;
+  if (error) {
+    ++webMessagesRejected;
+    return;
+  }
   const char* type = doc["t"] | "";
 
   if (strcmp(type, "hello") == 0) {
+    const int received = doc["v"] | -1;
+    webProtocolCompatible[client] = received == kProtocolVersion;
     sendStatus(client);
+    if (!webProtocolCompatible[client]) {
+      ++webMessagesRejected;
+      JsonDocument reply;
+      reply["t"] = "protocolError";
+      reply["expected"] = kProtocolVersion;
+      reply["received"] = received;
+      String encoded;
+      serializeJson(reply, encoded);
+      websocket.sendTXT(client, encoded);
+      return;
+    }
     sendCalibration(client);
-  } else if (strcmp(type, "target") == 0) {
+    return;
+  }
+  // A stale or foreign client may observe status for diagnosis, but cannot
+  // mutate lights, calibration, Wi-Fi credentials, or MIDI OUT until it has
+  // completed a matching protocol handshake.
+  if (!webProtocolCompatible[client]) {
+    ++webMessagesRejected;
+    return;
+  }
+
+  if (strcmp(type, "target") == 0) {
     clearTargets();
     const JsonArray targets = doc["notes"].as<JsonArray>();
     for (JsonObject target : targets) {
@@ -416,19 +450,27 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
     }
   } else if (strcmp(type, "midiOut") == 0) {
     size_t accepted = 0;
+    size_t received = 0;
     const bool ownerAvailable = midiOutOwner < 0 || midiOutOwner == client;
     if (usbMidi.outputAvailable() && ownerAvailable) {
       midiOutOwner = client;
       const uint32_t now = millis();
       const JsonArray events = doc["events"].as<JsonArray>();
       for (JsonObject event : events) {
+        if (received++ >= 48) {
+          ++webMessagesRejected;
+          break;
+        }
         const int status = event["s"] | -1;
         const int data1 = event["d1"] | -1;
         const int data2 = event["d2"] | 0;
         const uint32_t delayMs = static_cast<uint32_t>(clampValue<int>(
             event["delay"] | 0, 0, static_cast<int>(kMaxMidiScheduleDelayMs)));
-        if (status < 0 || status > 255 || data1 < 0 || data1 > 127 ||
-            data2 < 0 || data2 > 127) continue;
+        if (status < 0x80 || status > 0xEF || data1 < 0 || data1 > 127 ||
+            data2 < 0 || data2 > 127) {
+          ++webMessagesRejected;
+          continue;
+        }
         if (scheduleMidiMessage(now + delayMs, static_cast<uint8_t>(status),
                                 static_cast<uint8_t>(data1), static_cast<uint8_t>(data2))) {
           ++accepted;
@@ -451,15 +493,6 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
     String encoded;
     serializeJson(reply, encoded);
     websocket.sendTXT(client, encoded);
-  } else if (strcmp(type, "wifi") == 0) {
-    const String ssid = doc["ssid"] | "";
-    const String password = doc["password"] | "";
-    if (!ssid.isEmpty()) {
-      preferences.putString("wifiSsid", ssid);
-      preferences.putString("wifiPass", password);
-      websocket.sendTXT(client, "{\"t\":\"wifiSaved\"}");
-      restartRequested = true;
-    }
   }
 }
 
@@ -467,9 +500,11 @@ void webSocketEvent(uint8_t client, WStype_t type, uint8_t* payload, size_t leng
   switch (type) {
     case WStype_CONNECTED:
       webClients = std::min<uint8_t>(webClients + 1, 250);
+      webProtocolCompatible[client] = false;
       sendStatus(client);
       break;
     case WStype_DISCONNECTED:
+      webProtocolCompatible[client] = false;
       if (webClients > 0) --webClients;
       if (midiOutOwner == client) {
         panicMidiOutput();
@@ -609,6 +644,28 @@ void changeAccessPointPassword() {
   restartRequested = true;
 }
 
+void saveStationWifi() {
+  if (!updateRequestAuthorized()) {
+    http.send(403, "application/json", requestUsesAccessPoint()
+        ? "{\"ok\":false,\"error\":\"current password is wrong\"}"
+        : "{\"ok\":false,\"error\":\"connect to NoteFall-88 hotspot\"}");
+    return;
+  }
+  const String ssid = http.arg("ssid");
+  const String password = http.arg("password");
+  const bool passwordValid = password.isEmpty() ||
+      (password.length() >= 8 && password.length() <= 63);
+  if (ssid.isEmpty() || ssid.length() > 32 || !passwordValid) {
+    http.send(400, "application/json",
+              "{\"ok\":false,\"error\":\"SSID must be 1-32 bytes and password empty or 8-63 bytes\"}");
+    return;
+  }
+  preferences.putString("wifiSsid", ssid);
+  preferences.putString("wifiPass", password);
+  http.send(200, "application/json", "{\"ok\":true,\"restart\":true}");
+  restartRequested = true;
+}
+
 void startNetwork() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.setHostname(kHostname);
@@ -634,6 +691,7 @@ void startNetwork() {
   http.on("/api/update-info", HTTP_GET, sendUpdateInfo);
   http.on("/api/update", HTTP_POST, finishUpdateRequest, handleUpdateUpload);
   http.on("/api/ap-password", HTTP_POST, changeAccessPointPassword);
+  http.on("/api/wifi", HTTP_POST, saveStationWifi);
   // Arduino-ESP32 2.x defaults directory roots to /index.htm (without the
   // final "l"), so register our Vite entry file explicitly and serve hashed
   // assets from their own prefix.

@@ -7,7 +7,7 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-B8QgivW1.js"></script>
+    <script type="module" crossorigin src="./assets/index-Cu5zwNYP.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-CgatXwcd.css">
   </head>
   <body>
@@ -228,6 +228,7 @@
         </div>
         <hr />
         <h3>加入家庭 Wi-Fi（可选）</h3>
+        <p>只能在连接 <code>NoteFall-88</code> 热点时修改；还需在下方“设备维护”输入当前热点密码。</p>
         <form id="wifi-form" class="wifi-grid">
           <input id="wifi-ssid" placeholder="Wi-Fi 名称" autocomplete="off" />
           <input id="wifi-password" type="password" placeholder="Wi-Fi 密码" autocomplete="new-password" />
@@ -264,6 +265,7 @@
           <div><dt>OUT 丢弃 / 错误</dt><dd id="diag-out-errors">--</dd></div>
           <div><dt>抑制回声</dt><dd id="diag-echo">--</dd></div>
           <div><dt>连接次数</dt><dd id="diag-connections">--</dd></div>
+          <div><dt>拒绝的网页消息</dt><dd id="diag-web-rejected">--</dd></div>
           <div><dt>可用内存</dt><dd id="diag-heap">--</dd></div>
           <div><dt>PSRAM</dt><dd id="diag-psram">--</dd></div>
           <div><dt>Wi-Fi RSSI</dt><dd id="diag-rssi">--</dd></div>
@@ -287,7 +289,7 @@
             <h3>断电接线</h3>
             <label><input type="checkbox" data-commission="wiringInspected" /> 万用表确认 5V-GND 不短路，DATA/CLOCK 不互通</label>
             <label><input type="checkbox" data-commission="fuseInstalled" /> 5 V 正极已串联 3 A 保险丝</label>
-            <label><input type="checkbox" data-commission="stripPowerSeparate" /> 灯带由独立 5 V 电源供电，只与 ESP32 共地</label>
+            <label><input type="checkbox" data-commission="stripPowerSeparate" /> 灯带电流不经过 ESP32，全部 5 V 支路受 3 A 总保险保护</label>
             <label><input type="checkbox" data-commission="mountNonDamaging" /> 接触琴体的材料可移除、无硬边、无永久胶</label>
           </div>
         </section>

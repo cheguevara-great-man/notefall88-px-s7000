@@ -148,7 +148,7 @@ export function missingCommissioningEvidence(state: CommissioningState): string[
   const manualLabels: Record<keyof CommissioningState["manual"], string> = {
     wiringInspected: "断电万用表接线检查",
     fuseInstalled: "5 V 支路保险丝",
-    stripPowerSeparate: "灯带独立供电并共地",
+    stripPowerSeparate: "灯带电流绕过 ESP32 且全部支路受 3 A 总保险保护",
     mountNonDamaging: "无损安装材料确认",
     lightA0: "A0 灯位确认",
     lightC4: "C4 灯位确认",

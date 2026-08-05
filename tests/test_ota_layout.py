@@ -37,4 +37,8 @@ def test_web_update_route_requires_hotspot_and_password() -> None:
     assert "kUpdateAuthHeader" in authorization
     assert "constantTimeEquals" in authorization
     assert 'http.on("/api/update", HTTP_POST' in source
+    assert 'http.on("/api/wifi", HTTP_POST, saveStationWifi)' in source
+    wifi = source[source.index("void saveStationWifi()") : source.index("void startNetwork()")]
+    assert "updateRequestAuthorized()" in wifi
+    assert "ssid.length() > 32" in wifi
     assert "panicMidiOutput();" in source[source.index("void handleUpdateUpload()") : source.index("void finishUpdateRequest()")]

@@ -19,7 +19,7 @@ ESP 返回 `status` 和 `calibration`。`status` 的稳定字段包括：
 - `usbOutPackets`、`usbOutDropped`、`usbOutErrors`、`usbOutQueued`、`usbEchoSuppressed`、`usbOutOwned`；
 - `brightness`、`offset`、`reversed`、内存、运行时间和 RSSI。
 
-未知字段必须忽略；协议主版本不一致时网页停止把设备标为可用，但仍可展示诊断。
+未知字段必须忽略。固件先把新连接标为未握手：只有收到匹配的 `hello.v` 后，才接受目标灯、校准、Wi-Fi 或 MIDI OUT 等改变状态的消息。协议不一致时只允许查看状态诊断，并返回 `{"t":"protocolError","expected":5,"received":4}`；无效 JSON、超过 8192 字节、未握手或协议不符的消息计入只读字段 `webRejected`。
 
 ## 钢琴输入
 
@@ -66,7 +66,7 @@ ESP 把 USB MIDI 标准化为：
 
 ## 延迟探测与网络配置
 
-`ping`/`pong` 只测网页到 ESP 的往返时间，不等同于按键到灯光延迟。`wifi` 消息只写入 NVS 并触发重启；ESP 始终保留 `NoteFall-88` 热点作为恢复入口。
+`ping`/`pong` 只测网页到 ESP 的往返时间，不等同于按键到灯光延迟。家庭 Wi-Fi 凭据不再通过普通 WebSocket 修改：`POST /api/wifi` 只接受设备 SoftAP 本地请求，并在 `X-NoteFall-Admin` 头再次核对当前热点密码；SSID 为 1–32 字节，密码为空或 8–63 字节。ESP 始终保留 `NoteFall-88` 热点作为恢复入口。
 
 ## 演进规则
 

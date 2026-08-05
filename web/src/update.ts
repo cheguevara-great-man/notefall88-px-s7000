@@ -95,3 +95,21 @@ export async function changeAccessPointPassword(current: string, next: string): 
     body,
   }));
 }
+
+export async function saveStationWifi(ssid: string, password: string, current: string): Promise<void> {
+  const trimmed = ssid.trim();
+  if (!trimmed || new TextEncoder().encode(trimmed).length > 32) {
+    throw new Error("Wi-Fi 名称必须为 1–32 字节");
+  }
+  const passwordBytes = new TextEncoder().encode(password).length;
+  if (passwordBytes !== 0 && (passwordBytes < 8 || passwordBytes > 63)) {
+    throw new Error("Wi-Fi 密码必须为空或 8–63 字节");
+  }
+  if (!current) throw new Error("请输入当前热点密码");
+  const body = new URLSearchParams({ ssid: trimmed, password });
+  await responseJson(await fetch("/api/wifi", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "X-NoteFall-Admin": current },
+    body,
+  }));
+}

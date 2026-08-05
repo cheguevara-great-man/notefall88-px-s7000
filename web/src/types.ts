@@ -63,6 +63,7 @@ export interface DeviceStatus {
   usbOutQueued?: number;
   usbEchoSuppressed?: number;
   usbOutOwned?: boolean;
+  webRejected?: number;
 }
 
 export interface MidiOutEvent {

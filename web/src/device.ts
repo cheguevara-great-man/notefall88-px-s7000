@@ -152,10 +152,6 @@ export class DeviceLink {
     this.send({ t: "midiPanic" });
   }
 
-  saveWifi(ssid: string, password: string): void {
-    this.send({ t: "wifi", ssid, password });
-  }
-
   onStatus(listener: Listener<DeviceStatus>): void {
     this.statusListeners.push(listener);
   }
