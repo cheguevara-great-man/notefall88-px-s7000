@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "audit:musicxml": "vite-node scripts/audit-musicxml-corpus.ts",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "test": "vitest",
@@ -20,6 +21,7 @@
     "fake-indexeddb": "6.2.2",
     "typescript": "5.9.2",
     "vite": "8.2.0",
+    "vite-node": "6.0.0",
     "vitest": "4.1.10"
   }
 }

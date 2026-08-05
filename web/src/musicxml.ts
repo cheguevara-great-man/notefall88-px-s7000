@@ -338,6 +338,24 @@ function mergedMeasureControls(parts: XmlElement[], measureCount: number): Measu
 
 function expandMeasureOrder(controls: MeasureControl[]): number[] {
   if (controls.length === 0) return [];
+  let endingPasses = new Set<number>();
+  let previousEndingKey = "";
+  for (const control of controls) {
+    const endingKey = [...control.endings].sort((left, right) => left - right).join(",");
+    if (!endingKey) {
+      endingPasses = new Set<number>();
+      previousEndingKey = "";
+      continue;
+    }
+    if (endingKey === previousEndingKey) continue;
+    for (const pass of control.endings) {
+      if (endingPasses.has(pass)) {
+        throw new Error(`MusicXML 反复结尾编号 ${pass} 在同一组中重叠`);
+      }
+      endingPasses.add(pass);
+    }
+    previousEndingKey = endingKey;
+  }
   const segnos = new Map<string, number>();
   const codas = new Map<string, number>();
   controls.forEach((control, measureIndex) => {
@@ -362,29 +380,43 @@ function expandMeasureOrder(controls: MeasureControl[]): number[] {
   let steps = 0;
   const maximumSteps = Math.max(128, controls.length * 32);
 
+  const alternativePassCount = (backwardIndex: number): number => {
+    if (controls[backwardIndex].endings.size === 0) return 0;
+    let first = backwardIndex;
+    while (first > 0 && controls[first - 1].endings.size > 0) first -= 1;
+    let last = backwardIndex;
+    while (last + 1 < controls.length && controls[last + 1].endings.size > 0) last += 1;
+    let maximum = 0;
+    for (let endingIndex = first; endingIndex <= last; endingIndex += 1) {
+      for (const pass of controls[endingIndex].endings) maximum = Math.max(maximum, pass);
+    }
+    return maximum;
+  };
+
   while (index < controls.length && steps < maximumSteps && order.length < 10_000) {
     steps += 1;
     const control = controls[index];
     if (!control.endings.size && previousHadEnding && stack.length === 0) lastCompletedPass = 1;
-    if (!ignoreRepeats && control.repeatForward && stack.at(-1)?.start !== index) {
+    const pass = stack.at(-1)?.pass ?? lastCompletedPass;
+    const shouldPlay = control.endings.size === 0 || control.endings.has(pass);
+    if (!ignoreRepeats && shouldPlay && control.repeatForward && stack.at(-1)?.start !== index) {
       stack.push({ start: index, pass: 1, times: 2 });
     }
-    const pass = stack.at(-1)?.pass ?? lastCompletedPass;
-    if (control.endings.size === 0 || control.endings.has(pass)) order.push(index);
+    if (shouldPlay) order.push(index);
     previousHadEnding = control.endings.size > 0;
 
-    if (afterGlobalJump && control.fine) {
+    if (shouldPlay && afterGlobalJump && control.fine) {
       index = controls.length;
       break;
     }
-    if (afterGlobalJump && !codaTaken && control.toCoda) {
+    if (shouldPlay && afterGlobalJump && !codaTaken && control.toCoda) {
       index = markerTarget(codas, control.toCoda, "To Coda");
       codaTaken = true;
       stack.length = 0;
       previousHadEnding = false;
       continue;
     }
-    if (!globalJumpTaken && (control.daCapo || control.dalSegno)) {
+    if (shouldPlay && !globalJumpTaken && (control.daCapo || control.dalSegno)) {
       index = control.daCapo ? 0 : markerTarget(segnos, control.dalSegno!, "D.S.");
       globalJumpTaken = true;
       afterGlobalJump = true;
@@ -395,13 +427,13 @@ function expandMeasureOrder(controls: MeasureControl[]): number[] {
       continue;
     }
 
-    if (!ignoreRepeats && control.repeatBackward) {
+    if (!ignoreRepeats && shouldPlay && control.repeatBackward) {
       let frame = stack.at(-1);
       if (!frame) {
         frame = { start: 0, pass: 1, times: control.repeatTimes };
         stack.push(frame);
       }
-      frame.times = control.repeatTimes;
+      frame.times = Math.max(frame.times, control.repeatTimes, alternativePassCount(index));
       if (frame.pass < frame.times) {
         frame.pass += 1;
         lastCompletedPass = frame.pass;
@@ -412,6 +444,13 @@ function expandMeasureOrder(controls: MeasureControl[]): number[] {
         index += 1;
       }
     } else {
+      const frame = stack.at(-1);
+      const alternativesEndHere = control.endings.size > 0
+        && (controls[index + 1]?.endings.size ?? 0) === 0;
+      if (shouldPlay && alternativesEndHere && frame && frame.pass >= frame.times) {
+        lastCompletedPass = frame.pass;
+        stack.pop();
+      }
       index += 1;
     }
   }

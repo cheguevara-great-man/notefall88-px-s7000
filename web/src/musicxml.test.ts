@@ -193,6 +193,30 @@ describe("MusicXML parser", () => {
     expect(score.measureMap).toEqual([0, 1, 0, 1, 0, 1]);
   });
 
+  it("keeps one implicit repeat frame across sequential numbered endings", () => {
+    const repeatXml = `<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+      <part id="P1">
+        <measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note></measure>
+        <measure number="2"><barline location="left"><ending number="1" type="start"/></barline><note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration></note><barline><ending number="1" type="stop"/><repeat direction="backward"/></barline></measure>
+        <measure number="3"><barline location="left"><ending number="2" type="start"/></barline><note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration></note><barline><ending number="2" type="stop"/><repeat direction="backward"/></barline></measure>
+        <measure number="4"><barline location="left"><ending number="3" type="start"/></barline><note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration></note><barline><ending number="3" type="discontinue"/></barline></measure>
+        <measure number="5"><note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration></note></measure>
+      </part></score-partwise>`;
+    const score = parseMusicXml(repeatXml, "sequential-endings.musicxml");
+    expect(score.measureMap).toEqual([0, 1, 0, 2, 0, 3, 4]);
+    expect(score.notes.map((note) => note.note)).toEqual([60, 62, 60, 64, 60, 65, 67]);
+  });
+
+  it("rejects overlapping ending numbers instead of guessing a playback order", () => {
+    const invalid = `<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+      <part id="P1">
+        <measure number="1"><attributes><divisions>1</divisions></attributes><barline><ending number="1,2" type="start"/></barline><note><rest/><duration>1</duration></note><barline><ending number="1,2" type="stop"/></barline></measure>
+        <measure number="2"><barline><ending number="2" type="start"/></barline><note><rest/><duration>1</duration></note><barline><ending number="2" type="stop"/><repeat direction="backward"/></barline></measure>
+      </part></score-partwise>`;
+    expect(() => parseMusicXml(invalid, "overlapping-endings.musicxml"))
+      .toThrow(/结尾编号 2.*重叠/);
+  });
+
   it("follows D.C. al Fine without looping forever", () => {
     const navigationXml = `<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
       <part id="P1">

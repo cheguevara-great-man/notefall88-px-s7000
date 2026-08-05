@@ -41,6 +41,20 @@ NoteFall 对一个乐谱保留两种互补表示：
 
 此外，仓库固定了 W3C Music Notation Community Group 的 MIT `musicxmlTestSuite` 提交 `b2e6a162` 中三个未经修改的互操作样例：`43a-PianoStaff.xml`、`45b-RepeatWithAlternatives.xml` 和 `31c-MetronomeMarks.xml`。测试先核对每个文件 SHA-256，再断言钢琴双谱表、反复结尾播放顺序、节拍标记和音符时值；来源与许可证保存在样例目录。这一层证明标准语料的稳定语义，不把自写 XML 当作全部兼容性证据。
 
+完整语料审计可通过 `npm run audit:musicxml -- <xmlFiles目录>` 重复运行。对上述固定提交的全部 150 个 `.xml`/`.musicxml`/`.mxl` 文件，当前结果为 149 个正常解析、0 个意外异常、1 个预期安全拒绝。预期拒绝的是测试套件刻意构造的 `45f-Repeats-InvalidEndings.xml`：它的结尾编号互相重叠矛盾，NoteFall 不猜测错误播放顺序。审计同时检查负数/非有限时长，并单列没有目标音符的纯休止、版式和结构测试文件。此次批量审计发现并固定了“连续第 1～第 5 结尾共享隐式反复轮次”的语义，以及“跳过的结尾不得触发其反复线或导航”的规则。
+
+可重复审计命令（语料不纳入产品发布包）：
+
+```powershell
+git clone https://github.com/w3c-cg/musicxmlTestSuite tmp/musicxmlTestSuite
+git -C tmp/musicxmlTestSuite checkout b2e6a1627b8574c9714e1fd0a8a5b1921e10f8f3
+cd web
+npm.cmd ci
+npm.cmd run audit:musicxml -- ..\tmp\musicxmlTestSuite\xmlFiles
+```
+
+“解析成功”表示目标音符时间线能够安全生成，不代表 NoteFall 实现了测试文件中的全部雕版、歌词、吉他谱、打击乐或微分音视觉语义；这些仍交给 OSMD 显示或明确处于练习引擎范围之外。
+
 发布前仍要用至少以下应用导出源各验证 3 首：MuseScore、Dorico/Finale 任一、以及常见网络 MXL。每首逐项比对显示小节数、目标音高、首末时刻、速度变化、左右手和 tie，不只做“能打开”测试。W3C 标准语料不能替代这些厂商实际导出门禁。
 
 解析错误、缺少声部或超过安全上限时，导入失败但原曲库内容不变。OSMD 的可选光标若遇到不完整 staff/voice 数据会被关闭，谱面本身仍保留可读。
