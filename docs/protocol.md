@@ -71,7 +71,7 @@ ESP 把 USB MIDI 标准化为：
 
 ## 延迟探测与网络配置
 
-`ping`/`pong` 只测网页到 ESP 的往返时间，不等同于按键到灯光延迟。家庭 Wi-Fi 凭据不再通过普通 WebSocket 修改：`POST /api/wifi` 只接受设备 SoftAP 本地请求，并在 `X-NoteFall-Admin` 头再次核对当前热点密码；SSID 为 1–32 字节，密码为空或 8–63 字节。ESP 始终保留 `NoteFall-88` 热点作为恢复入口。
+`ping`/`pong` 只测网页到 ESP 的往返时间，不等同于按键到灯光延迟。家庭 Wi-Fi 凭据不再通过普通 WebSocket 修改：`POST /api/wifi` 只接受设备 SoftAP 本地请求，并在 `X-NoteFall-Admin` 头再次核对当前热点密码；SSID 为 1–32 个 UTF-8 字节，密码为空或 8–63 个 UTF-8 字节。热点新密码同样按 UTF-8 字节计数，网页与固件使用同一边界，避免多字节字符在两端判定不一致。ESP 始终保留 `NoteFall-88` 热点作为恢复入口。
 
 `ledInputLatency*` 测量 USB Host 传输回调收到事件到对应 SPI 灯帧发送完毕的 ESP 内部区间。固件先排空同一批 USB 事件，再只发送一帧，所以和弦不会逐音重复刷灯；该帧不再等待原来的 10 ms 周期，并且先于 WebSocket 广播。浏览器事件使用独立 64 项固定队列，溢出计入 `webMidiDropped`，不会反向阻塞或破坏实体灯。此指标不包含 PX-S7000 自身键盘扫描、USB 传输前半段与 LED 光电响应，不能替代 120 fps 端到端视频，但能定位固件排队或任务阻塞。
 

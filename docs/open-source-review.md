@@ -41,7 +41,7 @@ flowchart LR
 | PianoLux ESP32 | [`2a9d10c`](https://github.com/serifpersia/pianolux-esp32/tree/2a9d10c3c744) | MIT | 约 5,700 |
 | ESP32_Host_MIDI | [`dea1578`](https://github.com/sauloverissimo/ESP32_Host_MIDI/tree/dea1578d596a)（v7.2.0） | MIT | 核心约 5,100；含示例/测试约 12,700 |
 | Openthesia | [`04d6e37`](https://github.com/ImAxel0/Openthesia/tree/04d6e378f178) | GPL-3.0 | 约 7,600 |
-| NoteFall 88 当前工程基线 | 本仓库 | MIT | 约 8,500 行非空代码与测试；149 项自动测试，Web 覆盖率门限进入 CI，另有 1016 文件 MusicXML/MXL 固定语料审计 |
+| NoteFall 88 当前工程基线 | 本仓库 | MIT | 约 8,500 行非空代码与测试；152 项自动测试，Web 覆盖率门限进入 CI，另有 1016 文件 MusicXML/MXL 固定语料审计 |
 
 ¹ 这是用相同规则排除依赖目录、构建产物和压缩文件后的物理非空行近似值。翻译表、生成代码、示例和测试都会显著改变数字，所以代码行数只能说明项目体量，不能代表功能质量。
 

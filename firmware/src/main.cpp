@@ -754,7 +754,7 @@ void changeAccessPointPassword() {
   }
   const String next = http.arg("next");
   if (next.length() < 8 || next.length() > 63) {
-    http.send(400, "application/json", "{\"ok\":false,\"error\":\"password must be 8-63 characters\"}");
+    http.send(400, "application/json", "{\"ok\":false,\"error\":\"password must be 8-63 UTF-8 bytes\"}");
     return;
   }
   preferences.putString("apPass", next);

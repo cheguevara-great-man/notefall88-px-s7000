@@ -94,7 +94,9 @@ export function uploadUpdate(
 }
 
 export async function changeAccessPointPassword(current: string, next: string): Promise<void> {
-  if (next.length < 8 || next.length > 63) throw new Error("新热点密码必须为 8–63 个字符");
+  if (!current) throw new Error("请输入当前热点密码");
+  const nextBytes = new TextEncoder().encode(next).length;
+  if (nextBytes < 8 || nextBytes > 63) throw new Error("新热点密码必须为 8–63 字节");
   const body = new URLSearchParams({ next });
   await responseJson(await fetch("/api/ap-password", {
     method: "POST",
