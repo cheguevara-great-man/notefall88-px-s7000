@@ -53,6 +53,7 @@ describe("performance recording", () => {
       { note: 60, channel: 1, velocity: 100, start: 0, end: 0.5, sustained: false },
       { note: 48, channel: 2, velocity: 80, start: 0.25, end: 1.25, sustained: true },
     ], "Take 1", [
+      { channel: 1, controller: 88, value: 25, time: 0.19 },
       { channel: 1, controller: 64, value: 37, time: 0.2 },
       { channel: 1, controller: 67, value: 64, time: 0.3 },
     ]);
@@ -63,6 +64,8 @@ describe("performance recording", () => {
     expect(firstTrack.controlChanges[64][0].value).toBeCloseTo(37 / 127);
     expect(firstTrack.controlChanges[64][0].time).toBeCloseTo(0.2, 2);
     expect(firstTrack.controlChanges[67][0].value).toBeCloseTo(64 / 127);
+    expect(firstTrack.controlChanges[88][0].value).toBeCloseTo(25 / 127);
+    expect(firstTrack.controlChanges[88][0].time).toBeCloseTo(0.19, 2);
     expect(recordingDuration([
       { note: 60, channel: 1, velocity: 100, start: 0, end: 0.5, sustained: false },
       { note: 48, channel: 2, velocity: 80, start: 0.25, end: 1.25, sustained: true },

@@ -31,12 +31,12 @@ ESP 返回 `status` 和 `calibration`。`status` 的稳定字段包括：
 ESP 把 USB MIDI 标准化为：
 
 ```json
-{"t":"midi","s":"on","ch":1,"n":60,"v":96,"ts":123456}
+{"t":"midi","s":"on","ch":1,"n":60,"v":96,"vh":12345,"ts":123456}
 {"t":"midi","s":"off","ch":1,"n":60,"v":0,"ts":123820}
 {"t":"control","ch":1,"c":64,"v":127,"ts":123500}
 ```
 
-`ch` 为 1–16，`n/v/c` 为 0–127，`ts` 是 USB 回调微秒时间戳换算出的 ESP32 启动后毫秒数。Note On 力度 0 在固件内归一化为 Note Off。CC120/123 会清除本地按键状态。
+`ch` 为 1–16，`n/v/c` 为 0–127，`ts` 是 USB 回调微秒时间戳换算出的 ESP32 启动后毫秒数。若 PX-S7000 启用了 High-Resolution Velocity MIDI Out，固件会把同通道 CC88 低 7 位与下一条 Note On/Off 的 `v` 合成为可选 `vh`（0–16383）；原始 CC88 仍单独转发，所以标准 MIDI 录制可无损往返。旧客户端可忽略 `vh`，Note On 力度 0 仍归一化为 Note Off。CC120/123 会清除本地按键状态。
 
 ## 目标灯与校准
 

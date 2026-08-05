@@ -10,12 +10,12 @@ NoteFall 88 只有在数字门禁全部自动通过后才能生成候选包；�
 | CAD 有效、尺寸与哈希一致 | Python 测试 + STL/STEP manifest | 通过 |
 | 供电/保险/压降预算 | `generated/power_budget.json` + Python 测试 | 通过 |
 | 线束防呆与 SVG 可解析 | `tests/test_hardware_package.py` | 通过 |
-| Web 练习、数据语义与入站协议边界 | Vitest | 81 项通过 |
+| Web 练习、数据语义与入站协议边界 | Vitest | 82 项通过 |
 | NVS 校准、复位原因与灯先于网络的实时顺序 | Python 源码门禁 + 固件诊断 | 通过 |
 | 390×844 手机布局与设备离线提示 | Playwright 真浏览器 | 无横向溢出、无表单警告 |
 | README/装机/制造文档本地链接 | Python 文档门禁 | 全部可解析 |
 | 嵌入资源可解析且 `<500 KiB` | Python 资源测试 + `buildfs` 反向列表 | 通过 |
-| ESP32 固件链接 | PlatformIO N8R8 环境 | RAM 17.1%，Flash 34.7% |
+| ESP32 固件链接 | PlatformIO N8R8 环境 | RAM 17.2%，Flash 34.7% |
 | OTA 与制造包可重复 | 双次打包 SHA-256 相同 | 通过 |
 | 私密现场照片不进入发布包 | 制造清单显式为 false + Git 路径审计 | 通过 |
 

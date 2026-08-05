@@ -31,13 +31,28 @@ describe("device protocol decoder", () => {
 
   it("decodes bounded MIDI, control, result and pong messages", () => {
     for (const message of [
-      { t: "midi", s: "on", ch: 16, n: 108, v: 127, ts: 123 },
+      { t: "midi", s: "on", ch: 16, n: 108, v: 127, vh: 16_383, ts: 123 },
       { t: "control", ch: 1, c: 64, v: 127, ts: 124 },
       { t: "midiOutResult", ok: true, busy: false, accepted: 48, queued: 256 },
       { t: "pong", ts: 12 },
     ]) {
       expect(decodeDeviceMessage(JSON.stringify(message)).ok).toBe(true);
     }
+  });
+
+  it("decodes optional 14-bit velocity without breaking 7-bit clients", () => {
+    const high = decodeDeviceMessage(JSON.stringify({
+      t: "midi", s: "on", ch: 2, n: 64, v: 96, vh: 12_345, ts: 123,
+    }));
+    expect(high.ok && high.message.kind === "midi"
+      ? high.message.value.highResolutionVelocity
+      : undefined).toBe(12_345);
+    const legacy = decodeDeviceMessage(JSON.stringify({
+      t: "midi", s: "on", ch: 2, n: 64, v: 96, ts: 123,
+    }));
+    expect(legacy.ok && legacy.message.kind === "midi"
+      ? legacy.message.value.highResolutionVelocity
+      : "invalid").toBeUndefined();
   });
 
   it("accepts only an exact, bounded 88-key calibration array", () => {
@@ -56,6 +71,7 @@ describe("device protocol decoder", () => {
       JSON.stringify({ ...status, offset: 9 }),
       JSON.stringify({ t: "midi", s: "on", ch: 0, n: 60, v: 90, ts: 1 }),
       JSON.stringify({ t: "midi", s: "on", ch: 1, n: 128, v: 90, ts: 1 }),
+      JSON.stringify({ t: "midi", s: "on", ch: 1, n: 60, v: 90, vh: 16_384, ts: 1 }),
       JSON.stringify({ t: "control", ch: 1, c: 64, v: -1, ts: 1 }),
       JSON.stringify({ t: "pong", ts: 12.5 }),
       JSON.stringify({ t: "midiOutResult", ok: 1, busy: false, accepted: 0, queued: 0 }),

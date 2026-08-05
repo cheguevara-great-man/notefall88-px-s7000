@@ -92,6 +92,7 @@ export interface MidiInputEvent {
   channel: number;
   note: number;
   velocity: number;
+  highResolutionVelocity?: number;
   timestamp: number;
 }
 

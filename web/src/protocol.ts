@@ -135,6 +135,7 @@ function decodeObject(source: Record<string, unknown>): DeviceMessage {
         channel: requiredInteger(source, "ch", 1, 16),
         note: requiredInteger(source, "n", 0, 127),
         velocity: requiredInteger(source, "v", 0, 127),
+        highResolutionVelocity: optionalInteger(source, "vh", 0, 16_383),
         timestamp: requiredInteger(source, "ts", 0, 0xffff_ffff),
       },
     };

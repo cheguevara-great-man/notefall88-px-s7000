@@ -64,6 +64,8 @@ struct BrowserMidiEvent {
   uint8_t channel = 1;
   uint8_t firstData = 0;
   uint8_t secondData = 0;
+  uint16_t highResolutionVelocity = 0;
+  bool hasHighResolutionVelocity = false;
   uint32_t timestampMs = 0;
 };
 
@@ -73,6 +75,8 @@ WebServer http(kHttpPort);
 WebSocketsServer websocket(kWebSocketPort);
 Preferences preferences;
 NoteState notes[kNoteCount];
+uint8_t pendingVelocityLsb[16] = {};
+bool pendingVelocityLsbValid[16] = {};
 
 bool pianoConnected = false;
 bool mdnsStarted = false;
@@ -349,13 +353,16 @@ void sendCalibration(uint8_t client = 255) {
   else websocket.sendTXT(client, payload);
 }
 
-void sendMidiEvent(bool on, uint8_t channel, uint8_t note, uint8_t velocity, uint32_t timestampMs) {
+void sendMidiEvent(bool on, uint8_t channel, uint8_t note, uint8_t velocity,
+                   uint16_t highResolutionVelocity, bool hasHighResolutionVelocity,
+                   uint32_t timestampMs) {
   JsonDocument doc;
   doc["t"] = "midi";
   doc["s"] = on ? "on" : "off";
   doc["ch"] = channel;
   doc["n"] = note;
   doc["v"] = velocity;
+  if (hasHighResolutionVelocity) doc["vh"] = highResolutionVelocity;
   doc["ts"] = timestampMs;
   String payload;
   serializeJson(doc, payload);
@@ -375,7 +382,9 @@ void sendMidiControl(uint8_t channel, uint8_t controller, uint8_t value, uint32_
 }
 
 void queueBrowserMidi(BrowserMidiKind kind, bool on, uint8_t channel,
-                      uint8_t firstData, uint8_t secondData, uint32_t timestampMs) {
+                      uint8_t firstData, uint8_t secondData, uint32_t timestampMs,
+                      uint16_t highResolutionVelocity = 0,
+                      bool hasHighResolutionVelocity = false) {
   if (browserMidiCount >= kBrowserMidiCapacity) {
     ++browserMidiDropped;
     return;
@@ -386,6 +395,8 @@ void queueBrowserMidi(BrowserMidiKind kind, bool on, uint8_t channel,
   event.channel = channel;
   event.firstData = firstData;
   event.secondData = secondData;
+  event.highResolutionVelocity = highResolutionVelocity;
+  event.hasHighResolutionVelocity = hasHighResolutionVelocity;
   event.timestampMs = timestampMs;
 }
 
@@ -395,7 +406,9 @@ void flushBrowserMidi() {
     if (event.kind == BrowserMidiKind::Control) {
       sendMidiControl(event.channel, event.firstData, event.secondData, event.timestampMs);
     } else {
-      sendMidiEvent(event.on, event.channel, event.firstData, event.secondData, event.timestampMs);
+      sendMidiEvent(event.on, event.channel, event.firstData, event.secondData,
+                    event.highResolutionVelocity, event.hasHighResolutionVelocity,
+                    event.timestampMs);
     }
   }
   browserMidiCount = 0;
@@ -415,19 +428,31 @@ void handleMidiPacket(void*, const uint8_t data[4], uint64_t receivedUs) {
   observeOutputMirrorCandidate(status, firstData, secondData, millis());
   if ((command == 0x80 || command == 0x90) && !validNote(firstData)) return;
   const uint8_t channel = static_cast<uint8_t>((status & 0x0F) + 1);
+  const uint8_t channelIndex = static_cast<uint8_t>(channel - 1);
+  const bool hasHighResolutionVelocity = pendingVelocityLsbValid[channelIndex]
+      && (command == 0x80 || command == 0x90);
+  const uint16_t highResolutionVelocity = static_cast<uint16_t>(
+      (static_cast<uint16_t>(secondData) << 7U) | pendingVelocityLsb[channelIndex]);
+  if (hasHighResolutionVelocity) pendingVelocityLsbValid[channelIndex] = false;
   if (command == 0x90 && secondData > 0) {
     const uint8_t note = firstData;
     notes[noteIndex(note)].pressed = true;
     notes[noteIndex(note)].velocity = secondData;
     if (pendingLedInputUs == 0 || receivedUs < pendingLedInputUs) pendingLedInputUs = receivedUs;
-    queueBrowserMidi(BrowserMidiKind::Note, true, channel, note, secondData, timestampMs);
+    queueBrowserMidi(BrowserMidiKind::Note, true, channel, note, secondData, timestampMs,
+                     highResolutionVelocity, hasHighResolutionVelocity);
   } else if (command == 0x80 || (command == 0x90 && secondData == 0)) {
     const uint8_t note = firstData;
     notes[noteIndex(note)].pressed = false;
     notes[noteIndex(note)].velocity = 0;
     if (pendingLedInputUs == 0 || receivedUs < pendingLedInputUs) pendingLedInputUs = receivedUs;
-    queueBrowserMidi(BrowserMidiKind::Note, false, channel, note, secondData, timestampMs);
+    queueBrowserMidi(BrowserMidiKind::Note, false, channel, note, secondData, timestampMs,
+                     highResolutionVelocity, hasHighResolutionVelocity);
   } else if (command == 0xB0) {
+    if (firstData == 88) {
+      pendingVelocityLsb[channelIndex] = secondData;
+      pendingVelocityLsbValid[channelIndex] = true;
+    }
     if (firstData == 120 || firstData == 123) {
       for (auto& note : notes) note.pressed = false;
       if (pendingLedInputUs == 0 || receivedUs < pendingLedInputUs) pendingLedInputUs = receivedUs;
@@ -443,6 +468,7 @@ void onPianoConnected(void*) {
 
 void onPianoDisconnected(void*) {
   pianoConnected = false;
+  std::fill(std::begin(pendingVelocityLsbValid), std::end(pendingVelocityLsbValid), false);
   midiOutOwner = -1;
   scheduledMidiCount = 0;
   for (auto& probe : outputMirrorProbes) probe.expiresMs = 0;

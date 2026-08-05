@@ -73,3 +73,14 @@ def test_output_mirror_heuristic_never_discards_real_keyboard_input() -> None:
     assert "consumeOutputEcho" not in source
     assert "return true" not in observer
     assert 'doc["usbOutputMirrorCandidates"]' in source
+
+
+def test_high_resolution_velocity_prefix_is_channel_scoped_and_backward_compatible() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    handler = source[source.index("void handleMidiPacket") : source.index("void onPianoConnected")]
+    assert "pendingVelocityLsb[16]" in source
+    assert "pendingVelocityLsbValid[16]" in source
+    assert "firstData == 88" in handler
+    assert "secondData) << 7U" in handler
+    assert 'doc["v"] = velocity' in source
+    assert 'doc["vh"] = highResolutionVelocity' in source

@@ -629,6 +629,9 @@ function handleMidi(event: MidiInputEvent): void {
   if (event.note < 21 || event.note > 108) return;
   if (event.state === "on" && event.note === 60) storeCommissioning(observeMidi(commissioning, event));
   if (event.state === "on") {
+    const analysisVelocity = event.highResolutionVelocity === undefined
+      ? event.velocity
+      : event.highResolutionVelocity / 129;
     pressed.add(event.note);
     if (score && mode !== "realtime" && !followAdvancePending && currentWaitChord()) {
       const result = waitMatcher.noteOn(event.note);
@@ -639,14 +642,14 @@ function handleMidi(event: MidiInputEvent): void {
           kind: "hit",
           note: event.note,
           hand: expected?.hand,
-          velocity: event.velocity,
+          velocity: analysisVelocity,
           scoreTime: currentWaitChord()?.start ?? lastScoreSeconds,
         });
       }
       else if (!result.correct) {
         practiceScore.recordWrong();
         wrong.add(event.note);
-        recordPracticeEvent({ kind: "wrong", note: event.note, velocity: event.velocity, scoreTime: lastScoreSeconds });
+        recordPracticeEvent({ kind: "wrong", note: event.note, velocity: analysisVelocity, scoreTime: lastScoreSeconds });
       }
       if (result.complete) {
         if (mode === "follow") advanceFollowMode();
@@ -660,12 +663,12 @@ function handleMidi(event: MidiInputEvent): void {
           kind: "hit",
           note: event.note,
           hand: result.matched?.hand,
-          velocity: event.velocity,
+          velocity: analysisVelocity,
           scoreTime: result.matched?.start ?? lastScoreSeconds,
           timingMs: result.timingMs,
         });
       } else if (!result.correct) {
-        recordPracticeEvent({ kind: "wrong", note: event.note, velocity: event.velocity, scoreTime: lastScoreSeconds });
+        recordPracticeEvent({ kind: "wrong", note: event.note, velocity: analysisVelocity, scoreTime: lastScoreSeconds });
       }
       if (!result.correct) wrong.add(event.note);
     }
