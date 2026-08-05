@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
+#include <esp_system.h>
 
 #include "Apa102Strip.h"
 #include "UsbMidiHost.h"
@@ -65,6 +66,7 @@ bool pianoConnected = false;
 bool mdnsStarted = false;
 bool restartRequested = false;
 bool preferencesReady = false;
+esp_reset_reason_t bootResetReason = ESP_RST_UNKNOWN;
 uint8_t webClients = 0;
 uint8_t brightness = kDefaultGlobalBrightness;
 int8_t pixelOffset = 0;
@@ -103,6 +105,22 @@ constexpr char kUpdateAuthHeader[] = "X-NoteFall-Admin";
 template <typename T>
 T clampValue(T value, T low, T high) {
   return value < low ? low : (value > high ? high : value);
+}
+
+const char* resetReasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON: return "power-on";
+    case ESP_RST_EXT: return "external-reset";
+    case ESP_RST_SW: return "software-reset";
+    case ESP_RST_PANIC: return "panic";
+    case ESP_RST_INT_WDT: return "interrupt-watchdog";
+    case ESP_RST_TASK_WDT: return "task-watchdog";
+    case ESP_RST_WDT: return "watchdog";
+    case ESP_RST_DEEPSLEEP: return "deep-sleep";
+    case ESP_RST_BROWNOUT: return "brownout";
+    case ESP_RST_SDIO: return "sdio";
+    default: return "unknown";
+  }
 }
 
 bool validNote(int note) { return note >= kFirstMidiNote && note <= kLastMidiNote; }
@@ -258,6 +276,7 @@ void sendStatus(uint8_t client = 255) {
   doc["psramBytes"] = ESP.getPsramSize();
   doc["freePsram"] = ESP.getFreePsram();
   doc["nvsReady"] = preferencesReady;
+  doc["resetReason"] = resetReasonName(bootResetReason);
   doc["usbPackets"] = usb.packetsReceived;
   doc["usbDropped"] = usb.packetsDropped;
   doc["usbErrors"] = usb.transferErrors;
@@ -716,6 +735,7 @@ void startNetwork() {
 }  // namespace
 
 void setup() {
+  bootResetReason = esp_reset_reason();
   Serial.begin(115200);
   delay(150);
   if (ESP.getPsramSize() == 0) {

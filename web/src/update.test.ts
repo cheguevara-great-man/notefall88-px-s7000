@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { saveStationWifi, validateUpdateFile } from "./update";
+import { fetchUpdateInfo, saveStationWifi, validateUpdateFile } from "./update";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -16,6 +16,13 @@ describe("device update validation", () => {
     expect(validateUpdateFile({ name: "firmware.zip", size: 900_000 }, "firmware", info)).toMatch(/\.bin/);
     expect(validateUpdateFile({ name: "firmware.bin", size: 42 }, "firmware", info)).toMatch(/过小/);
     expect(validateUpdateFile({ name: "firmware.bin", size: 0x280001 }, "firmware", info)).toMatch(/分区上限/);
+  });
+
+  it("explains that an HTML fallback is not a connected device", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<!doctype html>", {
+      status: 200, headers: { "Content-Type": "text/html; charset=utf-8" },
+    })));
+    await expect(fetchUpdateInfo()).rejects.toThrow(/尚未连接/);
   });
 });
 

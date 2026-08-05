@@ -1332,6 +1332,7 @@ device.onStatus((status: DeviceStatus) => {
   required("diag-nvs").textContent = status.nvsReady === undefined
     ? "--"
     : status.nvsReady ? "正常" : "异常（设置无法保存）";
+  required("diag-reset").textContent = status.resetReason ?? "--";
   required("diag-rssi").textContent = status.rssi ? `${status.rssi} dBm` : "热点模式";
   if (status.protocol !== undefined && status.protocol !== 5) {
     deviceStatus.textContent = `协议不兼容 v${status.protocol}`;

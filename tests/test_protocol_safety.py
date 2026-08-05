@@ -31,3 +31,11 @@ def test_stored_per_key_calibration_is_bounded_before_use() -> None:
     strip_start = setup.index("strip.begin()")
     assert load < clamp < strip_start
     assert 'doc["nvsReady"] = preferencesReady' in source
+
+
+def test_status_exposes_stable_reset_reason_for_power_fault_diagnosis() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    assert "bootResetReason = esp_reset_reason()" in source
+    assert 'doc["resetReason"] = resetReasonName(bootResetReason)' in source
+    for reason in ("power-on", "software-reset", "panic", "watchdog", "brownout"):
+        assert f'return "{reason}"' in source

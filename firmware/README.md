@@ -2,6 +2,8 @@
 
 固件面向乐鑫官方 `ESP32-S3-DevKitC-1-N8R8`。原生 `USB/OTG` Micro-USB 口作为钢琴 USB Host；另一个 `UART` Micro-USB 口用于烧录和日志。
 
+PlatformIO 构建横幅沿用通用板卡元数据，可能显示 `N8 (No PSRAM)`；本项目环境实际固定 `qio_opi`、OPI PSRAM 和 `BOARD_HAS_PSRAM`，链接映射使用 `esp32s3/qio_opi` SDK。最终仍以开发板启动日志和网页约 8 MiB 的 PSRAM 诊断为实物真相。
+
 ## 生成、构建和烧录
 
 ```powershell
@@ -24,14 +26,14 @@ cd ..
 - 网页：`http://192.168.4.1`
 - 家庭 Wi-Fi 下：`http://notefall.local`（取决于路由器/客户端 mDNS）
 - WebSocket：端口 `81`
-- 固件：0.6.2
+- 固件：0.6.3
 - 协议：v5
 
 亮度上限 `4/31` 写在生成头文件中。修改网页滑块不能越过该值。
 
 ## 实机诊断
 
-网页“灯带校准 → 设备诊断”显示 USB VID/PID、MIDI IN/OUT 端点与包长、双向累计包数、OUT 排程深度、队列丢包、传输错误、回声抑制、连接次数、空闲堆、PSRAM 和 Wi-Fi RSSI。N8R8 启动时会检查 OPI PSRAM；网页应显示约 8 MiB 总量。正常连续弹奏和跟随伴奏时两组 `丢包 / 错误` 都应保持 `0 / 0`。
+网页“灯带校准 → 设备诊断”显示 USB VID/PID、MIDI IN/OUT 端点与包长、双向累计包数、OUT 排程深度、队列丢包、传输错误、回声抑制、连接次数、空闲堆、PSRAM、NVS、上次复位原因和 Wi-Fi RSSI。N8R8 启动时会检查 OPI PSRAM；网页应显示约 8 MiB 总量。正常连续弹奏和跟随伴奏时两组 `丢包 / 错误` 都应保持 `0 / 0`，并且不得出现 `brownout`、`panic` 或 `watchdog` 复位。
 
 USB Host 传输回调运行在专用 FreeRTOS 任务：IN 回调只写入固定长度环形队列和原子诊断计数，OUT 由另一固定队列批量提交且同一端点最多一个在途传输。`poll()` 在 Arduino 主任务中分发 MIDI 与连接状态，网络库不会从 USB 任务中被调用。网页只传相对时间事件，固件以 `millis()` 排程；网页失联会执行 16 通道 Sustain Off 与 All Notes Off。
 

@@ -46,6 +46,7 @@ export interface DeviceStatus {
   psramBytes?: number;
   freePsram?: number;
   nvsReady?: boolean;
+  resetReason?: string;
   usbPackets?: number;
   usbDropped?: number;
   usbErrors?: number;

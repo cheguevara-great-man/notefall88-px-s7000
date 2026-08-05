@@ -228,7 +228,7 @@
         <h3>加入家庭 Wi-Fi（可选）</h3>
         <p>只能在连接 <code>NoteFall-88</code> 热点时修改；还需在下方“设备维护”输入当前热点密码。</p>
         <form id="wifi-form" class="wifi-grid">
-          <input id="wifi-ssid" placeholder="Wi-Fi 名称" autocomplete="off" />
+          <input id="wifi-ssid" name="username" placeholder="Wi-Fi 名称" autocomplete="username" />
           <input id="wifi-password" type="password" placeholder="Wi-Fi 密码" autocomplete="new-password" />
           <button id="wifi-save" type="submit">保存并重启</button>
         </form>
@@ -236,6 +236,7 @@
         <h3>设备维护</h3>
         <p>更新只允许从设备自己的 <code>NoteFall-88</code> 热点发起，并再次校验热点密码。更新时钢琴伴奏会急停、灯光会熄灭；看到“设备确认成功”前不要断电。</p>
         <form id="ap-password-form" class="maintenance-grid">
+          <input class="visually-hidden" name="username" value="NoteFall-88" autocomplete="username" tabindex="-1" aria-hidden="true" />
           <input id="ap-current-password" type="password" placeholder="当前热点密码" autocomplete="current-password" />
           <input id="ap-new-password" type="password" placeholder="新热点密码（8–63 字符）" autocomplete="new-password" minlength="8" maxlength="63" />
           <button type="submit">修改热点密码</button>
@@ -267,6 +268,7 @@
           <div><dt>可用内存</dt><dd id="diag-heap">--</dd></div>
           <div><dt>PSRAM</dt><dd id="diag-psram">--</dd></div>
           <div><dt>校准存储 NVS</dt><dd id="diag-nvs">--</dd></div>
+          <div><dt>上次复位原因</dt><dd id="diag-reset">--</dd></div>
           <div><dt>Wi-Fi RSSI</dt><dd id="diag-rssi">--</dd></div>
         </dl>
       </aside>

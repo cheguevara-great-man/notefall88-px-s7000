@@ -33,7 +33,14 @@ export function validateUpdateFile(
 }
 
 async function responseJson<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
   const body = await response.text();
+  if (!contentType.includes("application/json")) {
+    if (response.ok && contentType.includes("text/html")) {
+      throw new Error("尚未连接到 NoteFall 88 设备");
+    }
+    throw new Error(`设备返回了无法识别的响应（HTTP ${response.status}）`);
+  }
   let parsed: T;
   try {
     parsed = JSON.parse(body) as T;

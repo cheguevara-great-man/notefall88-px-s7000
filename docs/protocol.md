@@ -17,7 +17,9 @@ ESP 返回 `status` 和 `calibration`。`status` 的稳定字段包括：
 - `usbOut`、`usbOutEndpoint`、`usbOutPacketSize`；
 - `usbPackets`、`usbDropped`、`usbErrors`；
 - `usbOutPackets`、`usbOutDropped`、`usbOutErrors`、`usbOutQueued`、`usbEchoSuppressed`、`usbOutOwned`；
-- `brightness`、`offset`、`reversed`、内存、运行时间和 RSSI。
+- `brightness`、`offset`、`reversed`、内存、NVS 状态、启动复位原因、运行时间和 RSSI。
+
+`resetReason` 使用稳定字符串，例如 `power-on`、`software-reset`、`panic`、`watchdog` 或 `brownout`。它记录当前这次启动的来源；若满亮度或强奏测试后出现 `brownout`/`watchdog`，应先排查供电、短路、堆栈或阻塞，不得把自动重启当作正常恢复。
 
 未知字段必须忽略。固件先把新连接标为未握手：只有收到匹配的 `hello.v` 后，才接受目标灯、校准、Wi-Fi 或 MIDI OUT 等改变状态的消息。协议不一致时只允许查看状态诊断，并返回 `{"t":"protocolError","expected":5,"received":4}`；无效 JSON、超过 8192 字节、未握手或协议不符的消息计入只读字段 `webRejected`。
 
