@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+  <style>
+    text{font-family:"Microsoft YaHei",sans-serif;fill:#e8edf5}.title{font-size:30px;font-weight:700}.h{font-size:20px;font-weight:700}.t{font-size:16px}.s{font-size:14px;fill:#aeb9c9}.box{fill:#182231;stroke:#64748b;stroke-width:2}.power{stroke:#ff4d4f;stroke-width:6;fill:none}.gnd{stroke:#7c8799;stroke-width:7;fill:none}.data{stroke:#25c281;stroke-width:4;fill:none}.clock{stroke:#38a3ff;stroke-width:4;fill:none}.usb{stroke:#d8b4fe;stroke-width:5;fill:none}.note{fill:#243247;stroke:#4f6685;stroke-width:1}.pin{font-size:13px;font-weight:700}
+  </style>
+  <rect width="1400" height="820" fill="#0b111b"/>
+  <text x="50" y="55" class="title">NoteFall 88 生产线束图（单电源、双端注电）</text>
+  <rect x="55" y="105" width="185" height="95" rx="12" class="box"/><text x="85" y="145" class="h">5 V / 5 A</text><text x="80" y="177" class="t">认证 DC5521 电源</text>
+  <rect x="300" y="105" width="180" height="95" rx="12" class="box"/><text x="340" y="145" class="h">3 A 保险丝</text><text x="322" y="177" class="s">距入口 ≤ 100 mm</text>
+  <rect x="550" y="80" width="310" height="180" rx="14" class="box"/><text x="615" y="118" class="h">控制盒 112×76×25</text><text x="580" y="151" class="t">ESP32-S3 N8R8</text><text x="580" y="181" class="t">74AHCT125 + 2×100 Ω</text><text x="580" y="211" class="t">公共地 / 扎带应力释放</text>
+  <rect x="960" y="80" width="300" height="180" rx="14" class="box"/><text x="1030" y="118" class="h">PX-S7000</text><text x="992" y="153" class="t">USB TO HOST（USB-B）</text><text x="992" y="185" class="t">双向 USB-MIDI</text><text x="992" y="218" class="s">不用 WU-BT10 端口</text>
+  <path d="M240 135 H300" class="power"/><text x="250" y="124" class="pin">H0 +5V</text>
+  <path d="M480 135 H550" class="power"/><text x="490" y="124" class="pin">保险后 +5V</text>
+  <path d="M240 180 C340 245 430 235 550 220" class="gnd"/><text x="365" y="242" class="pin">公共 GND</text>
+  <path d="M860 130 H960" class="usb"/><text x="865" y="118" class="pin">OTG Y + 打印机线</text>
+  <rect x="420" y="335" width="230" height="120" rx="12" class="box"/><text x="463" y="373" class="h">Micro-Fit 4P</text><text x="450" y="405" class="pin">1 红 +5V　2 黑 GND</text><text x="450" y="432" class="pin">3 绿 DATA　4 蓝 CLOCK</text>
+  <rect x="760" y="315" width="570" height="160" rx="12" class="box"/><text x="940" y="353" class="h">灯带输入端</text><text x="805" y="389" class="t">176 像素 / 约 1.222 m / 发光面朝演奏者</text><text x="805" y="420" class="s">1000 µF：正接 5V，负极条纹接 GND</text><text x="805" y="450" class="s">箭头从 DIN/CIN 指向右侧；连接器不承受拉力</text>
+  <path d="M650 365 H760" class="power"/><path d="M650 392 H760" class="gnd"/><path d="M650 418 H760" class="data"/><path d="M650 440 H760" class="clock"/>
+  <path d="M600 260 V335" class="power"/><path d="M625 260 V335" class="gnd"/><path d="M675 260 V335" class="data"/><path d="M705 260 V335" class="clock"/>
+  <rect x="970" y="560" width="190" height="95" rx="12" class="box"/><text x="1022" y="600" class="h">XT30 2P</text><text x="1000" y="630" class="pin">红 +5V / 黑 GND</text>
+  <rect x="1190" y="540" width="160" height="135" rx="12" class="box"/><text x="1212" y="580" class="h">灯带远端</text><text x="1210" y="613" class="t">只注入 5V/GND</text><text x="1210" y="642" class="s">1000 µF</text>
+  <path d="M480 165 C520 250 470 575 970 585" class="power"/><path d="M240 180 C330 745 850 640 970 620" class="gnd"/>
+  <path d="M1160 585 H1190" class="power"/><path d="M1160 620 H1190" class="gnd"/>
+  <rect x="55" y="700" width="1290" height="75" rx="10" class="note"/><text x="80" y="732" class="t">装机门禁：断电测 5V-GND 无短路 → 串入 3 A 保险丝 → 空载测 4.75–5.25 V → 亮度 10% 首次点亮 → 运行 30 分钟温升测试。</text><text x="80" y="760" class="s">红/黑 20AWG 承担灯带电流；绿/蓝 26AWG 只传信号。供电侧连接器必须采用凹端子，避免拔开时裸露带电金属。</text>
+</svg>

@@ -1,7 +1,8 @@
 {
   "schema_version": 3,
-  "config_sha256": "44d88e7c93236e77c861774d8f7ec3a1c09cc951e486caa96d56e5e4610a1c26",
+  "config_sha256": "159fd486d5a1e3e7e52859349796c49abe523ac48097e3578cd339fa75245168",
   "layout_sha256": "43766ee141f3c6dd8b4b2f156b038c4ca954d6a17bb07b08a8d3222ee70a504d",
+  "power_budget_sha256": "0f9dd7e68427af64f5aa3e87b57ba81169aa39a6ac81a478d995f54b9ae736cc",
   "layout": {
     "notes": 88,
     "pixels": 176,
@@ -25,34 +26,34 @@
   },
   "parts": {
     "controller_tray": {
-      "x_mm": 106.0,
-      "y_mm": 62.0,
-      "z_mm": 18.0,
-      "volume_mm3": 22054.2
+      "x_mm": 112.0,
+      "y_mm": 76.0,
+      "z_mm": 25.0,
+      "volume_mm3": 33961.4
     },
     "controller_lid": {
-      "x_mm": 106.4,
-      "y_mm": 62.4,
-      "z_mm": 1.8,
-      "volume_mm3": 9646.8
+      "x_mm": 112.4,
+      "y_mm": 76.4,
+      "z_mm": 5.0,
+      "volume_mm3": 16030.6
     }
   },
   "files": [
     {
       "file": "controller_tray.stl",
-      "sha256": "3dc2fbd4b95e9754caf2d4a741c6cad777bfb9ff564d88bcbd38d76ad87555a7"
+      "sha256": "edf121df7444f52c3cfde6ecb910f990df7285d065fee979ec9e8e53a4e2750d"
     },
     {
       "file": "controller_tray.step",
-      "sha256": "5f00159a8e308c23bd9a52ef5bfd3f9666b82a87ff3e519694b6fb4405272684"
+      "sha256": "ea292a84ceacad7db7957cc894b1377788154b7b28942f5249e15e50a1d363e1"
     },
     {
       "file": "controller_lid.stl",
-      "sha256": "a1135e24b1e5f772edd74b54af31b6d67ead7b9a5f200eb29c5abd9b61013c74"
+      "sha256": "2febf6ee947c1b5b03431997730f6ca77aebf2a979e38b4c016ec932b233cea3"
     },
     {
       "file": "controller_lid.step",
-      "sha256": "047c97270649e190e5f4fc348f7ff15049a75cb1952bde81d519a63ae46dc7b6"
+      "sha256": "63840657e6e471fbec02a1687a290cbad307e137300c54ce3196f31bd2c9c0e7"
     }
   ]
 }

@@ -80,6 +80,38 @@ def build_layout(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_power_budget(config: dict[str, Any]) -> dict[str, Any]:
+    led = config["led"]
+    power = config["power"]
+    full_white_w = int(led["pixel_count"]) * float(power["conservative_full_white_w_per_pixel"])
+    capped_led_w = full_white_w * int(led["max_global_brightness"]) / 31.0
+    led_a = capped_led_w / float(power["supply_v"])
+    design_a = led_a + float(power["controller_reserve_a"])
+    branch_a = led_a / len(power["injection"])
+    round_trip_resistance = (
+        2 * float(power["max_injection_one_way_m"]) * float(power["wire_resistance_ohm_per_m"])
+    )
+    drop_v = branch_a * round_trip_resistance
+    return {
+        "schema_version": 1,
+        "full_white_uncapped_w": round(full_white_w, 3),
+        "firmware_capped_led_w": round(capped_led_w, 3),
+        "firmware_capped_led_a": round(led_a, 3),
+        "controller_reserve_a": float(power["controller_reserve_a"]),
+        "design_current_a": round(design_a, 3),
+        "supply_a": float(power["supply_a"]),
+        "supply_utilization_percent": round(design_a / float(power["supply_a"]) * 100, 1),
+        "fuse_a": float(power["fuse_a"]),
+        "wire_awg": int(power["power_wire_awg"]),
+        "wire_conservative_a": float(power["wire_conservative_a"]),
+        "injection_count": len(power["injection"]),
+        "worst_branch_current_a": round(branch_a, 3),
+        "max_injection_one_way_m": float(power["max_injection_one_way_m"]),
+        "worst_branch_drop_v": round(drop_v, 3),
+        "worst_branch_drop_percent": round(drop_v / float(power["supply_v"]) * 100, 2),
+    }
+
+
 def render_header(config: dict[str, Any], layout: dict[str, Any]) -> str:
     led = config["led"]
     practice = config["practice"]
@@ -155,7 +187,10 @@ def generate(check: bool = False) -> dict[str, Any]:
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     FIRMWARE_HEADER.parent.mkdir(parents=True, exist_ok=True)
     layout_path = GENERATED_DIR / "layout.json"
+    power_path = GENERATED_DIR / "power_budget.json"
     layout_path.write_text(json.dumps(layout, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    power_budget = build_power_budget(config)
+    power_path.write_text(json.dumps(power_budget, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     FIRMWARE_HEADER.write_text(render_header(config, layout), encoding="utf-8")
 
     parts = build_parts(config)
@@ -177,6 +212,7 @@ def generate(check: bool = False) -> dict[str, Any]:
         "schema_version": 3,
         "config_sha256": sha256(CONFIG_PATH),
         "layout_sha256": sha256(layout_path),
+        "power_budget_sha256": sha256(power_path),
         "layout": {
             "notes": layout["note_count"],
             "pixels": layout["pixel_count"],
@@ -209,6 +245,12 @@ def generate(check: bool = False) -> dict[str, Any]:
             raise RuntimeError("the exposed strip must face the player at 90 degrees")
         if float(mech["optional_carrier_height_mm"]) < float(config["led"]["pcb_width_mm"]):
             raise RuntimeError("optional carrier is shorter than the vertical LED PCB")
+        if power_budget["design_current_a"] >= power_budget["fuse_a"] * 0.8:
+            raise RuntimeError("design current leaves insufficient fuse nuisance-trip margin")
+        if power_budget["fuse_a"] > power_budget["wire_conservative_a"]:
+            raise RuntimeError("fuse rating exceeds conservative wire rating")
+        if power_budget["worst_branch_drop_percent"] > float(config["power"]["max_voltage_drop_percent"]):
+            raise RuntimeError("power injection voltage drop exceeds configured limit")
     return manifest
 
 

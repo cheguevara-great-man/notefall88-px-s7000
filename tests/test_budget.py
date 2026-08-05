@@ -1,13 +1,21 @@
-from scripts.generate import load_config
+import json
+
+from scripts.generate import GENERATED_DIR, build_power_budget, load_config
 
 
 def test_power_cap_fits_final_supply_with_margin():
     cfg = load_config()
-    pixels = cfg["led"]["pixel_count"]
-    max_full_white = pixels * cfg["power"]["conservative_full_white_w_per_pixel"]
-    capped = max_full_white * cfg["led"]["max_global_brightness"] / 31.0
-    supply = cfg["power"]["supply_v"] * cfg["power"]["supply_a"]
-    assert capped < supply * 0.6
+    budget = build_power_budget(cfg)
+    assert budget["supply_utilization_percent"] < 60.0
+    assert budget["design_current_a"] < budget["fuse_a"] * 0.8
+    assert budget["fuse_a"] <= budget["wire_conservative_a"]
+    assert budget["worst_branch_drop_percent"] <= cfg["power"]["max_voltage_drop_percent"]
+
+
+def test_checked_in_power_budget_matches_generator():
+    expected = build_power_budget(load_config())
+    actual = json.loads((GENERATED_DIR / "power_budget.json").read_text(encoding="utf-8"))
+    assert actual == expected
 
 
 def test_spi_refresh_is_well_under_one_millisecond():

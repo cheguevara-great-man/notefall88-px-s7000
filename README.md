@@ -34,10 +34,13 @@ MusicXML 目标时间线会按常见反复、多结尾和标准 D.C./D.S./Fine/C
 - 5 V、144 像素/米、IP30、黑色 PCB 的 APA102C 或 SK9822，一条连续灯带
 - 最终使用前 176 像素，覆盖约 1222 mm 的 88 键键床
 - 74AHCT125 成品电平转换模块
-- 5 V / 5 A 有认证成品电源，灯带首尾两端注电
+- 5 V / 5 A 有认证成品电源、3 A 总保险、20 AWG 首尾两端注电
 - Micro-USB 供电 OTG Y 线和普通 USB-A 转 USB-B 打印机数据线
+- Micro-Fit 4P 锁扣输入线和 XT30 远端注电线；所有引脚、线色和代焊验收已固定
 
-完整采购见 [BOM 表](docs/bom.csv)，接线见 [硬件说明](docs/hardware.md)。
+完整采购见 [BOM 表](docs/bom.csv)，接线见 [硬件说明](docs/hardware.md)，可直接发给代焊方的规格见 [线束制造表](docs/harness.csv) 与 [线束图](docs/wiring-harness.svg)。参数化控制盒如下；它只保护 ESP32 和接线，不安装在琴键上。
+
+![控制盒爆炸图](mechanical/renders/controller_case.png)
 
 ## 仓库内容
 
@@ -53,7 +56,7 @@ MusicXML 的当前支持范围、目标时间线与 OSMD 谱面之间的边界�
 
 ## 从这里开始
 
-1. 下单前按 [一次性现场复核](docs/measurements.md) 确认琴键后方固定立面可放下 12 mm 宽灯带，不需要打印试件或购买额外灯带。
+1. 照片审查已确认琴键后方约 18–22 mm 固定立面可容纳 12 mm 灯带；下单后按 [一次性现场复核](docs/measurements.md) 用纸条做无接触安装验收，不需要打印试件或购买额外灯带。
 2. 按 [BOM](docs/bom.csv) 买最终件，再按 [装配说明](docs/assembly.md) 让卖家代焊线束并组装。
 3. 按 [刷机说明](docs/flashing.md) 首次写入固件和网页，并立即修改默认热点密码。
 4. 严格依次执行 [断电检查、校准和验收](docs/testing.md)。

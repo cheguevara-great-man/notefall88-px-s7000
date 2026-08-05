@@ -45,18 +45,33 @@
     "optional_carrier_length_mm": 1226.0,
     "optional_carrier_height_mm": 14.0,
     "optional_carrier_thickness_mm": 0.8,
-    "controller_case_length_mm": 106.0,
-    "controller_case_width_mm": 62.0,
+    "controller_case_length_mm": 112.0,
+    "controller_case_width_mm": 76.0,
     "controller_case_floor_mm": 2.0,
     "controller_case_wall_mm": 1.8,
-    "controller_case_height_mm": 18.0,
-    "controller_lid_thickness_mm": 1.8
+    "controller_case_height_mm": 25.0,
+    "controller_lid_thickness_mm": 2.0,
+    "controller_lid_skirt_mm": 3.0,
+    "controller_lid_clearance_mm": 0.4,
+    "usb_opening_width_mm": 36.0,
+    "harness_opening_width_mm": 28.0,
+    "opening_height_mm": 12.0,
+    "lid_screw_diameter_mm": 3.4,
+    "lid_screw_pilot_mm": 2.5,
+    "lid_boss_diameter_mm": 7.0,
+    "lid_boss_height_mm": 23.0
   },
   "power": {
     "conservative_full_white_w_per_pixel": 0.30,
     "supply_v": 5.0,
     "supply_a": 5.0,
-    "fuse_a": 5.0,
+    "fuse_a": 3.0,
+    "controller_reserve_a": 0.65,
+    "power_wire_awg": 20,
+    "wire_resistance_ohm_per_m": 0.0333,
+    "wire_conservative_a": 5.0,
+    "max_injection_one_way_m": 1.6,
+    "max_voltage_drop_percent": 5.0,
     "injection": ["left_end", "right_end"]
   }
 }

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "full_white_uncapped_w": 52.8,
+  "firmware_capped_led_w": 6.813,
+  "firmware_capped_led_a": 1.363,
+  "controller_reserve_a": 0.65,
+  "design_current_a": 2.013,
+  "supply_a": 5.0,
+  "supply_utilization_percent": 40.3,
+  "fuse_a": 3.0,
+  "wire_awg": 20,
+  "wire_conservative_a": 5.0,
+  "injection_count": 2,
+  "worst_branch_current_a": 0.681,
+  "max_injection_one_way_m": 1.6,
+  "worst_branch_drop_v": 0.073,
+  "worst_branch_drop_percent": 1.45
+}

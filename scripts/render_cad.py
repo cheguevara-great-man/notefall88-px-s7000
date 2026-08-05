@@ -133,19 +133,24 @@ def vertical_strip_mount(config: dict) -> None:
     save(renderer, window, RENDERS / "vertical_strip_mount.png", (1500, 900))
 
 
-def controller_case() -> None:
+def controller_case(config: dict) -> None:
     renderer, window = configure_renderer()
-    tray = stl_actor(EXPORTS / "controller_tray.stl", (0.09, 0.11, 0.15))
-    lid = stl_actor(EXPORTS / "controller_lid.stl", (0.12, 0.14, 0.19), 0.82)
-    lid.SetPosition(0, 0, 25)
+    height = float(config["mechanical"]["controller_case_height_mm"])
+    tray = stl_actor(EXPORTS / "controller_tray.stl", (0.22, 0.26, 0.34), 0.92)
+    lid = stl_actor(EXPORTS / "controller_lid.stl", (0.43, 0.48, 0.60), 0.96)
+    # Exploded view exposes the locating skirt, screw holes, ventilation,
+    # universal tie slots, strain relief, and the two differently sized exits.
+    lid.SetPosition(-18, 18, height + 32)
     renderer.AddActor(tray)
     renderer.AddActor(lid)
+    renderer.AddActor(cube_actor((66, 29, 3), (-8, 2, 4.2), (0.08, 0.35, 0.30)))
+    renderer.AddActor(cube_actor((24, 20, 5), (34, -14, 5.2), (0.18, 0.35, 0.62)))
     camera = renderer.GetActiveCamera()
-    camera.SetPosition(145, -165, 115)
-    camera.SetFocalPoint(0, 0, 9)
+    camera.SetPosition(175, -205, 165)
+    camera.SetFocalPoint(-4, 4, 30)
     camera.SetViewUp(0, 0, 1)
     camera.ParallelProjectionOn()
-    camera.SetParallelScale(78)
+    camera.SetParallelScale(94)
     save(renderer, window, RENDERS / "controller_case.png", (1200, 800))
 
 
@@ -156,7 +161,7 @@ def main() -> None:
     RENDERS.mkdir(parents=True, exist_ok=True)
     config = json.loads(args.config.read_text(encoding="utf-8"))
     vertical_strip_mount(config)
-    controller_case()
+    controller_case(config)
     print(f"Rendered {RENDERS / 'vertical_strip_mount.png'}")
     print(f"Rendered {RENDERS / 'controller_case.png'}")
 
