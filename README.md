@@ -91,6 +91,8 @@ cd ..
 python scripts/render_cad.py
 ```
 
+可选的真实 MusicXML 内容级交叉验证使用独立 `music21` 解析器；先按 [MusicXML 说明](docs/musicxml.md) 检出固定版本 OSMD 语料，再运行 `requirements-audit.txt` 与 `scripts/crosscheck_musicxml.py`。该环境不进入正式产品依赖。
+
 网页构建结果直接写入 `firmware/data/`。JS/CSS 以预压缩 `.gz` 存储，ESP32 按原 URL 和正确 MIME/Content-Encoding 提供，既节省 Flash 也避开旧版 `mklittlefs` 的长文件名限制。随后可用 `platformio run -d firmware -t uploadfs` 写入开发板文件系统。
 
 ## 当前事实边界

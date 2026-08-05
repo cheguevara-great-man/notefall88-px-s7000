@@ -81,7 +81,17 @@ npm.cmd run audit:musicxml -- ..\tmp\opensheetmusicdisplay\demo --details
 
 “解析成功”表示目标音符时间线能够安全生成，不代表 NoteFall 实现了测试文件中的全部雕版、歌词、吉他谱、打击乐或微分音视觉语义；这些仍交给 OSMD 显示或明确处于练习引擎范围之外。
 
-四套外部固定语料加 OSMD 两份示例共 1016 个文件，当前为 1012 个解析、4 个预期安全拒绝、0 个意外异常，其中 813 个含 A0–C8 目标音。它们已经覆盖“能否安全导入”和大量结构边界，但多数仍是功能测试而不是完整双手钢琴曲。发布前仍要用 MuseScore、Dorico/Finale 任一和常见网络 MXL 各至少 3 首真实钢琴曲，逐项人工比对显示小节数、目标音高、首末时刻、速度变化、左右手和 tie。标准/功能语料不能替代真实曲目的内容级门禁。
+四套外部固定语料加 OSMD 两份示例共 1016 个文件，当前为 1012 个解析、4 个预期安全拒绝、0 个意外异常，其中 813 个含 A0–C8 目标音。它们已经覆盖“能否安全导入”和大量结构边界，但多数仍是功能测试而不是完整双手钢琴曲。
+
+为了进一步检查“生成的音高与时间是否正确”，仓库另提供独立的内容级交叉验证器。它不复用 NoteFall 的解析逻辑，而以 `music21 9.9.1` 作为参考实现，对 OSMD 固定提交 `c663e0d3f61aa2ee1b6ca4d0f360a60e42cc8b28` 中 6 首真实曲目进行比较：Clementi Op.36 No.1/No.3 各两个乐章、Debussy《Mandoline》和 Gretchaninov《A Boring Story》。当前共比较 2638 个 A0–C8 音符，数量与逐音音高序列完全一致，最大起音差为 `0.000109168 s`（约 0.109 ms，门限 2 ms）。这是独立解析器之间的内容证据，不把仅仅“能打开”算作通过。
+
+```powershell
+python -m venv tmp/music21-venv
+.\tmp\music21-venv\Scripts\python.exe -m pip install -r requirements-audit.txt
+.\tmp\music21-venv\Scripts\python.exe scripts\crosscheck_musicxml.py
+```
+
+`music21` 只属于可选审计环境，不进入网页、固件、常规开发依赖或发布包。上述六曲也不复制进仓库，脚本要求先按前文步骤检出固定版本 OSMD 语料。由于不同参考实现对显示节拍标记与 `<sound tempo>`、反复展开的取舍可能不同，未满足可比前提的曲目不会被硬算成通过。发布前仍要用 MuseScore、Dorico/Finale 任一和常见网络 MXL 各至少 3 首真实钢琴曲，逐项人工比对显示小节数、目标音高、首末时刻、速度变化、左右手和 tie。自动交叉验证不能替代显示与演奏的人工内容门禁。
 
 解析错误、缺少声部或超过安全上限时，导入失败但原曲库内容不变。OSMD 的可选光标若遇到不完整 staff/voice 数据会被关闭，谱面本身仍保留可读。
 
