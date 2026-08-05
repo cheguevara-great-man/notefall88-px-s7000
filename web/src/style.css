@@ -48,6 +48,8 @@ h1 span { color: #8ba7ff; }
 .file-button input { display: none; }
 .compact-field { min-width: 110px; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; color: #98a2b3; padding-left: 8px; }
 .compact-field select { background: #0e1118; color: white; border: 1px solid #303746; border-radius: 8px; height: 42px; padding: 0 8px; }
+.lifecycle-status { margin: 10px 2px 0; padding: 10px 12px; border: 1px solid rgba(255,194,92,.36); border-radius: 10px; background: rgba(107,73,18,.22); color: #ffd996; font-size: 13px; }
+.lifecycle-status[hidden] { display: none; }
 .score-strip { justify-content: space-between; gap: 20px; padding: 14px 4px 10px; }
 .score-strip > div { display: grid; min-width: 0; gap: 3px; }
 .score-strip .label { color: #7f899b; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; }

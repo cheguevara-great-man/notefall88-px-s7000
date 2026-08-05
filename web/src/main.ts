@@ -26,6 +26,8 @@ import { MetronomePlayer } from "./metronome";
 import { parseMusicXmlFile } from "./musicxml";
 import { ScoreLibrary, sha256Hex } from "./library";
 import type { LibraryFolder, LibraryScore } from "./library";
+import { planBackgroundSuspension } from "./lifecycle";
+import type { BackgroundSuspension } from "./lifecycle";
 import {
   formatStorageStatus,
   inspectBrowserStorage,
@@ -108,6 +110,7 @@ const scoreTime = required("score-time");
 const scoreResult = required("score-result");
 const recordResult = required("record-result");
 const latencyStatus = required("latency-status");
+const lifecycleStatus = required("lifecycle-status");
 const practicePanel = required("practice-panel");
 const practiceInsights = required("practice-insights");
 const sessionHistory = required("session-history");
@@ -190,6 +193,8 @@ let countInTimer: number | undefined;
 let needsCountIn = true;
 let updateInfo: UpdateInfo | undefined;
 let commissioning: CommissioningState = loadCommissioning();
+let backgroundSuspension: BackgroundSuspension | undefined;
+let backgroundPlayLabel = "播放";
 
 modeSelect.value = mode;
 handSelect.value = hand;
@@ -323,6 +328,67 @@ function cancelCountIn(): void {
   window.clearTimeout(countInTimer);
   countInTimer = undefined;
   metronome.cancel();
+}
+
+function clearLifecycleStatus(): void {
+  lifecycleStatus.hidden = true;
+  lifecycleStatus.textContent = "";
+}
+
+function suspendForBackground(): void {
+  if (backgroundSuspension) return;
+  const plan = planBackgroundSuspension({
+    mode,
+    clockRunning: clock.isRunning(),
+    countInPending: countInTimer !== undefined,
+    followAdvancePending,
+    recording: recorder.isRecording(),
+  });
+  backgroundSuspension = plan;
+  backgroundPlayLabel = playButton.textContent ?? "播放";
+
+  if (plan.pauseClock) clock.pause(performance.now());
+  if (plan.cancelCountIn) {
+    cancelCountIn();
+    needsCountIn = true;
+  }
+  if (plan.stopRecording) finishRecording();
+  if (plan.cancelFollowAdvance) {
+    cancelFollowPlayback(false);
+    if (plan.advanceCompletedFollowChord) advanceWaitMode();
+  }
+
+  metronome.cancel();
+  pressed.clear();
+  wrong.clear();
+  waitMatcher.allNotesOff();
+  waitHitBuffer.clear();
+  currentTarget = [];
+  device.setTargets([]);
+  device.blackout();
+  playButton.textContent = plan.requireManualResume ? "后台已暂停" : backgroundPlayLabel;
+}
+
+function restoreFromBackground(): void {
+  const plan = backgroundSuspension;
+  if (!plan) return;
+  backgroundSuspension = undefined;
+  lastTargetSignature = "";
+  if (score) {
+    if (mode !== "realtime") setWaitChord(currentWaitChord());
+    updateTarget(mode === "realtime" ? clock.time(performance.now()) : (currentWaitChord()?.start ?? rangeEnd()));
+  }
+  playButton.textContent = plan.requireManualResume
+    ? (mode === "realtime" ? "继续" : (currentWaitChord() ? "继续练习" : "已完成"))
+    : backgroundPlayLabel;
+  lifecycleStatus.textContent = plan.stopRecording
+    ? (plan.requireManualResume
+      ? "页面进入后台，练习已安全暂停，录音已停止并保留；请手动继续。"
+      : "页面进入后台，录音已停止并保留；如需继续请重新开始录音。")
+    : (plan.requireManualResume
+      ? "页面进入后台，练习与钢琴伴奏已安全暂停；请手动继续。"
+      : "页面进入后台，目标灯和钢琴伴奏已安全关闭。");
+  lifecycleStatus.hidden = false;
 }
 
 async function startRealtimePlayback(): Promise<void> {
@@ -788,6 +854,7 @@ function parseScoreSource(buffer: ArrayBuffer, fileName: string): { parsed: Pars
 }
 
 async function activateScore(parsed: ParsedScore, xml: string | undefined, fingerprint: string): Promise<void> {
+  clearLifecycleStatus();
   sourceScore = parsed;
   scoreFingerprint = fingerprint;
   score = transposeScore(parsed, transposeSemitones);
@@ -1039,6 +1106,7 @@ required<HTMLInputElement>("library-restore").addEventListener("change", async (
 });
 
 playButton.addEventListener("click", () => {
+  clearLifecycleStatus();
   if (!score || chords.length === 0) return;
   if (mode !== "realtime") {
     clock.seek(currentWaitChord()?.start ?? rangeEnd());
@@ -1066,7 +1134,10 @@ playButton.addEventListener("click", () => {
   }
 });
 
-resetButton.addEventListener("click", () => resetPractice(true));
+resetButton.addEventListener("click", () => {
+  clearLifecycleStatus();
+  resetPractice(true);
+});
 modeSelect.addEventListener("change", () => {
   mode = modeSelect.value as PracticeMode;
   if (mode === "follow" && hand === "both") {
@@ -1431,6 +1502,14 @@ device.onMidiOutResult((result) => {
   } else if (result.ok) {
     setStatus(midiOutStatus, true, `钢琴伴奏输出中 · 队列 ${result.queued}`);
   }
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") suspendForBackground();
+  else restoreFromBackground();
+});
+window.addEventListener("pagehide", suspendForBackground);
+window.addEventListener("pageshow", () => {
+  if (document.visibilityState === "visible") restoreFromBackground();
 });
 renderCommissioning();
 device.connect();
