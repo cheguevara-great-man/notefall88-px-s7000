@@ -21,3 +21,13 @@ def test_websocket_rejects_oversized_or_invalid_json_before_mutation() -> None:
     assert "length > kMaxWebMessageBytes" in handler
     assert handler.index("length > kMaxWebMessageBytes") < handler.index("deserializeJson")
     assert "++webMessagesRejected" in handler
+
+
+def test_stored_per_key_calibration_is_bounded_before_use() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    setup = source[source.index("void setup()") : source.index("void loop()")]
+    load = setup.index('preferences.getBytes("keyOffsets"')
+    clamp = setup.index("clampValue<int>(offset, -kMaxKeyPixelOffset, kMaxKeyPixelOffset)")
+    strip_start = setup.index("strip.begin()")
+    assert load < clamp < strip_start
+    assert 'doc["nvsReady"] = preferencesReady' in source

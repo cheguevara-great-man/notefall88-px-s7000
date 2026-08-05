@@ -64,6 +64,7 @@ NoteState notes[kNoteCount];
 bool pianoConnected = false;
 bool mdnsStarted = false;
 bool restartRequested = false;
+bool preferencesReady = false;
 uint8_t webClients = 0;
 uint8_t brightness = kDefaultGlobalBrightness;
 int8_t pixelOffset = 0;
@@ -256,6 +257,7 @@ void sendStatus(uint8_t client = 255) {
   doc["freeHeap"] = ESP.getFreeHeap();
   doc["psramBytes"] = ESP.getPsramSize();
   doc["freePsram"] = ESP.getFreePsram();
+  doc["nvsReady"] = preferencesReady;
   doc["usbPackets"] = usb.packetsReceived;
   doc["usbDropped"] = usb.packetsDropped;
   doc["usbErrors"] = usb.transferErrors;
@@ -361,6 +363,7 @@ void onPianoDisconnected(void*) {
 }
 
 void saveCalibration() {
+  if (!preferencesReady) return;
   preferences.putUChar("brightness", brightness);
   preferences.putChar("offset", pixelOffset);
   preferences.putBool("reversed", stripReversed);
@@ -430,7 +433,7 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
     const size_t index = noteIndex(static_cast<uint8_t>(note));
     keyPixelOffsets[index] = static_cast<int8_t>(clampValue<int>(
         doc["offset"] | keyPixelOffsets[index], -kMaxKeyPixelOffset, kMaxKeyPixelOffset));
-    preferences.putBytes("keyOffsets", keyPixelOffsets, sizeof(keyPixelOffsets));
+    if (preferencesReady) preferences.putBytes("keyOffsets", keyPixelOffsets, sizeof(keyPixelOffsets));
     sendCalibration();
   } else if (strcmp(type, "test") == 0) {
     const int note = doc["n"] | -1;
@@ -720,14 +723,29 @@ void setup() {
   } else {
     Serial.printf("PSRAM ready: %u bytes\n", ESP.getPsramSize());
   }
-  preferences.begin("notefall", false);
-  brightness = clampValue<uint8_t>(preferences.getUChar("brightness", kDefaultGlobalBrightness),
-                                   static_cast<uint8_t>(1), kMaxGlobalBrightness);
-  pixelOffset = static_cast<int8_t>(clampValue<int>(preferences.getChar("offset", 0),
-                                                    kMinPixelOffset, kMaxPixelOffset));
-  stripReversed = preferences.getBool("reversed", false);
-  if (preferences.getBytesLength("keyOffsets") == sizeof(keyPixelOffsets)) {
-    preferences.getBytes("keyOffsets", keyPixelOffsets, sizeof(keyPixelOffsets));
+  preferencesReady = preferences.begin("notefall", false);
+  if (!preferencesReady) {
+    Serial.println("WARN: NVS unavailable; calibration will not persist");
+  } else {
+    brightness = clampValue<uint8_t>(preferences.getUChar("brightness", kDefaultGlobalBrightness),
+                                     static_cast<uint8_t>(1), kMaxGlobalBrightness);
+    pixelOffset = static_cast<int8_t>(clampValue<int>(preferences.getChar("offset", 0),
+                                                      kMinPixelOffset, kMaxPixelOffset));
+    stripReversed = preferences.getBool("reversed", false);
+    if (preferences.getBytesLength("keyOffsets") == sizeof(keyPixelOffsets)) {
+      preferences.getBytes("keyOffsets", keyPixelOffsets, sizeof(keyPixelOffsets));
+      bool repaired = false;
+      for (int8_t& offset : keyPixelOffsets) {
+        const int8_t bounded = static_cast<int8_t>(
+            clampValue<int>(offset, -kMaxKeyPixelOffset, kMaxKeyPixelOffset));
+        repaired = repaired || bounded != offset;
+        offset = bounded;
+      }
+      if (repaired) {
+        preferences.putBytes("keyOffsets", keyPixelOffsets, sizeof(keyPixelOffsets));
+        Serial.println("WARN: invalid stored per-key offsets were clamped");
+      }
+    }
   }
 
   if (!strip.begin()) Serial.println("FATAL: LED strip allocation failed");

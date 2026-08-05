@@ -1329,6 +1329,9 @@ device.onStatus((status: DeviceStatus) => {
       ? ((status.freePsram ?? 0) / 1024 / 1024).toFixed(1)
       : "0.0"} / ${(status.psramBytes / 1024 / 1024).toFixed(1)} MiB`
     : "未检测到";
+  required("diag-nvs").textContent = status.nvsReady === undefined
+    ? "--"
+    : status.nvsReady ? "正常" : "异常（设置无法保存）";
   required("diag-rssi").textContent = status.rssi ? `${status.rssi} dBm` : "热点模式";
   if (status.protocol !== undefined && status.protocol !== 5) {
     deviceStatus.textContent = `协议不兼容 v${status.protocol}`;
