@@ -1,5 +1,7 @@
 import "./style.css";
 
+import { PracticeAnalytics, PracticeSessionStore } from "./analytics";
+import type { PracticeEvent, PracticeSession } from "./analytics";
 import {
   clampPianoNote,
   FIRST_PIANO_NOTE,
@@ -76,6 +78,9 @@ const scoreResult = required("score-result");
 const recordResult = required("record-result");
 const latencyStatus = required("latency-status");
 const practicePanel = required("practice-panel");
+const practiceInsights = required("practice-insights");
+const sessionHistory = required("session-history");
+const historySummary = required("history-summary");
 const settingsPanel = required("settings-panel");
 const libraryPanel = required("library-panel");
 const libraryList = required("library-list");
@@ -99,6 +104,7 @@ const practiceScore = new PracticeScore();
 const realtimeMatcher = new RealtimeMatcher(practiceScore);
 const recorder = new PerformanceRecorder();
 const library = new ScoreLibrary();
+const sessionStore = new PracticeSessionStore();
 
 let score: ParsedScore | undefined;
 let sourceScore: ParsedScore | undefined;
@@ -126,6 +132,8 @@ let midiOutAvailable = false;
 let midiOutOwnedByThisPage = false;
 let midiOutBlocked = false;
 let followPlanner = new FollowAccompanimentPlanner([]);
+let analytics: PracticeAnalytics | undefined;
+let recentSessions: PracticeSession[] = [];
 
 function canUseMidiOut(): boolean {
   return midiOutAvailable && !midiOutBlocked;
@@ -177,8 +185,104 @@ function cancelFollowPlayback(sendPanic = true): void {
   midiOutOwnedByThisPage = false;
 }
 
+function sessionContext() {
+  const loop = selectedLoop();
+  return {
+    scoreName: score?.name ?? "未命名乐谱",
+    mode,
+    hand,
+    tempo: Number(tempoSelect.value),
+    transpose: transposeSemitones,
+    loop: loop ? { ...loop } : undefined,
+  };
+}
+
+function beginPracticeSession(): void {
+  analytics = score && chords.length > 0 ? new PracticeAnalytics(sessionContext()) : undefined;
+  renderInsights();
+}
+
+async function finishPracticeSession(): Promise<void> {
+  const completed = analytics?.finish();
+  analytics = undefined;
+  if (!completed) return;
+  try {
+    await sessionStore.save(completed);
+    await refreshPracticeHistory();
+  } catch (error) {
+    historySummary.textContent = error instanceof Error ? error.message : "无法保存练习记录";
+  }
+}
+
+function recordPracticeEvent(event: PracticeEvent): void {
+  if (!analytics && score && chords.length > 0) analytics = new PracticeAnalytics(sessionContext());
+  analytics?.record(event);
+}
+
+function recordMissedNotes(notes: ReturnType<RealtimeMatcher["advance"]>): void {
+  for (const note of notes) {
+    recordPracticeEvent({ kind: "missed", note: note.note, hand: note.hand, scoreTime: note.start });
+  }
+}
+
+function timingLabel(value: number | undefined): string {
+  if (value === undefined) return "等待实时数据";
+  if (Math.abs(value) < 8) return "几乎正拍";
+  return `${Math.abs(value).toFixed(0)} ms ${value < 0 ? "偏早" : "偏晚"}`;
+}
+
+function renderInsights(): void {
+  const summary = analytics?.snapshot();
+  required("insight-timing").textContent = summary ? timingLabel(summary.timingBiasMs) : "尚未开始";
+  required("insight-spread").textContent = summary?.meanAbsTimingMs === undefined
+    ? "--"
+    : `平均 ${summary.meanAbsTimingMs.toFixed(0)} / P95 ${summary.p95AbsTimingMs?.toFixed(0) ?? "--"} ms`;
+  required("insight-velocity").textContent = summary?.velocityMean === undefined
+    ? "--"
+    : `${summary.velocityMean.toFixed(0)} ± ${summary.velocityStdDev?.toFixed(0) ?? "0"}`;
+  required("insight-streak").textContent = String(summary?.bestStreak ?? 0);
+  const problems = summary?.problemNotes ?? [];
+  required("insight-problems").textContent = problems.length === 0
+    ? "暂无难点键"
+    : problems.slice(0, 5).map((item) => `${pianoNoteName(item.note)} ${item.errors}次`).join(" · ");
+  practiceInsights.dataset.active = String(Boolean(summary && (summary.hits + summary.wrong + summary.missed > 0)));
+}
+
+function renderPracticeHistory(): void {
+  sessionHistory.replaceChildren();
+  if (recentSessions.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "library-empty";
+    empty.textContent = "完成一次练习后，这里会显示节奏、力度和难点变化。";
+    sessionHistory.append(empty);
+  } else {
+    for (const session of recentSessions.slice(0, 8)) {
+      const card = document.createElement("article");
+      card.className = "history-item";
+      const title = document.createElement("strong");
+      title.textContent = session.context.scoreName;
+      const result = document.createElement("span");
+      result.textContent = `${session.summary.accuracy.toFixed(0)}% · 命中 ${session.summary.hits} · 错漏 ${session.summary.wrong + session.summary.missed}`;
+      const detail = document.createElement("small");
+      const modeLabel = session.context.mode === "realtime" ? "实时" : session.context.mode === "follow" ? "跟随我" : "等我弹";
+      const timing = session.summary.meanAbsTimingMs === undefined ? "无节奏判定" : `平均偏差 ${session.summary.meanAbsTimingMs.toFixed(0)} ms`;
+      detail.textContent = `${new Date(session.endedAt).toLocaleString("zh-CN")} · ${modeLabel} · ${Math.round(session.context.tempo * 100)}% · ${timing}`;
+      card.append(title, result, detail);
+      sessionHistory.append(card);
+    }
+  }
+  const totalNotes = recentSessions.reduce((sum, session) => sum + session.summary.hits + session.summary.wrong + session.summary.missed, 0);
+  historySummary.textContent = `${recentSessions.length} 次近期练习 · ${totalNotes} 个判定事件 · 数据只保存在本机`;
+}
+
+async function refreshPracticeHistory(): Promise<void> {
+  recentSessions = await sessionStore.list(50);
+  renderPracticeHistory();
+}
+
 function renderStats(): void {
   const stats = practiceScore.snapshot();
+  renderInsights();
   const signature = `${stats.hits}:${stats.wrong}:${stats.missed}:${stats.accuracy.toFixed(1)}`;
   if (signature === lastStatsSignature) return;
   lastStatsSignature = signature;
@@ -209,6 +313,7 @@ function updateScoreLabel(): void {
 }
 
 function resetPractice(resetStats = true): void {
+  if (resetStats) void finishPracticeSession();
   cancelFollowPlayback();
   const start = rangeStart();
   clock.reset(start);
@@ -223,6 +328,7 @@ function resetPractice(resetStats = true): void {
   updateTarget(start);
   playButton.textContent = mode === "realtime" ? "播放" : "开始练习";
   renderStats();
+  if (resetStats) beginPracticeSession();
 }
 
 function rebuildPractice(): void {
@@ -271,6 +377,7 @@ function advanceWaitMode(): void {
       waitMatcher.setChord(undefined);
       lastTargetSignature = "";
       playButton.textContent = "已完成";
+      void finishPracticeSession();
       return;
     }
   }
@@ -332,10 +439,21 @@ function handleMidi(event: MidiInputEvent): void {
     pressed.add(event.note);
     if (score && mode !== "realtime" && !followAdvancePending && currentWaitChord()) {
       const result = waitMatcher.noteOn(event.note);
-      if (result.newlyMatched) practiceScore.recordHit();
+      if (result.newlyMatched) {
+        practiceScore.recordHit();
+        const expected = currentWaitChord()?.notes.find((note) => note.note === event.note);
+        recordPracticeEvent({
+          kind: "hit",
+          note: event.note,
+          hand: expected?.hand,
+          velocity: event.velocity,
+          scoreTime: currentWaitChord()?.start ?? lastScoreSeconds,
+        });
+      }
       else if (!result.correct) {
         practiceScore.recordWrong();
         wrong.add(event.note);
+        recordPracticeEvent({ kind: "wrong", note: event.note, velocity: event.velocity, scoreTime: lastScoreSeconds });
       }
       if (result.complete) {
         if (mode === "follow") advanceFollowMode();
@@ -343,6 +461,19 @@ function handleMidi(event: MidiInputEvent): void {
       }
     } else if (score && mode === "realtime" && clock.isRunning()) {
       const result = realtimeMatcher.noteOn(event.note, lastScoreSeconds);
+      recordMissedNotes(result.missed);
+      if (result.newlyMatched) {
+        recordPracticeEvent({
+          kind: "hit",
+          note: event.note,
+          hand: result.matched?.hand,
+          velocity: event.velocity,
+          scoreTime: result.matched?.start ?? lastScoreSeconds,
+          timingMs: result.timingMs,
+        });
+      } else if (!result.correct) {
+        recordPracticeEvent({ kind: "wrong", note: event.note, velocity: event.velocity, scoreTime: lastScoreSeconds });
+      }
       if (!result.correct) wrong.add(event.note);
     }
   } else {
@@ -723,6 +854,20 @@ required("practice-options-button").addEventListener("click", () => {
   practicePanel.hidden = false;
 });
 required("practice-close").addEventListener("click", () => { practicePanel.hidden = true; });
+required("history-export").addEventListener("click", async () => {
+  try {
+    const payload = await sessionStore.exportHistory();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `notefall88-practice-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch (error) {
+    historySummary.textContent = error instanceof Error ? error.message : "无法导出练习记录";
+  }
+});
 required("settings-button").addEventListener("click", () => {
   practicePanel.hidden = true;
   libraryPanel.hidden = true;
@@ -867,6 +1012,9 @@ device.connect();
 void refreshLibrary().catch((error: unknown) => {
   librarySummary.textContent = error instanceof Error ? error.message : "无法打开曲库";
 });
+void refreshPracticeHistory().catch((error: unknown) => {
+  historySummary.textContent = error instanceof Error ? error.message : "无法打开练习历史";
+});
 
 function frame(now: number): void {
   let scoreSeconds = clock.time(now);
@@ -875,19 +1023,20 @@ function frame(now: number): void {
     if (mode !== "realtime") {
       scoreSeconds = currentWaitChord()?.start ?? rangeEnd();
     } else if (clock.isRunning() && loop && scoreSeconds >= loop.end) {
-      realtimeMatcher.advance(loop.end + 0.251);
+      recordMissedNotes(realtimeMatcher.advance(loop.end + 0.251));
       const span = loop.end - loop.start;
       scoreSeconds = loop.start + ((scoreSeconds - loop.start) % span);
       clock.seek(scoreSeconds, now);
       realtimeMatcher.restartPass();
       lastTargetSignature = "";
     } else if (scoreSeconds >= score.duration) {
-      realtimeMatcher.advance(score.duration + 0.251);
+      recordMissedNotes(realtimeMatcher.advance(score.duration + 0.251));
       clock.pause(now);
       scoreSeconds = score.duration;
       playButton.textContent = "重播";
+      void finishPracticeSession();
     }
-    if (mode === "realtime" && clock.isRunning()) realtimeMatcher.advance(scoreSeconds);
+    if (mode === "realtime" && clock.isRunning()) recordMissedNotes(realtimeMatcher.advance(scoreSeconds));
     lastScoreSeconds = scoreSeconds;
     updateTarget(scoreSeconds);
     scoreTime.textContent = `${formatTime(scoreSeconds)} / ${formatTime(score.duration)}`;

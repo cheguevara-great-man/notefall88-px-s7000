@@ -238,8 +238,14 @@ export class RealtimeMatcher {
     this.cursor = 0;
   }
 
-  noteOn(note: number, scoreTime: number): { correct: boolean; newlyMatched: boolean } {
-    this.advance(scoreTime);
+  noteOn(note: number, scoreTime: number): {
+    correct: boolean;
+    newlyMatched: boolean;
+    matched?: ScoreNote;
+    timingMs?: number;
+    missed: ScoreNote[];
+  } {
+    const missed = this.advance(scoreTime);
     const earlySeconds = this.earlyMs / 1000;
     const lateSeconds = this.lateMs / 1000;
     let bestIndex = -1;
@@ -259,26 +265,39 @@ export class RealtimeMatcher {
 
     if (bestIndex < 0) {
       this.score.recordWrong();
-      return { correct: false, newlyMatched: false };
+      return { correct: false, newlyMatched: false, missed };
     }
-    if (this.matched[bestIndex].has(note)) return { correct: true, newlyMatched: false };
+    const matched = this.chords[bestIndex].notes.find((candidate) => candidate.note === note);
+    if (this.matched[bestIndex].has(note)) return { correct: true, newlyMatched: false, matched, missed };
     this.matched[bestIndex].add(note);
     this.score.recordHit();
-    return { correct: true, newlyMatched: true };
+    return {
+      correct: true,
+      newlyMatched: true,
+      matched,
+      timingMs: Math.round((scoreTime - this.chords[bestIndex].start) * 1000),
+      missed,
+    };
   }
 
-  advance(scoreTime: number): void {
+  advance(scoreTime: number): ScoreNote[] {
+    const missedNotes: ScoreNote[] = [];
     const lateSeconds = this.lateMs / 1000;
     while (this.cursor < this.chords.length &&
            this.chords[this.cursor].start < scoreTime - lateSeconds) {
       const expected = new Set(this.chords[this.cursor].notes.map((note) => note.note));
       let missed = 0;
       for (const note of expected) {
-        if (!this.matched[this.cursor].has(note)) missed += 1;
+        if (!this.matched[this.cursor].has(note)) {
+          missed += 1;
+          const source = this.chords[this.cursor].notes.find((candidate) => candidate.note === note);
+          if (source) missedNotes.push(source);
+        }
       }
       this.score.recordMiss(missed);
       this.cursor += 1;
     }
+    return missedNotes;
   }
 }
 

@@ -68,10 +68,16 @@ describe("practice engine", () => {
     const score = new PracticeScore();
     const matcher = new RealtimeMatcher(score);
     matcher.setChords(groupChords(notes));
-    expect(matcher.noteOn(60, 1.05)).toEqual({ correct: true, newlyMatched: true });
-    expect(matcher.noteOn(60, 1.06)).toEqual({ correct: true, newlyMatched: false });
-    expect(matcher.noteOn(61, 1.07)).toEqual({ correct: false, newlyMatched: false });
-    matcher.advance(1.5);
+    expect(matcher.noteOn(60, 1.05)).toMatchObject({
+      correct: true,
+      newlyMatched: true,
+      timingMs: 50,
+      matched: { note: 60, hand: "right" },
+      missed: [],
+    });
+    expect(matcher.noteOn(60, 1.06)).toMatchObject({ correct: true, newlyMatched: false, missed: [] });
+    expect(matcher.noteOn(61, 1.07)).toMatchObject({ correct: false, newlyMatched: false, missed: [] });
+    expect(matcher.advance(1.5)).toMatchObject([{ note: 64, hand: "right" }]);
     const result = score.snapshot();
     expect(result).toMatchObject({ hits: 1, wrong: 1, missed: 1 });
     expect(result.accuracy).toBeCloseTo(100 / 3);

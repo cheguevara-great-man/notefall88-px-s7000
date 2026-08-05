@@ -130,6 +130,30 @@
             <input id="loop-end" type="range" min="0" max="1" step="0.1" value="1" disabled />
           </label>
         </div>
+        <hr />
+        <div class="settings-head compact-head">
+          <div>
+            <div class="eyebrow">LIVE INSIGHTS</div>
+            <h3>本次演奏洞察</h3>
+          </div>
+        </div>
+        <dl id="practice-insights" class="diagnostic-grid insight-grid" data-active="false">
+          <div><dt>整体拍点</dt><dd id="insight-timing">尚未开始</dd></div>
+          <div><dt>时序离散</dt><dd id="insight-spread">--</dd></div>
+          <div><dt>力度均值 / 波动</dt><dd id="insight-velocity">--</dd></div>
+          <div><dt>最佳连续命中</dt><dd id="insight-streak">0</dd></div>
+          <div class="wide"><dt>当前难点键</dt><dd id="insight-problems">暂无难点键</dd></div>
+        </dl>
+        <hr />
+        <div class="settings-head compact-head">
+          <div>
+            <div class="eyebrow">PRIVATE HISTORY</div>
+            <h3>近期练习</h3>
+          </div>
+          <button id="history-export">导出 JSON</button>
+        </div>
+        <div id="history-summary" class="library-summary">正在读取本机记录…</div>
+        <div id="session-history" class="history-list"></div>
         <p>实时模式按 ±180/250 ms 窗口判定；等我弹模式不会因思考时间判错；跟随我模式只练一只手，另一只手由 PX-S7000 按你的实际速度伴奏。切换声部或循环范围会重新开始本次练习。</p>
       </aside>
 
