@@ -6,10 +6,11 @@
 
 ## 1. 结论先行
 
-没有一个现有项目能原样满足本项目，但四个项目分别解决了不同问题：
+没有一个现有项目能原样满足本项目，但下列项目分别解决了不同问题。2026-08-05 的二次审计确认 Piano Trainer Studio 有公开源码和明确的 AGPL-3.0 许可证；此前把它写成“不可审计、未明确授权”是错误的，本版已经纠正：
 
 | 最值得参考的部分 | 对应项目 | 原因 |
 |---|---|---|
+| **第一软件/产品参考** | [Piano Trainer Studio](https://github.com/ztbishop/piano-trainer-studio) | MusicXML 谱面、三种练习模式、左右手、循环/变速/移调/得分、IndexedDB 曲库和逐键 LED 校准已形成完整产品闭环 |
 | 最接近的硬件拓扑 | [PianoLux ESP32](https://github.com/serifpersia/pianolux-esp32) | 已验证 ESP32-S2/S3 可同时承担 USB MIDI Host、Wi-Fi 网页和单排灯带控制 |
 | 最完整的实体灯带产品流程 | [Piano-LED-Visualizer](https://github.com/onlaj/Piano-LED-Visualizer) | 曲库、练习、录制、校准、配置、网页控制和独立运行最完整 |
 | 最可靠的 ESP32 MIDI 输入参考 | [ESP32_Host_MIDI](https://github.com/sauloverissimo/ESP32_Host_MIDI) | USB 枚举、端点解析、断线恢复、事件队列和测试覆盖最有价值 |
@@ -27,7 +28,7 @@ flowchart LR
     U["手机 / 平板 / 电脑<br/>同一套响应式界面"] <-->|"本地 Wi-Fi<br/>HTTP + WebSocket"| E
 ```
 
-关键区别是：**实时按键数据走钢琴到 ESP32 的 USB 直连，Wi-Fi 只负责界面、乐曲和设置。** 因此 Wi-Fi 抖动不会进入“按键亮灯”关键路径。灯带采用带时钟线的 APA102/SK9822，而不是四个参考项目中常见的 WS2812；这让刷新时序更可控，也更适合 ESP32-S3 同时处理 USB 和网络任务。
+关键区别是：**实时按键数据走钢琴到 ESP32 的 USB 直连，Wi-Fi 只负责界面、乐曲和设置。** 因此 Wi-Fi 抖动不会进入“按键亮灯”关键路径。灯带采用带时钟线的 APA102/SK9822，而不是参考项目中常见的 WS2812；这让刷新时序更可控，也更适合 ESP32-S3 同时处理 USB 和网络任务。
 
 ## 2. 调研方法与代码规模
 
@@ -35,6 +36,7 @@ flowchart LR
 
 | 项目 | 调研提交 | 许可证 | 近似非空源码行数¹ |
 |---|---|---:|---:|
+| Piano Trainer Studio | [`9b21d7e`](https://github.com/ztbishop/piano-trainer-studio/tree/9b21d7e7277aa1da8d82b3d67fe036bfccd11e81)（v1.2.4） | AGPL-3.0 | 自写 JS/CSS/HTML/Helper 约 15,720；另含第三方资源 |
 | Piano-LED-Visualizer | [`b567fd1`](https://github.com/onlaj/Piano-LED-Visualizer/tree/b567fd1237fa) | MIT | 约 32,000 |
 | PianoLux ESP32 | [`2a9d10c`](https://github.com/serifpersia/pianolux-esp32/tree/2a9d10c3c744) | MIT | 约 5,700 |
 | ESP32_Host_MIDI | [`dea1578`](https://github.com/sauloverissimo/ESP32_Host_MIDI/tree/dea1578d596a)（v7.2.0） | MIT | 核心约 5,100；含示例/测试约 12,700 |
@@ -49,6 +51,7 @@ flowchart LR
 
 | 项目 | 主控/运行设备 | 钢琴如何接入 | 灯带如何接入 | 界面如何通信 | 是否依赖云端 |
 |---|---|---|---|---|---|
+| Piano Trainer Studio | 浏览器；可选 PC/Mac 本地 helper | USB/蓝牙 MIDI → 浏览器 Web MIDI；iOS 需 MIDIWeb | 浏览器以 HTTP JSON 发 WLED；低延迟 DDP 经 helper；或输出到 MIDI LED 设备 | 浏览器本地处理；WLED/helper 走局域网 | 否，但移动端可能依赖辅助 App/电脑 |
 | Piano-LED-Visualizer | Raspberry Pi Zero / Zero 2 W | USB-MIDI，经 Linux ALSA、mido、python-rtmidi | GPIO18 驱动 WS281x，灯带独立 5 V 供电 | Flask/Waitress HTTP + WebSocket；Wi-Fi 热点或家庭网络 | 否 |
 | PianoLux ESP32 | ESP32-S2/S3 | 原生 USB Host；也提供 BLE MIDI、RTP-MIDI 等替代入口 | GPIO + RMT/FastLED 驱动 WS2812 | ESPAsyncWebServer HTTP + WebSocket；AP/STA/mDNS | 否 |
 | ESP32_Host_MIDI | ESP32-S2/S3/P4 等 | USB Host、BLE、RTP-MIDI、DIN UART、ESP-NOW 等可选 | 不包含灯带 | 只提供 MIDI 传输 API，不包含成品界面 | 否 |
@@ -59,27 +62,29 @@ flowchart LR
 
 符号含义：● 已有；◐ 部分支持或需组合使用；— 不属于该项目。
 
-| 功能 | Piano-LED-Visualizer | PianoLux | ESP32_Host_MIDI | Openthesia | NoteFall 88 目标 |
-|---|:---:|:---:|:---:|:---:|:---:|
-| 按下琴键即时亮灯 | ● | ● | 仅输出 MIDI 事件 | ◐ 屏幕显示 | ● |
-| MIDI 文件预提示 | ● | ● | — | ● | ● |
-| 等待用户弹对再继续 | ● | ◐ | — | ● | ● |
-| 屏幕瀑布流 | ◐ | ◐ | — | ● | ● |
-| 单排 88 键实体灯带 | ● | ● | — | — | ● |
-| 用户校准灯位/方向 | ● | ● | — | — | ●，且使用真实键位中心模型 |
-| 曲库与上传管理 | ● | ● | — | ● | ● |
-| 循环、速度、左右手 | ● | ◐ | — | ● | ● |
-| 录制与回放 | ● | — | 提供事件能力 | ● | ● |
-| OTA 固件升级 | — | ● | — | — | ● |
-| 手机/平板友好界面 | ◐ | ◐ | — | — | ● |
-| USB 断线自动恢复 | ◐ | ◐ | ● | 由操作系统处理 | ● |
-| 自动化测试 | 较少 | 较少 | ● | ◐ | ● |
+| 功能 | Piano Trainer Studio | Piano-LED-Visualizer | PianoLux | ESP32_Host_MIDI | Openthesia | NoteFall 88 目标 |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| 按下琴键即时亮灯 | ● | ● | ● | 仅输出 MIDI 事件 | ◐ 屏幕显示 | ● |
+| MusicXML/MXL 谱面 | ● | — | — | — | — | ● |
+| MIDI 文件预提示 | ●，先转换为 MusicXML | ● | ● | — | ● | ● |
+| 等待用户弹对再继续 | ● | ● | ◐ | — | ● | ● |
+| Follow Me 左右手伴随 | ● | ◐ | — | — | ◐ | ● |
+| 屏幕瀑布流/谱面跟随 | ● 谱面跟随 | ◐ | ◐ | — | ● 瀑布流 | ●，两种视图可切换 |
+| 单排 88 键实体灯带 | ●，经 WLED/MIDI 设备 | ● | ● | — | — | ● |
+| 用户校准灯位/方向 | ●，逐键偏移 | ● | ● | — | — | ●，几何模型 + 必要时逐键微调 |
+| 曲库与上传管理 | ● IndexedDB/备份 | ● | ● | — | ● | ● |
+| 循环、速度、左右手、移调 | ● | ● | ◐ | — | ● | ● |
+| 录制与回放 | — | ● | — | 提供事件能力 | ● | ● |
+| OTA 固件升级 | — | — | ● | — | — | ● |
+| 手机/平板友好界面 | ◐；iOS 有 MIDI/WLED 限制 | ◐ | ◐ | — | — | ● |
+| USB 断线自动恢复 | 由浏览器/系统处理 | ◐ | ◐ | ● | 由操作系统处理 | ● |
+| 自动化测试 | 未见完整自动化套件 | 较少 | 较少 | ● | ◐ | ● |
 
 ## 4. Piano-LED-Visualizer
 
 ### 4.1 它是什么
 
-这是四个项目中最接近“可长期放在钢琴上使用的完整设备”的方案。它把 Raspberry Pi 变成一台独立灯光主机，既能监听钢琴实时 MIDI，也能从本机曲库播放 MIDI 并执行等待练习。
+这是参考项目中最接近“可长期放在钢琴上使用的完整设备”的方案。它把 Raspberry Pi 变成一台独立灯光主机，既能监听钢琴实时 MIDI，也能从本机曲库播放 MIDI 并执行等待练习。
 
 ```mermaid
 flowchart LR
@@ -277,7 +282,43 @@ flowchart LR
 
 ### 8.2 Piano Trainer Studio
 
-[Piano Trainer Studio](https://pianotrainerstudio.com/) 是产品体验参考，不是本报告可审计的开源依赖。可研究它公开展示的谱面、等待练习、LED 校准和移动端布局，但不能假设其内部硬件拓扑，更不会复制未明确授权的网页代码。
+[Piano Trainer Studio（PTS）](https://github.com/ztbishop/piano-trainer-studio) 是公开、可审计的 AGPL-3.0 项目，也是 NoteFall 88 的**第一软件/产品参考**。本次审计固定在提交 [`9b21d7e`](https://github.com/ztbishop/piano-trainer-studio/tree/9b21d7e7277aa1da8d82b3d67fe036bfccd11e81)（v1.2.4），而不是只根据在线界面猜测。
+
+#### 已确认的功能与实现
+
+- MusicXML/XML/MXL 是主格式；MIDI、MuseScore 和 Guitar Pro 文件通过 webmscore 转成 MusicXML 后进入同一条处理链。
+- OSMD 负责解析与绘制谱面，浏览器游标和谱面数据共同产生目标音符与左右手/谱表归属。
+- Realtime、Wait for Me、Follow Me 三种模式已经实现；另有左右手选择、循环、变速、移调、得分、节拍器和反馈标记。
+- IndexedDB 保存文件夹、乐谱、原始文件和最近打开时间，并支持批量导入、重命名、移动、删除、完整备份和恢复。
+- LED 子系统维护 RGB 帧缓冲、方向/数量配置以及每个 MIDI 键的独立像素偏移；校准可导入和导出。
+- 自写 JS/CSS/HTML/Node helper 约 15,720 行。最大的业务文件 `trainer-core.js` 和 `led.js` 分别约 3,600 和 1,900 个非空行，说明它不是只有一层界面的简单演示。
+
+#### 它实际有两路 MIDI/音符数据
+
+```mermaid
+flowchart LR
+    SCORE["MusicXML / MXL<br/>或转换后的 MIDI"] --> B["浏览器练习引擎<br/>计算参考/目标音符"]
+    PIANO["钢琴 USB / 蓝牙 MIDI"] -->|"Web MIDI；iOS 需 MIDIWeb"| B
+    B -->|"比较目标与实际演奏"| UI["谱面、得分、练习状态"]
+    B -->|"HTTP JSON 像素帧<br/>或 helper → DDP"| WLED["WLED ESP32<br/>通常不解析乐谱"]
+    B -.可选.->|"MIDI 输出"| MLED["MIDI LED 设备"]
+```
+
+第一路是浏览器从乐谱得到的**参考/目标音符**；第二路是钢琴实际弹奏产生的**演奏音符**。浏览器负责比较两者并生成练习状态。默认 WLED 控制器通常只接收已经算好的像素颜色帧，不知道乐谱、左右手或命中规则。
+
+#### 与 NoteFall 88 的关键差异
+
+PTS 默认要求浏览器自己收到钢琴 MIDI：桌面浏览器使用 Web MIDI；iPhone/iPad 因 Safari/Chrome 不提供 Web MIDI，需要 MIDIWeb。WLED 默认走浏览器 HTTP JSON，低延迟 DDP 需要 PC/Mac helper；官方说明还指出 iOS 的 WLED 使用场景需要 helper。NoteFall 88 则让 PX-S7000 直接接 ESP32-S3，实体按键反馈不经过浏览器或 Wi-Fi，ESP32 再把标准化按键事件发给任意手机/平板页面，因此移动端不需要 Web MIDI 权限。
+
+PTS 的完整发布包也不适合原样塞进 N8R8：审计快照中的 webmscore 资源约 24.2 MB、OSMD 压缩脚本约 1.2 MB，而 NoteFall 当前为保留双 OTA 应用只给 LittleFS 分配 2.875 MB。OSMD 单独加入仍有工程空间；完整 webmscore 转换器必须作为可选电脑端能力、外部 App 资源或后续更大存储版本，不能假装可以直接嵌入。
+
+#### 许可证边界与采用结论
+
+PTS 的授权非常明确，但它是 AGPL-3.0，不是 MIT。直接 fork、修改并把它作为网络交互应用发布，需要保留 AGPL 许可/通知，并按 AGPL 第 13 节向远程交互用户显著提供相应源码。把 PTS 主代码并入本仓库，也不能再把组合后的 PTS 衍生前端仅标为 MIT。
+
+本项目因此选择：**PTS 作为第一软件参考，但不 fork、不复制其代码或资源；NoteFall 的 MIT 核心保持独立实现。** 这里是“独立重写/不复制”的工程规则，不声称已经建立由隔离团队执行的法律意义 formal clean room。若未来需要直接修改 PTS，则放在单独的 AGPL 仓库/发行物中，并在发布前做许可证复核。
+
+详细的 fork 与独立实现成本、组件边界和逐项采用计划见 [PTS 采用决策](pts-adoption-decision.md)。
 
 ## 9. 映射算法：为什么不能简单“第 N 个键 = 第 N 个灯”
 
@@ -309,12 +350,15 @@ NoteFall 88 因此采用两层映射：
 | 钢琴通信 | PX-S7000 USB-MIDI 直连 ESP32-S3 原生 USB Host | ESP32_Host_MIDI 提供成熟的枚举与队列参考 |
 | 手机/平板通信 | 本地 Wi-Fi HTTP + WebSocket | 两个实体灯带项目都证明浏览器管理适合无云设备 |
 | 实时边界 | USB MIDI 直接驱动灯光；Wi-Fi 不在按键关键路径 | 避免网络抖动影响即时反馈 |
+| 两路音符数据 | 乐谱产生参考/目标音符；ESP32 上报钢琴实际演奏音符；浏览器比较二者 | PTS 证明目标与演奏必须分流，WLED/灯控设备不应承担谱面解析 |
 | 灯带 | 一条完整的 5 V、144 LED/m APA102C 或 SK9822 | 比 WS2812 多时钟线，但刷新更确定，两个型号协议兼容 |
 | 电气接口 | 3.3 V SPI 经 74AHCT125 转 5 V；灯带独立供电、共地 | 防止 ESP32 直接驱动 5 V 逻辑造成边缘不可靠 |
 | 机械安装 | 灯带竖直面向演奏者/琴键方向；不采用全长 3D 打印盒或导轨 | 保留光线直接照到键面的效果，减少高度和遮光 |
 | 键位映射 | 参数化真实键位中心 + 少量现场校准 | 改进现有项目常见的线性偏移模型 |
-| 软件形态 | 响应式 Web/PWA 为同一核心；需要商店安装时再用 Capacitor 封装 | 一份代码覆盖手机、平板和电脑，避免同时维护网页与原生 App |
-| 练习引擎 | 统一时间线，屏幕瀑布流和实体灯带使用不同渲染器 | 学习 Openthesia 的时钟/状态模型，不复制 GPL 代码 |
+| 软件形态 | ESP32 托管响应式 Web/PWA 核心；需要商店安装时再用 Capacitor 封装 | 一份代码覆盖手机、平板和电脑；ESP 作为 MIDI 网关后，iOS 不需要 Web MIDI/MIDIWeb |
+| 软件参考与许可证 | PTS 为第一软件参考；MIT 独立实现，不 fork/复制 AGPL 主代码 | fork 能较快获得成熟功能，但会引入 AGPL 发布义务、拓扑重构和资源体积问题 |
+| 谱面与格式 | 独立引入 BSD-3-Clause 的 OSMD 支持 MusicXML/MXL；MIDI 继续直接解析；24 MB 级 webmscore 转换器不嵌入首版固件 | PTS 验证 MusicXML-first 产品路线；N8R8 的 2.875 MB LittleFS 无法原样容纳完整转换资源 |
+| 练习引擎 | 统一时间线，谱面、屏幕瀑布流和实体灯带使用不同渲染器 | 学习 PTS/Openthesia 的公开行为和状态边界，不复制 AGPL/GPL 代码 |
 | 首版传输范围 | 只启用 USB MIDI；BLE/RTP/OSC 等留作未来插件 | ESP32_Host_MIDI 的广度有参考价值，但不是首版需求 |
 
 ## 11. 由调研转化出的实现清单
@@ -329,9 +373,9 @@ NoteFall 88 因此采用两层映射：
 
 ### P1：完整练习产品
 
-- 曲库、最近使用、上传/删除/重命名和元数据。
-- 等待弹对、左右手、循环、变速、提前量和倒计时。
-- 屏幕瀑布流、虚拟键盘、实体灯带状态预览和命中反馈。
+- IndexedDB 曲库、文件夹、最近使用、批量导入、删除/重命名、版本化备份与恢复。
+- Realtime、Wait for Me、Follow Me、左右手、循环、变速、移调、提前量和倒计时。
+- MusicXML/MXL 谱面跟随、屏幕瀑布流、虚拟键盘、实体灯带状态预览和命中反馈。
 - 演奏录制、回放、错误统计和可导出 MIDI。
 - 手机/平板横竖屏布局、PWA 安装和离线缓存。
 
@@ -346,16 +390,21 @@ NoteFall 88 因此采用两层映射：
 
 正确路线不是“找到代码最多的项目然后照抄”，也不是只写一个能点灯的 2,000 行演示：
 
+- 用 **Piano Trainer Studio** 定义 MusicXML-first 谱面、三种练习模式、曲库/备份和 LED 校准的第一产品参考；
 - 用 **PianoLux** 证明 ESP32-S3 单主控硬件路线；
 - 用 **ESP32_Host_MIDI** 提高 USB 底层可靠性；
 - 用 **Piano-LED-Visualizer** 补齐长期使用所需的曲库、校准、录制和诊断；
 - 用 **Openthesia** 定义瀑布流、时间线和练习体验的功能上限；
-- 结合 PX-S7000、APA102/SK9822 和真实琴键几何，重新实现一个更小、更确定、移动端优先的系统。
+- 结合 PX-S7000、APA102/SK9822 和真实琴键几何，独立实现一个更确定、移动端优先、保留 MIT 边界的系统。
 
-这套取舍保留了成熟项目最难验证的经验，同时避免继承 Linux 主机、WS2812 时序、线性灯位、GPL 代码和无关 MIDI 传输造成的复杂度。
+这套取舍保留了成熟项目最难验证的经验，同时避免继承 Linux 主机、WS2812 时序、线性灯位、AGPL/GPL 主代码和无关 MIDI 传输造成的复杂度。PTS 不是“未授权项目”；不 fork 它是经过许可证、硬件拓扑、移动端限制和固件容量共同比较后的主动选择。
 
 ## 13. 主要资料
 
+- [Piano Trainer Studio 固定源码快照](https://github.com/ztbishop/piano-trainer-studio/tree/9b21d7e7277aa1da8d82b3d67fe036bfccd11e81)
+- [Piano Trainer Studio 官方说明](https://pianotrainerstudio.com/README.html)
+- [GNU AGPL-3.0 正文，特别是第 13 节](https://www.gnu.org/licenses/agpl-3.0.en.html)
+- [PTS 采用决策：fork 与 MIT 独立实现比较](pts-adoption-decision.md)
 - [Piano-LED-Visualizer 源码与安装说明](https://github.com/onlaj/Piano-LED-Visualizer)
 - [PianoLux ESP32 源码与接线说明](https://github.com/serifpersia/pianolux-esp32)
 - [ESP32_Host_MIDI v7.2.0 源码与示例](https://github.com/sauloverissimo/ESP32_Host_MIDI/tree/dea1578d596a)
