@@ -31,4 +31,12 @@ describe("app preferences", () => {
     savePreferences({ version: 1, mode: "realtime", hand: "left", tempo: 0.75, leadMs: 1_200, metronome: true, countIn: true }, target);
     expect(loadPreferences(target)).toMatchObject({ mode: "realtime", hand: "left", tempo: 0.75, leadMs: 1_200, metronome: true });
   });
+
+  it("persists five-percent tempo steps across the full practice range", () => {
+    const target = storage();
+    savePreferences({ version: 1, mode: "wait", hand: "both", tempo: 0.35, leadMs: 900, metronome: false, countIn: true }, target);
+    expect(loadPreferences(target).tempo).toBeCloseTo(0.35);
+    savePreferences({ version: 1, mode: "wait", hand: "both", tempo: 2, leadMs: 900, metronome: false, countIn: true }, target);
+    expect(loadPreferences(target).tempo).toBe(2);
+  });
 });

@@ -40,6 +40,7 @@ import {
   recordingToMidi,
 } from "./performance";
 import { loadPreferences, savePreferences } from "./preferences";
+import { clampTempo, normalizeTempo, tempoPercent } from "./tempo";
 import {
   chordsInRange,
   filterNotesByHand,
@@ -90,7 +91,7 @@ const resetButton = required<HTMLButtonElement>("reset-button");
 const recordButton = required<HTMLButtonElement>("record-button");
 const recordDownload = required<HTMLButtonElement>("record-download");
 const modeSelect = required<HTMLSelectElement>("practice-mode");
-const tempoSelect = required<HTMLSelectElement>("tempo");
+const tempoInput = required<HTMLInputElement>("tempo");
 const viewMode = required<HTMLSelectElement>("view-mode");
 const handSelect = required<HTMLSelectElement>("hand-selection");
 const leadTime = required<HTMLInputElement>("lead-time");
@@ -198,7 +199,7 @@ let backgroundPlayLabel = "播放";
 
 modeSelect.value = mode;
 handSelect.value = hand;
-tempoSelect.value = String(initialPreferences.tempo);
+tempoInput.value = String(tempoPercent(initialPreferences.tempo));
 leadTime.value = String(leadMs);
 metronomeEnabled.checked = initialPreferences.metronome;
 countInEnabled.checked = initialPreferences.countIn;
@@ -214,11 +215,21 @@ function persistPreferences(): void {
     version: 1,
     mode,
     hand,
-    tempo: Number(tempoSelect.value),
+    tempo: selectedTempo(),
     leadMs,
     metronome: metronomeEnabled.checked,
     countIn: countInEnabled.checked,
   });
+}
+
+function selectedTempo(): number {
+  return clampTempo(Number(tempoInput.value) / 100);
+}
+
+function setSelectedTempo(tempo: number): void {
+  const normalized = normalizeTempo(tempo);
+  tempoInput.value = String(tempoPercent(normalized));
+  clock.setSpeed(normalized, performance.now());
 }
 
 function formatEndpoint(value: number | undefined): string {
@@ -429,7 +440,7 @@ function sessionContext() {
     scoreFingerprint,
     mode,
     hand,
-    tempo: Number(tempoSelect.value),
+    tempo: selectedTempo(),
     transpose: transposeSemitones,
     loop: loop ? { ...loop } : undefined,
   };
@@ -688,7 +699,7 @@ function advanceFollowMode(): void {
   const wrappedNext = !directNext && loop && chords.length > 0 ? chords[0] : undefined;
   const next = directNext ?? wrappedNext;
   const windowEnd = directNext?.start ?? rangeEnd();
-  const speed = Number(tempoSelect.value);
+  const speed = selectedTempo();
   const accompaniment = followPlanner.events(
     practicedFollowHand(),
     current.start,
@@ -1149,8 +1160,8 @@ modeSelect.addEventListener("change", () => {
   }
   persistPreferences();
 });
-tempoSelect.addEventListener("change", () => {
-  clock.setSpeed(Number(tempoSelect.value), performance.now());
+tempoInput.addEventListener("change", () => {
+  setSelectedTempo(selectedTempo());
   if (mode === "follow") resetPractice(true);
   persistPreferences();
 });
@@ -1233,8 +1244,7 @@ coachApply.addEventListener("click", () => {
   hand = recommendation.hand;
   if (mode === "follow" && hand === "both") hand = "right";
   handSelect.value = hand;
-  tempoSelect.value = String(recommendation.tempo);
-  clock.setSpeed(recommendation.tempo, performance.now());
+  setSelectedTempo(recommendation.tempo);
   loopEnabled.checked = Boolean(recommendation.loop);
   loopStart.disabled = !recommendation.loop;
   loopEnd.disabled = !recommendation.loop;

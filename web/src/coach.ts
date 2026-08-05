@@ -1,7 +1,7 @@
 import type { PracticeSession } from "./analytics";
 import type { HandSelection, PracticeMode } from "./types";
+import { MAX_TEMPO, MIN_TEMPO, normalizeTempo } from "./tempo";
 
-const TEMPO_STEPS = [0.5, 0.75, 1, 1.25, 1.5] as const;
 const MAX_SOURCE_SESSIONS = 20;
 
 export interface PracticeRecommendation {
@@ -20,29 +20,14 @@ export interface PracticeRecommendation {
   };
 }
 
-function nearestTempoIndex(value: number): number {
-  let result = 0;
-  let distance = Number.POSITIVE_INFINITY;
-  TEMPO_STEPS.forEach((candidate, index) => {
-    const candidateDistance = Math.abs(candidate - value);
-    if (candidateDistance < distance) {
-      distance = candidateDistance;
-      result = index;
-    }
-  });
-  return result;
-}
-
 function recommendedTempo(current: number, accuracy: number, timingMs?: number): number {
-  const index = nearestTempoIndex(current);
-  if (accuracy < 70) return TEMPO_STEPS[Math.max(0, index - 1)];
-  if (accuracy < 88 || (timingMs !== undefined && timingMs > 120)) {
-    return TEMPO_STEPS[Math.max(0, index - (index > 1 ? 1 : 0))];
-  }
-  if (accuracy >= 96 && (timingMs === undefined || timingMs < 65)) {
-    return TEMPO_STEPS[Math.min(TEMPO_STEPS.length - 1, index + 1)];
-  }
-  return TEMPO_STEPS[index];
+  const normalized = normalizeTempo(current);
+  const delta = accuracy < 70
+    ? -0.15
+    : (accuracy < 88 || (timingMs !== undefined && timingMs > 120))
+      ? -0.1
+      : (accuracy >= 96 && (timingMs === undefined || timingMs < 65)) ? 0.05 : 0;
+  return normalizeTempo(Math.max(MIN_TEMPO, Math.min(MAX_TEMPO, normalized + delta)));
 }
 
 function chooseHand(sessions: PracticeSession[]): HandSelection {

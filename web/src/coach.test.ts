@@ -45,7 +45,7 @@ describe("practice coach", () => {
     expect(recommendPractice(history, "Etude", 40)).toMatchObject({
       mode: "wait",
       hand: "left",
-      tempo: 0.75,
+      tempo: 0.85,
       loop: { start: 12, end: 24 },
       confidence: "low",
       evidence: { sessions: 1, events: 5, accuracy: 40, errorsInLoop: 5 },
@@ -69,7 +69,7 @@ describe("practice coach", () => {
     expect(recommendPractice([second, first], "Scale", 35)).toMatchObject({
       mode: "realtime",
       hand: "right",
-      tempo: 1.25,
+      tempo: 1.05,
       confidence: "medium",
       loop: undefined,
     });

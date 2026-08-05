@@ -99,7 +99,7 @@ PTS 原本就不是把网页、OSMD、webmscore、曲库和练习引擎放进 WL
 | MusicXML/MXL + 谱面 | 已独立集成 OSMD（BSD-3-Clause）与自己的安全解压/时间线/谱面适配层 | 不复制 PTS 的 OSMD 包装和 trainer-core |
 | MIDI/MuseScore/Guitar Pro 转换 | MIDI 保留 `@tonejs/midi`；重型格式转换后置到可选桌面包 | 不把 24 MB webmscore 塞入 ESP |
 | Realtime / Wait / Follow | 已在现有 TypeScript 引擎独立实现；Follow 将另一手相对时间事件交给 ESP 固定队列，再由 PX-S7000 自身音源播放 | 用测试定义节拍、同音重触发和降级行为，不复制状态机代码 |
-| 左右手/循环/变速/移调/得分 | 左右手、循环、变速、±12 半音目标/OSMD 同步移调和得分已实现 | 目标灯、判分、瀑布流和谱面消费同一变换结果 |
+| 左右手/循环/变速/移调/得分 | 左右手、循环、25%–200% 五个百分点步进变速、±12 半音目标/OSMD 同步移调和得分已实现 | 目标灯、判分、瀑布流和谱面消费同一变换结果 |
 | IndexedDB 曲库/备份 | 已独立实现版本化 schema、文件夹、最近使用、内容去重和 SHA-256 可校验备份 | 借鉴产品需求，不复制对象结构或 UI 代码 |
 | LED 逐键校准 | 已用真实琴键几何 + 方向/全局偏移 + 88 键独立 ±4 像素修正实现 | 灯位真相和 NVS 持久化在 ESP；浏览器只操作语义参数 |
 | WLED HTTP/DDP | 不作为主链路 | ESP 直接 SPI 驱动 APA102/SK9822，无 helper |

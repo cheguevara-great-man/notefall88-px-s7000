@@ -1,7 +1,7 @@
 import type { HandSelection, PracticeMode } from "./types";
+import { normalizeTempo } from "./tempo";
 
 const STORAGE_KEY = "notefall88.preferences.v1";
-const TEMPOS = [0.5, 0.75, 1, 1.25, 1.5];
 
 export interface AppPreferences {
   version: 1;
@@ -35,7 +35,7 @@ function normalize(value: unknown): AppPreferences {
   const hand = ["both", "left", "right"].includes(String(candidate.hand))
     ? candidate.hand as HandSelection
     : DEFAULT_PREFERENCES.hand;
-  const tempo = TEMPOS.includes(Number(candidate.tempo)) ? Number(candidate.tempo) : DEFAULT_PREFERENCES.tempo;
+  const tempo = normalizeTempo(Number(candidate.tempo), DEFAULT_PREFERENCES.tempo);
   const leadMs = Math.round(Math.max(300, Math.min(2_000, Number(candidate.leadMs) || DEFAULT_PREFERENCES.leadMs)) / 100) * 100;
   return {
     version: 1,

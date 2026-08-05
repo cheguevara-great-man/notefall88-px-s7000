@@ -10,7 +10,7 @@ NoteFall 88 只有在数字门禁全部自动通过后才能生成候选包；�
 | CAD 有效、尺寸与哈希一致 | Python 测试 + STL/STEP manifest | 通过 |
 | 供电/保险/压降预算 | `generated/power_budget.json` + Python 测试 | 通过 |
 | 线束防呆与 SVG 可解析 | `tests/test_hardware_package.py` | 通过 |
-| Web 练习/和弦持键与事务记分语义、手机后台暂停、MusicXML 速度语义、数据/长录制资源边界与入站协议边界 | Vitest | 95 项通过 |
+| Web 练习/和弦持键与事务记分语义、25%–200% 速度规范化、手机后台暂停、MusicXML 速度语义、数据/长录制资源边界与入站协议边界 | Vitest | 100 项通过 |
 | NVS 校准、复位原因与灯先于网络的实时顺序 | Python 源码门禁 + 固件诊断 | 通过 |
 | 390×844 手机布局、设备离线与存储保护 | Playwright 真浏览器 | 无横向溢出；容量/持久化状态及拒绝提示可见 |
 | README/装机/制造文档本地链接 | Python 文档门禁 | 全部可解析 |
