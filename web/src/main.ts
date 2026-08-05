@@ -678,11 +678,13 @@ function handleMidi(event: MidiInputEvent): void {
     waitMatcher.noteOff(event.note);
   }
   recorder.handleMidi(event, performance.now());
+  finishTruncatedRecording();
   renderStats();
 }
 
 function handleControl(event: MidiControlEvent): void {
   recorder.handleControl(event, performance.now());
+  finishTruncatedRecording();
   if (event.controller === 64) {
     const down = event.value >= 64;
     setStatus(sustainStatus, down, down ? "延音踏板踩下" : "延音踏板松开");
@@ -690,6 +692,15 @@ function handleControl(event: MidiControlEvent): void {
     pressed.clear();
     wrong.clear();
   }
+}
+
+function finishTruncatedRecording(): void {
+  const reason = recorder.truncationReason();
+  if (!reason || !recorder.isRecording()) return;
+  finishRecording();
+  recordResult.textContent = reason === "duration-limit"
+    ? "已达 4 小时安全上限，录制已停止；可下载已保存部分"
+    : "已达 200,000 个 MIDI 事件安全上限，录制已停止；可下载已保存部分";
 }
 
 function finishRecording(): void {

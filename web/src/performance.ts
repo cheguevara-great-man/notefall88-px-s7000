@@ -18,6 +18,11 @@ export interface RecordedControl {
   time: number;
 }
 
+export type RecordingTruncationReason = "event-limit" | "duration-limit";
+
+export const DEFAULT_MAX_RECORDING_EVENTS = 200_000;
+export const DEFAULT_MAX_RECORDING_SECONDS = 4 * 60 * 60;
+
 interface ActiveNote {
   note: number;
   channel: number;
@@ -43,6 +48,13 @@ export class PerformanceRecorder {
   private controls: RecordedControl[] = [];
   private active = new Map<string, ActiveNote[]>();
   private sustainByChannel = new Map<number, boolean>();
+  private eventCount = 0;
+  private truncation?: RecordingTruncationReason;
+
+  constructor(
+    private readonly maxEvents = DEFAULT_MAX_RECORDING_EVENTS,
+    private readonly maxSeconds = DEFAULT_MAX_RECORDING_SECONDS,
+  ) {}
 
   start(nowMs = performance.now()): void {
     this.recording = true;
@@ -51,6 +63,8 @@ export class PerformanceRecorder {
     this.controls = [];
     this.active.clear();
     this.sustainByChannel.clear();
+    this.eventCount = 0;
+    this.truncation = undefined;
   }
 
   stop(nowMs = performance.now()): RecordedNote[] {
@@ -69,8 +83,12 @@ export class PerformanceRecorder {
     return this.recording;
   }
 
+  truncationReason(): RecordingTruncationReason | undefined {
+    return this.truncation;
+  }
+
   handleMidi(event: MidiInputEvent, nowMs = performance.now()): void {
-    if (!this.recording) return;
+    if (!this.acceptEvent(nowMs)) return;
     const time = this.relativeSeconds(nowMs);
     const key = noteKey(event.channel, event.note);
     if (event.state === "on" && event.velocity > 0) {
@@ -101,7 +119,7 @@ export class PerformanceRecorder {
   }
 
   handleControl(event: MidiControlEvent, nowMs = performance.now()): void {
-    if (!this.recording) return;
+    if (!this.acceptEvent(nowMs)) return;
     const channel = Math.max(1, Math.min(16, Math.round(event.channel || 1)));
     const controller = clampMidi(event.controller);
     const value = clampMidi(event.value);
@@ -149,6 +167,20 @@ export class PerformanceRecorder {
 
   private relativeSeconds(nowMs: number): number {
     return Math.max(0, (nowMs - this.originMs) / 1000);
+  }
+
+  private acceptEvent(nowMs: number): boolean {
+    if (!this.recording || this.truncation) return false;
+    if (this.relativeSeconds(nowMs) > this.maxSeconds) {
+      this.truncation = "duration-limit";
+      return false;
+    }
+    if (this.eventCount >= this.maxEvents) {
+      this.truncation = "event-limit";
+      return false;
+    }
+    this.eventCount += 1;
+    return true;
   }
 
   private finish(active: ActiveNote, soundingEnd: number): void {

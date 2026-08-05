@@ -102,4 +102,25 @@ describe("performance recording", () => {
       time: 0.5,
     });
   });
+
+  it("bounds event memory and preserves the accepted recording prefix", () => {
+    const recorder = new PerformanceRecorder(3, 60);
+    recorder.start(0);
+    recorder.handleMidi({ state: "on", channel: 1, note: 60, velocity: 90, timestamp: 0 }, 100);
+    recorder.handleMidi({ state: "off", channel: 1, note: 60, velocity: 0, timestamp: 0 }, 200);
+    recorder.handleControl({ channel: 1, controller: 64, value: 20, timestamp: 0 }, 300);
+    recorder.handleControl({ channel: 1, controller: 67, value: 127, timestamp: 0 }, 400);
+    expect(recorder.truncationReason()).toBe("event-limit");
+    expect(recorder.stop(500)).toHaveLength(1);
+    expect(recorder.controlSnapshot().map((control) => control.controller)).toEqual([64]);
+  });
+
+  it("bounds recording duration without accepting the over-limit event", () => {
+    const recorder = new PerformanceRecorder(100, 1);
+    recorder.start(1_000);
+    recorder.handleControl({ channel: 1, controller: 66, value: 127, timestamp: 0 }, 1_500);
+    recorder.handleControl({ channel: 1, controller: 67, value: 127, timestamp: 0 }, 2_001);
+    expect(recorder.truncationReason()).toBe("duration-limit");
+    expect(recorder.controlSnapshot().map((control) => control.controller)).toEqual([66]);
+  });
 });
