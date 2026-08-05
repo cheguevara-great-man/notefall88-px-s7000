@@ -100,11 +100,12 @@ export class SheetRenderer {
   seek(seconds: number): void {
     this.currentSeconds = seconds;
     if (!this.osmd?.cursor || !this.score?.measureStarts?.length) return;
-    let target = 0;
+    let occurrence = 0;
     for (let index = 0; index < this.score.measureStarts.length; index += 1) {
-      if (this.score.measureStarts[index] <= seconds + 1e-6) target = index;
+      if (this.score.measureStarts[index] <= seconds + 1e-6) occurrence = index;
       else break;
     }
+    const target = this.score.measureMap?.[occurrence] ?? occurrence;
     if (target === this.currentMeasure) return;
     const cursor = this.osmd.cursor;
     if (!this.cursorAvailable) {

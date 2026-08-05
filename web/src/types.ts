@@ -16,6 +16,7 @@ export interface ParsedScore {
   notes: ScoreNote[];
   format?: "midi" | "musicxml";
   measureStarts?: number[];
+  measureMap?: number[];
 }
 
 export interface TargetNote {

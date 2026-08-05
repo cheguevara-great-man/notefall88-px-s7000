@@ -44,6 +44,25 @@ interface PartMeasure {
   tempos: { offset: number; bpm: number }[];
 }
 
+interface MeasureControl {
+  repeatForward: boolean;
+  repeatBackward: boolean;
+  repeatTimes: number;
+  endings: Set<number>;
+  daCapo: boolean;
+  dalSegno?: string;
+  segno?: string;
+  toCoda?: string;
+  coda?: string;
+  fine: boolean;
+}
+
+interface RepeatFrame {
+  start: number;
+  pass: number;
+  times: number;
+}
+
 export interface MusicXmlScore {
   score: ParsedScore;
   xml: string;
@@ -118,6 +137,177 @@ function numberText(element: XmlElement | undefined, fallback = 0): number {
 
 function directNumber(element: XmlElement, name: string, fallback = 0): number {
   return numberText(child(element, name), fallback);
+}
+
+function endingNumbers(value: string | null): Set<number> {
+  const result = new Set<number>();
+  for (const token of (value ?? "").split(/[;,\s]+/)) {
+    if (!token) continue;
+    const range = token.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (range) {
+      const first = Number(range[1]);
+      const last = Number(range[2]);
+      for (let number = Math.min(first, last); number <= Math.max(first, last); number += 1) {
+        if (number >= 1 && number <= 8) result.add(number);
+      }
+      continue;
+    }
+    const number = Number(token);
+    if (Number.isInteger(number) && number >= 1 && number <= 8) result.add(number);
+  }
+  return result;
+}
+
+function soundAttribute(sounds: XmlElement[], name: string): string | undefined {
+  for (const sound of sounds) {
+    const value = sound.getAttribute(name);
+    if (value !== null && value !== "" && !/^(no|false|0)$/i.test(value)) return value;
+  }
+  return undefined;
+}
+
+function partMeasureControls(part: XmlElement): MeasureControl[] {
+  let activeEndings = new Set<number>();
+  return children(part, "measure").map((measure) => {
+    const barlines = children(measure, "barline");
+    const endings = barlines.flatMap((barline) => children(barline, "ending"));
+    for (const ending of endings) {
+      if (ending.getAttribute("type") === "start") {
+        const parsed = endingNumbers(ending.getAttribute("number"));
+        if (parsed.size > 0) activeEndings = parsed;
+      }
+    }
+    const repeats = barlines.flatMap((barline) => children(barline, "repeat"));
+    const backward = repeats.find((repeat) => repeat.getAttribute("direction") === "backward");
+    const sounds = descendants(measure, "sound");
+    const control: MeasureControl = {
+      repeatForward: repeats.some((repeat) => repeat.getAttribute("direction") === "forward"),
+      repeatBackward: !!backward,
+      repeatTimes: Math.max(2, Math.min(8, Math.round(Number(backward?.getAttribute("times")) || 2))),
+      endings: new Set(activeEndings),
+      daCapo: soundAttribute(sounds, "dacapo") !== undefined,
+      dalSegno: soundAttribute(sounds, "dalsegno"),
+      segno: soundAttribute(sounds, "segno"),
+      toCoda: soundAttribute(sounds, "tocoda"),
+      coda: soundAttribute(sounds, "coda"),
+      fine: soundAttribute(sounds, "fine") !== undefined,
+    };
+    if (endings.some((ending) => ["stop", "discontinue"].includes(ending.getAttribute("type") ?? ""))) {
+      activeEndings = new Set();
+    }
+    return control;
+  });
+}
+
+function mergedMeasureControls(parts: XmlElement[], measureCount: number): MeasureControl[] {
+  const result = Array.from({ length: measureCount }, (): MeasureControl => ({
+    repeatForward: false,
+    repeatBackward: false,
+    repeatTimes: 2,
+    endings: new Set<number>(),
+    daCapo: false,
+    fine: false,
+  }));
+  for (const part of parts) {
+    partMeasureControls(part).forEach((control, index) => {
+      const merged = result[index];
+      if (!merged) return;
+      merged.repeatForward ||= control.repeatForward;
+      merged.repeatBackward ||= control.repeatBackward;
+      merged.repeatTimes = Math.max(merged.repeatTimes, control.repeatTimes);
+      control.endings.forEach((number) => merged.endings.add(number));
+      merged.daCapo ||= control.daCapo;
+      merged.dalSegno ??= control.dalSegno;
+      merged.segno ??= control.segno;
+      merged.toCoda ??= control.toCoda;
+      merged.coda ??= control.coda;
+      merged.fine ||= control.fine;
+    });
+  }
+  return result;
+}
+
+function expandMeasureOrder(controls: MeasureControl[]): number[] {
+  if (controls.length === 0) return [];
+  const segnos = new Map<string, number>();
+  const codas = new Map<string, number>();
+  controls.forEach((control, measureIndex) => {
+    if (control.segno) segnos.set(control.segno, measureIndex);
+    if (control.coda) codas.set(control.coda, measureIndex);
+  });
+  const markerTarget = (markers: Map<string, number>, requested: string, name: string): number => {
+    const exact = markers.get(requested);
+    if (exact !== undefined) return exact;
+    if (markers.size === 1) return [...markers.values()][0];
+    throw new Error(`MusicXML ${name} 跳转缺少可识别的目标标记`);
+  };
+  const order: number[] = [];
+  const stack: RepeatFrame[] = [];
+  let index = 0;
+  let lastCompletedPass = 1;
+  let previousHadEnding = false;
+  let globalJumpTaken = false;
+  let afterGlobalJump = false;
+  let codaTaken = false;
+  let ignoreRepeats = false;
+  let steps = 0;
+  const maximumSteps = Math.max(128, controls.length * 32);
+
+  while (index < controls.length && steps < maximumSteps && order.length < 10_000) {
+    steps += 1;
+    const control = controls[index];
+    if (!control.endings.size && previousHadEnding && stack.length === 0) lastCompletedPass = 1;
+    if (!ignoreRepeats && control.repeatForward && stack.at(-1)?.start !== index) {
+      stack.push({ start: index, pass: 1, times: 2 });
+    }
+    const pass = stack.at(-1)?.pass ?? lastCompletedPass;
+    if (control.endings.size === 0 || control.endings.has(pass)) order.push(index);
+    previousHadEnding = control.endings.size > 0;
+
+    if (afterGlobalJump && control.fine) {
+      index = controls.length;
+      break;
+    }
+    if (afterGlobalJump && !codaTaken && control.toCoda) {
+      index = markerTarget(codas, control.toCoda, "To Coda");
+      codaTaken = true;
+      stack.length = 0;
+      previousHadEnding = false;
+      continue;
+    }
+    if (!globalJumpTaken && (control.daCapo || control.dalSegno)) {
+      index = control.daCapo ? 0 : markerTarget(segnos, control.dalSegno!, "D.S.");
+      globalJumpTaken = true;
+      afterGlobalJump = true;
+      ignoreRepeats = true;
+      lastCompletedPass = 1;
+      stack.length = 0;
+      previousHadEnding = false;
+      continue;
+    }
+
+    if (!ignoreRepeats && control.repeatBackward) {
+      let frame = stack.at(-1);
+      if (!frame) {
+        frame = { start: 0, pass: 1, times: control.repeatTimes };
+        stack.push(frame);
+      }
+      frame.times = control.repeatTimes;
+      if (frame.pass < frame.times) {
+        frame.pass += 1;
+        lastCompletedPass = frame.pass;
+        index = frame.start;
+      } else {
+        lastCompletedPass = frame.pass;
+        stack.pop();
+        index += 1;
+      }
+    } else {
+      index += 1;
+    }
+  }
+  if (index < controls.length) throw new Error("MusicXML 反复结构过深或无法终止");
+  return order;
 }
 
 function nameHint(name: string): Hand | undefined {
@@ -293,17 +483,20 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
     const id = scorePart.getAttribute("id") || "";
     partNames.set(id, text(child(scorePart, "part-name")) || id);
   }
-  const parts = children(root, "part").map((part) => ({
+  const partElements = children(root, "part");
+  const parts = partElements.map((part) => ({
     id: part.getAttribute("id") || "",
     measures: parsePart(part, partNames.get(part.getAttribute("id") || "") || "Piano"),
   }));
   if (parts.length === 0) throw new Error("MusicXML 中没有声部");
 
   const measureCount = Math.max(...parts.map((part) => part.measures.length));
-  const measureDurations: number[] = [];
+  const writtenMeasureDurations: number[] = [];
   for (let measureIndex = 0; measureIndex < measureCount; measureIndex += 1) {
-    measureDurations.push(Math.max(0, ...parts.map((part) => part.measures[measureIndex]?.duration ?? 0)));
+    writtenMeasureDurations.push(Math.max(0, ...parts.map((part) => part.measures[measureIndex]?.duration ?? 0)));
   }
+  const measureOrder = expandMeasureOrder(mergedMeasureControls(partElements, measureCount));
+  const measureDurations = measureOrder.map((measureIndex) => writtenMeasureDurations[measureIndex] ?? 0);
   const measureQuarterStarts = [0];
   for (const duration of measureDurations) {
     measureQuarterStarts.push(measureQuarterStarts.at(-1)! + duration);
@@ -312,8 +505,10 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
   const quarterNotes: QuarterNote[] = [];
   const tempos: TempoEvent[] = [];
   for (const part of parts) {
-    part.measures.forEach((measure, measureIndex) => {
-      const measureStart = measureQuarterStarts[measureIndex];
+    measureOrder.forEach((writtenMeasureIndex, playbackMeasureIndex) => {
+      const measure = part.measures[writtenMeasureIndex];
+      if (!measure) return;
+      const measureStart = measureQuarterStarts[playbackMeasureIndex];
       measure.notes.forEach((note) => quarterNotes.push({
         ...note,
         start: measureStart + note.start,
@@ -345,6 +540,7 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
     notes,
     format: "musicxml",
     measureStarts,
+    measureMap: measureOrder,
   };
 }
 

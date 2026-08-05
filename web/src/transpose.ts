@@ -12,6 +12,7 @@ export function transposeScore(source: ParsedScore, semitones: number): ParsedSc
       .map((note) => ({ ...note, note: note.note + shift }))
       .filter((note) => note.note >= 21 && note.note <= 108),
     measureStarts: source.measureStarts ? [...source.measureStarts] : undefined,
+    measureMap: source.measureMap ? [...source.measureMap] : undefined,
   };
 }
 
