@@ -41,7 +41,7 @@ PX-S7000 USB TO HOST ──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
 - `config/system.json`：88 键、灯带、电气和机械参数的唯一来源
 - `scripts/generate.py`：生成灯位映射、固件头文件和制造文件
 - `tests/`：映射、功耗和机械包络测试
-- `docs/`：接线、装配、校准、测试和外部开源审查
+- `docs/`：接线、装配、校准、测试和开源项目技术调研
 
 ## 从这里开始
 
@@ -74,4 +74,4 @@ python scripts/render_cad.py
 
 软件、映射、CAD 和固件可以数字验证；PX-S7000 与具体灯带批次的 USB 枚举、实际灯位偏移、温升和琴漆材料相容性仍必须在实物上完成最终验收。网页校准允许反向灯带和修正全局像素偏移，不需要重新写固件。
 
-项目采用 MIT 许可证。第三方依赖及采用理由见 [开源审查](docs/open-source-review.md)。
+项目采用 MIT 许可证。四个主要参考项目的硬件拓扑、通信方式、功能、优缺点和采用边界见 [开源项目技术调研](docs/open-source-review.md)。
