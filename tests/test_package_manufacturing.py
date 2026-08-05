@@ -17,6 +17,14 @@ def test_manufacturing_bundle_is_complete_private_and_reproducible(tmp_path: Pat
     assert hashlib.sha256(first.read_bytes()).digest() == hashlib.sha256(second.read_bytes()).digest()
     with zipfile.ZipFile(first) as archive:
         assert set(archive.namelist()) == {"manifest.json", *PACKAGE_FILES}
+        assert {
+            "README.md",
+            "docs/first-build.md",
+            "docs/vendor-order-template.md",
+            "docs/decisions/001-native-usb-host-and-vbus.md",
+            "docs/flashing.md",
+            "docs/testing.md",
+        }.issubset(archive.namelist())
         assert json.loads(archive.read("manifest.json")) == manifest
         assert archive.getinfo("manifest.json").date_time == (1980, 1, 1, 0, 0, 0)
 
