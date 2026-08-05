@@ -16,7 +16,7 @@ ESP 返回 `status` 和 `calibration`。`status` 的稳定字段包括：
 - `usbVid`、`usbPid`、`usbEndpoint`、`usbPacketSize`；
 - `usbOut`、`usbOutEndpoint`、`usbOutPacketSize`；
 - `usbPackets`、`usbDropped`、`usbErrors`；
-- `usbOutPackets`、`usbOutDropped`、`usbOutErrors`、`usbOutQueued`、`usbEchoSuppressed`、`usbOutOwned`；
+- `usbOutPackets`、`usbOutDropped`、`usbOutErrors`、`usbOutQueued`、`usbOutputMirrorCandidates`、`usbOutOwned`；
 - `ledInputLatencyLastUs`、`ledInputLatencyAvgUs`、`ledInputLatencyMaxUs`、`ledInputLatencySamples`；
 - `webMidiDropped`、`brightness`、`offset`、`reversed`、内存、NVS 状态、启动复位原因、运行时间和 RSSI。
 
@@ -66,7 +66,7 @@ ESP 把 USB MIDI 标准化为：
 - 单条网页消息最多发送 48 个事件；固件总排程固定为 256 个，USB OUT 固定队列为 128 个 USB-MIDI 事件包。
 - ESP 回复 `midiOutResult`，包含 `ok`、`accepted` 与当前 `queued`；周期 `status` 是最终诊断真相。
 - 同一时刻只有一个 WebSocket 客户端可持有 MIDI OUT；其他页面收到 `busy=true`。持有者复位、熄灯或断开即释放并先执行全音符关闭，避免两台手机重复伴奏。
-- 输出消息的精确回声在 80 ms 内被消费，避免钢琴若启用 MIDI Thru 时伴奏被计为用户命中。
+- 固件观察 80 ms 内与刚发送伴奏完全相同的消息并累计 `usbOutputMirrorCandidates`，但仍把它当真实输入交给灯光与判分。PX-S7000 官方实现没有定义 MIDI Thru；在无法区分真实齐奏与设备镜像时，静默吞键比保留可诊断输入更危险。
 - `{"t":"midiPanic"}` 只允许当前持有者执行；`blackout` 是任何页面都可触发的总急停。持有者断开、练习复位或末尾伴奏释放时会清空待排程并向 16 个通道发送 CC64=0、CC123=0。
 
 ## 延迟探测与网络配置

@@ -40,7 +40,7 @@ struct ScheduledMidiMessage {
   uint8_t data2 = 0;
 };
 
-struct EchoGuard {
+struct OutputMirrorProbe {
   uint32_t expiresMs = 0;
   uint8_t status = 0;
   uint8_t data1 = 0;
@@ -90,14 +90,14 @@ uint32_t lastStatusMs = 0;
 int16_t testNote = -1;
 uint32_t testUntilMs = 0;
 constexpr size_t kScheduledMidiCapacity = 256;
-constexpr size_t kEchoGuardCapacity = 48;
+constexpr size_t kOutputMirrorProbeCapacity = 48;
 constexpr size_t kBrowserMidiCapacity = 64;
 ScheduledMidiMessage scheduledMidi[kScheduledMidiCapacity]{};
 size_t scheduledMidiCount = 0;
-EchoGuard echoGuards[kEchoGuardCapacity]{};
-size_t nextEchoGuard = 0;
+OutputMirrorProbe outputMirrorProbes[kOutputMirrorProbeCapacity]{};
+size_t nextOutputMirrorProbe = 0;
 uint32_t midiScheduleDropped = 0;
-uint32_t midiEchoSuppressed = 0;
+uint32_t midiOutputMirrorCandidates = 0;
 int16_t midiOutOwner = -1;
 bool webProtocolCompatible[256]{};
 uint32_t webMessagesRejected = 0;
@@ -119,7 +119,7 @@ constexpr Rgb kWrong{255, 55, 28};
 constexpr Rgb kTest{255, 210, 32};
 constexpr int8_t kMaxKeyPixelOffset = 4;
 constexpr uint32_t kMaxMidiScheduleDelayMs = 60000;
-constexpr uint32_t kEchoGuardMs = 80;
+constexpr uint32_t kOutputMirrorProbeMs = 80;
 constexpr size_t kMaxWebMessageBytes = 8192;
 constexpr char kUpdateAuthHeader[] = "X-NoteFall-Admin";
 
@@ -177,35 +177,34 @@ bool validOutputMessage(uint8_t status, uint8_t data1, uint8_t data2) {
   return command >= 0x80U && command <= 0xE0U;
 }
 
-void registerEchoGuard(uint8_t status, uint8_t data1, uint8_t data2, uint32_t now) {
-  EchoGuard& guard = echoGuards[nextEchoGuard];
-  guard.expiresMs = now + kEchoGuardMs;
-  guard.status = status;
-  guard.data1 = data1;
-  guard.data2 = data2;
-  nextEchoGuard = (nextEchoGuard + 1) % kEchoGuardCapacity;
+void registerOutputMirrorProbe(uint8_t status, uint8_t data1, uint8_t data2, uint32_t now) {
+  OutputMirrorProbe& probe = outputMirrorProbes[nextOutputMirrorProbe];
+  probe.expiresMs = now + kOutputMirrorProbeMs;
+  probe.status = status;
+  probe.data1 = data1;
+  probe.data2 = data2;
+  nextOutputMirrorProbe = (nextOutputMirrorProbe + 1) % kOutputMirrorProbeCapacity;
 }
 
-bool consumeOutputEcho(uint8_t status, uint8_t data1, uint8_t data2, uint32_t now) {
-  for (auto& guard : echoGuards) {
-    if (guard.expiresMs == 0 || timeReached(now, guard.expiresMs)) {
-      guard.expiresMs = 0;
+void observeOutputMirrorCandidate(uint8_t status, uint8_t data1, uint8_t data2, uint32_t now) {
+  for (auto& probe : outputMirrorProbes) {
+    if (probe.expiresMs == 0 || timeReached(now, probe.expiresMs)) {
+      probe.expiresMs = 0;
       continue;
     }
-    const bool exact = guard.status == status && guard.data1 == data1 && guard.data2 == data2;
-    const bool guardIsOff = (guard.status & 0xF0U) == 0x80U ||
-        ((guard.status & 0xF0U) == 0x90U && guard.data2 == 0);
+    const bool exact = probe.status == status && probe.data1 == data1 && probe.data2 == data2;
+    const bool probeIsOff = (probe.status & 0xF0U) == 0x80U ||
+        ((probe.status & 0xF0U) == 0x90U && probe.data2 == 0);
     const bool messageIsOff = (status & 0xF0U) == 0x80U ||
         ((status & 0xF0U) == 0x90U && data2 == 0);
-    const bool equivalentNoteOff = guardIsOff && messageIsOff &&
-        (guard.status & 0x0FU) == (status & 0x0FU) && guard.data1 == data1;
+    const bool equivalentNoteOff = probeIsOff && messageIsOff &&
+        (probe.status & 0x0FU) == (status & 0x0FU) && probe.data1 == data1;
     if (exact || equivalentNoteOff) {
-      guard.expiresMs = 0;
-      ++midiEchoSuppressed;
-      return true;
+      probe.expiresMs = 0;
+      ++midiOutputMirrorCandidates;
+      return;
     }
   }
-  return false;
 }
 
 bool scheduleMidiMessage(uint32_t dueMs, uint8_t status, uint8_t data1, uint8_t data2) {
@@ -223,7 +222,7 @@ bool scheduleMidiMessage(uint32_t dueMs, uint8_t status, uint8_t data1, uint8_t 
 
 void panicMidiOutput() {
   scheduledMidiCount = 0;
-  for (auto& guard : echoGuards) guard.expiresMs = 0;
+  for (auto& probe : outputMirrorProbes) probe.expiresMs = 0;
   usbMidi.panic();
 }
 
@@ -246,7 +245,7 @@ void processScheduledMidi() {
       ++index;
       continue;
     }
-    registerEchoGuard(message.status, message.data1, message.data2, now);
+    registerOutputMirrorProbe(message.status, message.data1, message.data2, now);
     for (size_t move = index + 1; move < scheduledMidiCount; ++move) {
       scheduledMidi[move - 1] = scheduledMidi[move];
     }
@@ -323,7 +322,7 @@ void sendStatus(uint8_t client = 255) {
   doc["usbOutDropped"] = usb.outputPacketsDropped + midiScheduleDropped;
   doc["usbOutErrors"] = usb.outputTransferErrors;
   doc["usbOutQueued"] = scheduledMidiCount;
-  doc["usbEchoSuppressed"] = midiEchoSuppressed;
+  doc["usbOutputMirrorCandidates"] = midiOutputMirrorCandidates;
   doc["usbOutOwned"] = midiOutOwner >= 0;
   doc["webRejected"] = webMessagesRejected;
   doc["webMidiDropped"] = browserMidiDropped;
@@ -409,7 +408,11 @@ void handleMidiPacket(void*, const uint8_t data[4], uint64_t receivedUs) {
   const uint8_t firstData = data[2];
   const uint8_t secondData = data[3];
   const uint32_t timestampMs = static_cast<uint32_t>(receivedUs / 1000U);
-  if (consumeOutputEcho(status, firstData, secondData, millis())) return;
+  // PX-S7000 received messages target its sound-generator parts; the official
+  // MIDI implementation does not define a MIDI Thru path back to its output.
+  // Record suspicious byte-for-byte mirrors for commissioning, but never
+  // discard an indistinguishable real key press based on timing heuristics.
+  observeOutputMirrorCandidate(status, firstData, secondData, millis());
   if ((command == 0x80 || command == 0x90) && !validNote(firstData)) return;
   const uint8_t channel = static_cast<uint8_t>((status & 0x0F) + 1);
   if (command == 0x90 && secondData > 0) {
@@ -442,7 +445,7 @@ void onPianoDisconnected(void*) {
   pianoConnected = false;
   midiOutOwner = -1;
   scheduledMidiCount = 0;
-  for (auto& guard : echoGuards) guard.expiresMs = 0;
+  for (auto& probe : outputMirrorProbes) probe.expiresMs = 0;
   for (auto& note : notes) note.pressed = false;
   clearTargets();
   lastTargetMs = 0;

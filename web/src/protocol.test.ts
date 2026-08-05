@@ -12,6 +12,7 @@ const status = {
   reversed: false,
   usbVid: 0x07cf,
   usbPid: 0x6802,
+  usbOutputMirrorCandidates: 3,
   ledInputLatencyLastUs: 840,
   ledInputLatencyAvgUs: 790,
   ledInputLatencyMaxUs: 1210,
@@ -24,6 +25,7 @@ describe("device protocol decoder", () => {
     expect(result.ok).toBe(true);
     if (!result.ok || result.message.kind !== "status") return;
     expect(result.message.value.usbVid).toBe(0x07cf);
+    expect(result.message.value.usbOutputMirrorCandidates).toBe(3);
     expect(result.message.value.ledInputLatencyAvgUs).toBe(790);
   });
 

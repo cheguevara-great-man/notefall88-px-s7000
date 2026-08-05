@@ -111,7 +111,7 @@ function statusMessage(source: Record<string, unknown>): DeviceMessage {
   status.usbOutDropped = optionalInteger(source, "usbOutDropped", 0, MAX_SAFE_COUNTER);
   status.usbOutErrors = optionalInteger(source, "usbOutErrors", 0, MAX_SAFE_COUNTER);
   status.usbOutQueued = optionalInteger(source, "usbOutQueued", 0, 256);
-  status.usbEchoSuppressed = optionalInteger(source, "usbEchoSuppressed", 0, MAX_SAFE_COUNTER);
+  status.usbOutputMirrorCandidates = optionalInteger(source, "usbOutputMirrorCandidates", 0, MAX_SAFE_COUNTER);
   status.usbOutOwned = optionalBoolean(source, "usbOutOwned");
   status.webRejected = optionalInteger(source, "webRejected", 0, MAX_SAFE_COUNTER);
   status.webMidiDropped = optionalInteger(source, "webMidiDropped", 0, MAX_SAFE_COUNTER);

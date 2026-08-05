@@ -63,3 +63,13 @@ def test_browser_broadcast_cannot_delay_the_local_led_frame() -> None:
     assert "websocket.broadcastTXT" not in handler
     assert "kBrowserMidiCapacity = 64" in source
     assert 'doc["webMidiDropped"] = browserMidiDropped' in source
+
+
+def test_output_mirror_heuristic_never_discards_real_keyboard_input() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    handler = source[source.index("void handleMidiPacket") : source.index("void onPianoConnected")]
+    observer = source[source.index("void observeOutputMirrorCandidate") : source.index("bool scheduleMidiMessage")]
+    assert "observeOutputMirrorCandidate(status, firstData, secondData" in handler
+    assert "consumeOutputEcho" not in source
+    assert "return true" not in observer
+    assert 'doc["usbOutputMirrorCandidates"]' in source

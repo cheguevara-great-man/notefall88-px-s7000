@@ -63,7 +63,7 @@ export interface DeviceStatus {
   usbOutDropped?: number;
   usbOutErrors?: number;
   usbOutQueued?: number;
-  usbEchoSuppressed?: number;
+  usbOutputMirrorCandidates?: number;
   usbOutOwned?: boolean;
   webRejected?: number;
   webMidiDropped?: number;
