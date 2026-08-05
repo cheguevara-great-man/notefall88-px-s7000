@@ -151,6 +151,7 @@ let leadMs = initialPreferences.leadMs;
 let lastScoreSeconds = 0;
 let lastStatsSignature = "";
 let lastRecording = recorder.snapshot();
+let lastRecordingControls = recorder.controlSnapshot();
 let pianoWasConnected = false;
 let scoreXml: string | undefined;
 let scoreFingerprint: string | undefined;
@@ -690,12 +691,13 @@ function handleControl(event: MidiControlEvent): void {
 
 function finishRecording(): void {
   lastRecording = recorder.stop(performance.now());
-  const duration = recordingDuration(lastRecording);
+  lastRecordingControls = recorder.controlSnapshot();
+  const duration = recordingDuration(lastRecording, lastRecordingControls);
   recordButton.textContent = "录制演奏";
-  recordDownload.disabled = lastRecording.length === 0;
-  recordResult.textContent = lastRecording.length === 0
-    ? "没有收到音符"
-    : `${lastRecording.length} 音符 · ${formatTime(duration)}`;
+  recordDownload.disabled = lastRecording.length === 0 && lastRecordingControls.length === 0;
+  recordResult.textContent = lastRecording.length === 0 && lastRecordingControls.length === 0
+    ? "没有收到 MIDI 事件"
+    : `${lastRecording.length} 音符 · ${lastRecordingControls.length} 控制 · ${formatTime(duration)}`;
 }
 
 recordButton.addEventListener("click", () => {
@@ -705,15 +707,16 @@ recordButton.addEventListener("click", () => {
   }
   recorder.start(performance.now());
   lastRecording = [];
+  lastRecordingControls = [];
   recordButton.textContent = "停止录制";
   recordDownload.disabled = true;
   recordResult.textContent = "正在录制…";
 });
 
 recordDownload.addEventListener("click", () => {
-  if (lastRecording.length === 0) return;
+  if (lastRecording.length === 0 && lastRecordingControls.length === 0) return;
   const name = `${score?.name ?? "NoteFall"} - 演奏 ${new Date().toISOString().replace(/[:.]/g, "-")}`;
-  const bytes = recordingToMidi(lastRecording, name);
+  const bytes = recordingToMidi(lastRecording, name, lastRecordingControls);
   const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "audio/midi" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

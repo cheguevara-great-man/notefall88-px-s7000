@@ -86,6 +86,24 @@ def test_usb_host_and_device_vbus_use_distinct_fused_branches():
         assert invariant in decision
 
 
+def test_usb_y_cable_role_is_consistent_across_handoff_documents():
+    documents = [
+        ROOT / "README.md",
+        ROOT / "docs" / "hardware.md",
+        ROOT / "docs" / "first-build.md",
+        ROOT / "docs" / "testing.md",
+        ROOT / "docs" / "decisions" / "001-native-usb-host-and-vbus.md",
+    ]
+    for path in documents:
+        text = path.read_text(encoding="utf-8")
+        for invariant in ("H5", "H7", "USB"):
+            assert invariant in text, f"{path.name} lost the two-branch USB power topology"
+    decision = documents[-1].read_text(encoding="utf-8")
+    assert "不增加 MAX3421E" in decision
+    assert "Y 线只做插头转换和 VBUS 注入，不提供 Host 协议能力" in decision
+    assert "不得只给 ESP32 的 UART 口供电并把 Y 线第三口留空" in decision
+
+
 def test_firmware_environment_targets_n8r8_opi_psram():
     platformio = (ROOT / "firmware" / "platformio.ini").read_text(encoding="utf-8")
     for setting in (

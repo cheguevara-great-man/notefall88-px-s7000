@@ -11,12 +11,20 @@ export interface RecordedNote {
   sustained: boolean;
 }
 
+export interface RecordedControl {
+  channel: number;
+  controller: number;
+  value: number;
+  time: number;
+}
+
 interface ActiveNote {
   note: number;
   channel: number;
   velocity: number;
   start: number;
   released: boolean;
+  releaseTime?: number;
   sustained: boolean;
 }
 
@@ -32,6 +40,7 @@ export class PerformanceRecorder {
   private recording = false;
   private originMs = 0;
   private notes: RecordedNote[] = [];
+  private controls: RecordedControl[] = [];
   private active = new Map<string, ActiveNote[]>();
   private sustainByChannel = new Map<number, boolean>();
 
@@ -39,12 +48,19 @@ export class PerformanceRecorder {
     this.recording = true;
     this.originMs = nowMs;
     this.notes = [];
+    this.controls = [];
     this.active.clear();
     this.sustainByChannel.clear();
   }
 
   stop(nowMs = performance.now()): RecordedNote[] {
-    if (this.recording) this.allNotesOff(nowMs);
+    if (this.recording) {
+      const time = this.relativeSeconds(nowMs);
+      for (const [channel, down] of this.sustainByChannel) {
+        if (down) this.controls.push({ channel, controller: 64, value: 0, time });
+      }
+      this.allNotesOff(nowMs);
+    }
     this.recording = false;
     return this.snapshot();
   }
@@ -75,6 +91,7 @@ export class PerformanceRecorder {
     const active = queue?.find((candidate) => !candidate.released);
     if (!active) return;
     active.released = true;
+    active.releaseTime = time;
     if (this.sustainByChannel.get(active.channel)) {
       active.sustained = true;
     } else {
@@ -85,13 +102,17 @@ export class PerformanceRecorder {
 
   handleControl(event: MidiControlEvent, nowMs = performance.now()): void {
     if (!this.recording) return;
-    if (event.controller === 64) {
-      const down = event.value >= 64;
-      const wasDown = this.sustainByChannel.get(event.channel) ?? false;
-      this.sustainByChannel.set(event.channel, down);
-      if (wasDown && !down) this.releaseSustained(event.channel, this.relativeSeconds(nowMs));
-    } else if (event.controller === 120 || event.controller === 123) {
-      this.allNotesOff(nowMs, event.channel);
+    const channel = Math.max(1, Math.min(16, Math.round(event.channel || 1)));
+    const controller = clampMidi(event.controller);
+    const value = clampMidi(event.value);
+    this.controls.push({ channel, controller, value, time: this.relativeSeconds(nowMs) });
+    if (controller === 64) {
+      const down = value >= 64;
+      const wasDown = this.sustainByChannel.get(channel) ?? false;
+      this.sustainByChannel.set(channel, down);
+      if (wasDown && !down) this.releaseSustained(channel, this.relativeSeconds(nowMs));
+    } else if (controller === 120 || controller === 123) {
+      this.allNotesOff(nowMs, channel);
     }
   }
 
@@ -120,17 +141,24 @@ export class PerformanceRecorder {
       .sort((a, b) => a.start - b.start || a.note - b.note);
   }
 
+  controlSnapshot(): RecordedControl[] {
+    return this.controls
+      .map((control) => ({ ...control }))
+      .sort((a, b) => a.time - b.time || a.channel - b.channel || a.controller - b.controller);
+  }
+
   private relativeSeconds(nowMs: number): number {
     return Math.max(0, (nowMs - this.originMs) / 1000);
   }
 
-  private finish(active: ActiveNote, end: number): void {
+  private finish(active: ActiveNote, soundingEnd: number): void {
+    const physicalEnd = active.releaseTime ?? soundingEnd;
     this.notes.push({
       note: active.note,
       channel: active.channel,
       velocity: active.velocity,
       start: active.start,
-      end: Math.max(active.start + 0.01, end),
+      end: Math.max(active.start + 0.01, physicalEnd),
       sustained: active.sustained,
     });
   }
@@ -156,19 +184,28 @@ export class PerformanceRecorder {
   }
 }
 
-export function recordingToMidi(notes: RecordedNote[], name = "NoteFall Recording"): Uint8Array {
+export function recordingToMidi(
+  notes: RecordedNote[],
+  name = "NoteFall Recording",
+  controls: RecordedControl[] = [],
+): Uint8Array {
   const midi = new Midi();
   midi.header.name = name;
   midi.header.setTempo(120);
   const tracks = new Map<number, ReturnType<Midi["addTrack"]>>();
-  for (const note of notes) {
-    let track = tracks.get(note.channel);
+  const trackForChannel = (channelValue: number) => {
+    const channel = Math.max(1, Math.min(16, Math.round(channelValue || 1)));
+    let track = tracks.get(channel);
     if (!track) {
       track = midi.addTrack();
-      track.name = `Channel ${note.channel}`;
-      track.channel = note.channel - 1;
-      tracks.set(note.channel, track);
+      track.name = `Channel ${channel}`;
+      track.channel = channel - 1;
+      tracks.set(channel, track);
     }
+    return track;
+  };
+  for (const note of notes) {
+    const track = trackForChannel(note.channel);
     track.addNote({
       midi: note.note,
       time: note.start,
@@ -176,9 +213,19 @@ export function recordingToMidi(notes: RecordedNote[], name = "NoteFall Recordin
       velocity: note.velocity / 127,
     });
   }
+  for (const control of controls) {
+    trackForChannel(control.channel).addCC({
+      number: clampMidi(control.controller),
+      time: Math.max(0, control.time),
+      value: clampMidi(control.value) / 127,
+    });
+  }
   return midi.toArray();
 }
 
-export function recordingDuration(notes: RecordedNote[]): number {
-  return notes.reduce((duration, note) => Math.max(duration, note.end), 0);
+export function recordingDuration(notes: RecordedNote[], controls: RecordedControl[] = []): number {
+  return Math.max(
+    notes.reduce((duration, note) => Math.max(duration, note.end), 0),
+    controls.reduce((duration, control) => Math.max(duration, control.time), 0),
+  );
 }
