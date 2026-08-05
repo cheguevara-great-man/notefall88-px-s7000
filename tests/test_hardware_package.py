@@ -52,3 +52,32 @@ def test_wiring_svg_is_valid_and_names_every_harness_interface():
         "双端注电",
     ):
         assert label in text
+
+
+def test_usb_host_and_device_vbus_use_distinct_fused_branches():
+    rows = read_harness()
+    h5 = [row for row in rows if row["线束ID"] == "H5"]
+    h7 = [row for row in rows if row["线束ID"] == "H7"]
+    assert len(h5) == 2
+    assert len(h7) == 2
+    assert {row["终点"] for row in h5} == {"ESP32的USB-to-UART口"}
+    assert {row["终点"] for row in h7} == {"OTG Y线第3供电口"}
+    assert all(row["起点"] in {"3A保险丝输出", "公共地母排"} for row in h5 + h7)
+
+    decision = (ROOT / "docs" / "decisions" / "001-native-usb-host-and-vbus.md").read_text(
+        encoding="utf-8"
+    )
+    for invariant in ("不增加 MAX3421E", "H5", "H7", "不给 ESP32 反向供电", "不得只给"):
+        assert invariant in decision
+
+
+def test_firmware_environment_targets_n8r8_opi_psram():
+    platformio = (ROOT / "firmware" / "platformio.ini").read_text(encoding="utf-8")
+    for setting in (
+        "default_envs = esp32-s3-devkitc-1-n8r8",
+        "board_build.arduino.memory_type = qio_opi",
+        "board_build.psram_type = opi",
+        "board_upload.flash_size = 8MB",
+        "-D BOARD_HAS_PSRAM",
+    ):
+        assert setting in platformio

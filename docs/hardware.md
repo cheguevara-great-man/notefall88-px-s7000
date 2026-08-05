@@ -35,7 +35,7 @@ H7 电源线 Micro-USB 公头 ──────────> OTG Y 线第 3 个
 
 不要把 OTG Y 线插到开发板的 `UART` 口，也不要把 H5 电源线插到 `USB/OTG` 口。PX-S7000 连接的是方形 USB-B `USB TO HOST` 口，而不是安装 WU-BT10 的 USB-A 口。
 
-乐鑫官方 [ESP32-S3-DevKitC-1 用户指南](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html) 明确说明 USB-to-UART 口可给开发板供电。官方 [V1.1 原理图](https://dl.espressif.com/dl/schematics/SCH_ESP32-S3-DevKitC-1_V1.1_20221130.pdf) 还显示两个 USB 口的 VBUS 分别经 D1、D7 肖特基二极管进入板上 5V 网，因此 H5 从 UART 口给板子上电时，原生 `USB/OTG` 口不会反向输出设备 VBUS。本设计让 H5 给开发板供电，同时用同一保险后 5V 的 H7 给 Y 线第 3 口供电，为钢琴 USB 设备侧提供 VBUS。商品所称“不支持对手机供电”意味着 H7 不能替代 H5，而不是第 3 口无用。
+乐鑫官方 [ESP32-S3-DevKitC-1 用户指南](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html) 明确说明 USB-to-UART 口可给开发板供电。官方 [V1.1 原理图](https://dl.espressif.com/dl/schematics/SCH_ESP32-S3-DevKitC-1_V1.1_20221130.pdf) 还显示两个 USB 口的 VBUS 分别经 D1、D7 肖特基二极管进入板上 5V 网，因此 H5 从 UART 口给板子上电时，原生 `USB/OTG` 口不会反向输出设备 VBUS。本设计让 H5 给开发板供电，同时用同一保险后 5V 的 H7 给 Y 线第 3 口供电，为钢琴 USB 设备侧提供 VBUS。商品所称“不支持对手机供电”意味着 H7 不能替代 H5，而不是第 3 口无用。该结论的完整理由、禁止接法和验收项固定在 [ADR-001](decisions/001-native-usb-host-and-vbus.md)。
 
 这是一条双向 USB-MIDI 链路：钢琴把按键/踏板发送给 ESP32，ESP32 也可把“跟随我”模式的另一只手音符送回钢琴音源。Casio [PX-S7000 用户手册](https://www.casio.com/content/dam/casio/global/support/manuals/electronic-musical-instruments/pdf/008-en/p/PXS7000_usersguide_EN.pdf) 明确说明该接口可发送和接收演奏 MIDI；固件仍会在每次连接时独立探测 OUT 端点，没有 OUT 时不盲目发送。
 

@@ -38,7 +38,7 @@ MusicXML 目标时间线会按常见反复、多结尾和标准 D.C./D.S./Fine/C
 - H5 给 USB-to-UART 口供电，H7 给 OTG Y 线的第 3 口供电；Y 线数据口经 USB-A 转 USB-B 打印机线连接钢琴
 - Micro-Fit 4P 锁扣输入线和 XT30 远端注电线；所有引脚、线色和代焊验收已固定
 
-完整采购见 [BOM 表](docs/bom.csv)，接线见 [硬件说明](docs/hardware.md)，可直接发给代焊方的规格见 [线束制造表](docs/harness.csv) 与 [线束图](docs/wiring-harness.svg)。参数化控制盒如下；它只保护 ESP32 和接线，不安装在琴键上。
+完整采购见 [BOM 表](docs/bom.csv)，接线见 [硬件说明](docs/hardware.md) 与 [USB Host/供电决策记录](docs/decisions/001-native-usb-host-and-vbus.md)，可直接发给代焊方的规格见 [线束制造表](docs/harness.csv) 与 [线束图](docs/wiring-harness.svg)。逐项完成证据与实物边界见 [工程完成度审计](docs/completion-audit.md)。参数化控制盒如下；它只保护 ESP32 和接线，不安装在琴键上。
 
 ![控制盒爆炸图](mechanical/renders/controller_case.png)
 
