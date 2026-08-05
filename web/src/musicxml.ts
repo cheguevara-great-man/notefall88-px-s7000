@@ -81,7 +81,8 @@ interface QuarterNote {
 
 interface TempoEvent {
   quarter: number;
-  bpm: number;
+  bpm?: number;
+  ratio?: number;
 }
 
 interface BeatGroup {
@@ -93,7 +94,7 @@ interface PartMeasure {
   duration: number;
   beatGroups: BeatGroup[];
   notes: (Omit<QuarterNote, "start" | "end"> & { start: number; end: number })[];
-  tempos: { offset: number; bpm: number }[];
+  tempos: { offset: number; bpm?: number; ratio?: number }[];
 }
 
 interface MeasureControl {
@@ -435,18 +436,34 @@ function midiPitch(note: XmlElement, transpose: number): number | undefined {
   return Math.round((octave + 1) * 12 + step + alter + transpose);
 }
 
-function parseTempo(direction: XmlElement): number | undefined {
+function metronomeBeatUnits(metronome: XmlElement | undefined): number[] {
+  if (!metronome) return [];
+  const units: Array<{ quarters: number; dots: number }> = [];
+  for (const element of children(metronome)) {
+    if (element.tagName === "beat-unit") {
+      const quarters = NOTE_TYPE_QUARTERS[text(element).toLowerCase()];
+      if (quarters !== undefined) units.push({ quarters, dots: 0 });
+    } else if (element.tagName === "beat-unit-dot" && units.length > 0) {
+      units.at(-1)!.dots += 1;
+    }
+  }
+  return units.map(({ quarters, dots }) => quarters * (2 - 1 / 2 ** Math.min(dots, 8)));
+}
+
+function parseTempo(direction: XmlElement): { bpm?: number; ratio?: number } | undefined {
   const sound = descendants(direction, "sound")[0];
   const soundTempo = Number(sound?.getAttribute("tempo"));
-  if (Number.isFinite(soundTempo) && soundTempo > 0) return soundTempo;
+  if (Number.isFinite(soundTempo) && soundTempo > 0) return { bpm: soundTempo };
   const metronome = descendants(direction, "metronome")[0];
   const perMinute = firstNumber(text(metronome ? descendants(metronome, "per-minute")[0] : undefined));
-  const unit = text(metronome ? descendants(metronome, "beat-unit")[0] : undefined).toLowerCase();
-  const unitQuarters = NOTE_TYPE_QUARTERS[unit];
-  if (perMinute === undefined || perMinute <= 0 || unitQuarters === undefined) return undefined;
-  const dots = metronome ? descendants(metronome, "beat-unit-dot").length : 0;
-  const dotMultiplier = 2 - 1 / 2 ** Math.min(dots, 8);
-  return perMinute * unitQuarters * dotMultiplier;
+  const units = metronomeBeatUnits(metronome);
+  if (perMinute !== undefined && perMinute > 0 && units[0] !== undefined) {
+    return { bpm: perMinute * units[0] };
+  }
+  if (units.length >= 2 && units[0] > 0 && units[1] > 0) {
+    return { ratio: units[1] / units[0] };
+  }
+  return undefined;
 }
 
 function parsePart(part: XmlElement, partName: string): PartMeasure[] {
@@ -491,14 +508,14 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
       }
 
       if (event.tagName === "direction") {
-        const bpm = parseTempo(event);
-        if (bpm) {
+        const tempo = parseTempo(event);
+        if (tempo) {
           const sound = descendants(event, "sound")[0];
           const soundOffset = sound ? child(sound, "offset") : undefined;
           const offset = (soundOffset
             ? numberText(soundOffset, 0)
             : directNumber(event, "offset", 0)) / divisions;
-          tempos.push({ offset: Math.max(0, cursor + offset), bpm });
+          tempos.push({ offset: Math.max(0, cursor + offset), ...tempo });
         }
         const nextVelocity = directionDynamics(event);
         if (nextVelocity !== undefined) {
@@ -573,28 +590,46 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
 
 function tempoConverter(events: TempoEvent[]): (quarter: number) => number {
   const ordered = [...events]
-    .filter((event) => Number.isFinite(event.quarter) && Number.isFinite(event.bpm) && event.bpm > 0)
+    .filter((event) => Number.isFinite(event.quarter)
+      && ((Number.isFinite(event.bpm) && event.bpm! > 0)
+        || (Number.isFinite(event.ratio) && event.ratio! > 0)))
     .sort((a, b) => a.quarter - b.quarter);
-  if (ordered.length === 0 || ordered[0].quarter > 0) ordered.unshift({ quarter: 0, bpm: 120 });
   const deduplicated: TempoEvent[] = [];
-  for (const event of ordered) {
-    const previous = deduplicated.at(-1);
-    if (previous && Math.abs(previous.quarter - event.quarter) < 1e-8) previous.bpm = event.bpm;
-    else deduplicated.push({ ...event });
+  let currentBpm = 120;
+  for (let index = 0; index < ordered.length;) {
+    const quarter = ordered[index].quarter;
+    const group: TempoEvent[] = [];
+    while (index < ordered.length && Math.abs(ordered[index].quarter - quarter) < 1e-8) {
+      group.push(ordered[index]);
+      index += 1;
+    }
+    const explicit = group.filter((event) => event.bpm !== undefined).at(-1)?.bpm;
+    if (explicit !== undefined) {
+      currentBpm = explicit;
+    } else {
+      const ratios = group
+        .map((event) => event.ratio)
+        .filter((ratio): ratio is number => ratio !== undefined);
+      if (ratios.length > 0) currentBpm *= ratios.at(-1)!;
+    }
+    deduplicated.push({ quarter, bpm: currentBpm });
+  }
+  if (deduplicated.length === 0 || deduplicated[0].quarter > 0) {
+    deduplicated.unshift({ quarter: 0, bpm: 120 });
   }
 
   const accumulated = deduplicated.map(() => 0);
   for (let index = 1; index < deduplicated.length; index += 1) {
     const previous = deduplicated[index - 1];
     accumulated[index] = accumulated[index - 1]
-      + (deduplicated[index].quarter - previous.quarter) * 60 / previous.bpm;
+      + (deduplicated[index].quarter - previous.quarter) * 60 / previous.bpm!;
   }
 
   return (quarter: number): number => {
     let index = deduplicated.length - 1;
     while (index > 0 && deduplicated[index].quarter > quarter) index -= 1;
     const event = deduplicated[index];
-    return accumulated[index] + Math.max(0, quarter - event.quarter) * 60 / event.bpm;
+    return accumulated[index] + Math.max(0, quarter - event.quarter) * 60 / event.bpm!;
   };
 }
 
@@ -671,6 +706,7 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
       measure.tempos.forEach((tempo) => tempos.push({
         quarter: measureStart + tempo.offset,
         bpm: tempo.bpm,
+        ratio: tempo.ratio,
       }));
     });
   }

@@ -105,6 +105,29 @@ describe("MusicXML parser", () => {
     expect(score.duration).toBeCloseTo(1.5);
   });
 
+  it("applies exact beat-unit metric modulations without multiplying duplicate parts", () => {
+    const part = (id: string) => `<part id="${id}">
+      <measure><attributes><divisions>1</divisions></attributes>
+        <direction><sound tempo="120"/></direction>
+        <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note>
+      </measure>
+      <measure>
+        <direction><direction-type><metronome>
+          <beat-unit>quarter</beat-unit><beat-unit>quarter</beat-unit><beat-unit-dot/>
+        </metronome></direction-type></direction>
+        <note><pitch><step>D</step><octave>4</octave></pitch><duration>2</duration></note>
+      </measure>
+    </part>`;
+    const xml = `<score-partwise><part-list>
+      <score-part id="P1"><part-name>Piano RH</part-name></score-part>
+      <score-part id="P2"><part-name>Piano LH</part-name></score-part>
+    </part-list>${part("P1")}${part("P2")}</score-partwise>`;
+    const score = parseMusicXml(xml, "metric.musicxml");
+    // quarter = dotted-quarter means the new quarter BPM is 120 * 1.5 = 180.
+    expect(score.notes.filter((note) => note.note === 62)[0].start).toBeCloseTo(0.5);
+    expect(score.duration).toBeCloseTo(0.5 + 2 * 60 / 180);
+  });
+
   it("keeps unmetered music playable without inventing metronome beats", () => {
     const xml = `<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1">
       <measure><attributes><divisions>2</divisions><time><senza-misura/></time></attributes>
