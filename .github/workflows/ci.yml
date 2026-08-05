@@ -37,9 +37,9 @@ jobs:
       - run: npm ci
       - run: npm run coverage
       - run: npm run build
-      - run: npx playwright-cli install-browser chromium
+      - run: npx playwright-cli install-browser chromium --with-deps
       - run: npm run smoke:browser
-      - run: npx playwright-cli install-browser webkit
+      - run: npx playwright-cli install-browser webkit --with-deps
       - run: NOTEFALL_BROWSER=webkit npm run smoke:browser
       - uses: actions/upload-artifact@v6
         if: always()
