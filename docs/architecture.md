@@ -45,6 +45,8 @@ Piano Trainer Studio 是第一软件/产品参考，但采用 AGPL-3.0 且默认
 
 当前固件内置的是可离线使用的 **NoteFall Core**：USB Host、实时灯光、安全/诊断，以及足以在手机上完成日常练习的网页。PTS 的重型谱面与转换资源本来也运行在浏览器而不是 WLED；因此资源是否能塞进 LittleFS 不是采用或拒绝 PTS 前端的决定性理由。
 
+Core 的“离线”是 ESP32 本地托管，不是 Service Worker 缓存。设备热点的 HTTP origin、安全上下文、持久存储与未来 HTTPS Studio 的混合内容边界见 [手机离线与本地数据](mobile-offline-and-storage.md)。
+
 未来若需要 MuseScore/Guitar Pro 原地转换、大型曲库分析或更复杂音频，可增加独立的 **NoteFall Studio**（预安装 PWA、原生移动壳或桌面应用），仍通过同一语义协议连接 Core。这样重型资源由手机/平板/电脑存储，ESP 继续保留轻量救援网页。外部 HTTPS PWA 访问局域网明文 WebSocket/私网设备时存在浏览器安全策略差异，因此发布前必须分别验证 iOS、Android；若策略不可控，原生壳是确定性更高的交付方式。
 
 ## 练习引擎

@@ -360,12 +360,14 @@
           <button type="submit">新建文件夹</button>
         </form>
         <div class="button-row">
-          <button id="library-backup">导出完整备份</button>
+          <button id="library-backup">导出曲库备份</button>
+          <button id="storage-persist" type="button">保护本地数据</button>
           <label class="file-button library-restore">
             <input id="library-restore" type="file" accept="application/json,.json" />
-            <span>恢复备份</span>
+            <span>恢复曲库备份</span>
           </label>
         </div>
+        <div id="storage-summary" class="library-summary">正在检查浏览器存储…</div>
         <div id="library-summary" class="library-summary">正在打开曲库…</div>
         <div id="library-list" class="library-list"></div>
       </aside>

@@ -30,6 +30,7 @@ PACKAGE_FILES = (
     "docs/decisions/001-native-usb-host-and-vbus.md",
     "docs/measurements.md",
     "docs/testing.md",
+    "docs/mobile-offline-and-storage.md",
     "docs/flashing.md",
     "docs/update.md",
     "docs/commissioning.md",

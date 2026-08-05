@@ -1,4 +1,5 @@
 import type { Hand, HandSelection, PracticeMode } from "./types";
+import { storageFailureMessage } from "./storage";
 
 const DB_VERSION = 1;
 const SESSION_STORE = "sessions";
@@ -187,8 +188,8 @@ export class PracticeAnalytics {
 function transactionDone(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error("IndexedDB transaction failed"));
-    transaction.onabort = () => reject(transaction.error ?? new Error("IndexedDB transaction aborted"));
+    transaction.onerror = () => reject(new Error(storageFailureMessage(transaction.error, "保存练习历史")));
+    transaction.onabort = () => reject(new Error(storageFailureMessage(transaction.error, "保存练习历史")));
   });
 }
 
@@ -217,7 +218,7 @@ export class PracticeSessionStore {
     if (!this.database) {
       this.database = new Promise((resolve, reject) => {
         const request = indexedDB.open(this.databaseName, DB_VERSION);
-        request.onerror = () => reject(request.error ?? new Error("无法打开练习历史"));
+        request.onerror = () => reject(new Error(storageFailureMessage(request.error, "打开练习历史")));
         request.onupgradeneeded = () => {
           const database = request.result;
           if (!database.objectStoreNames.contains(SESSION_STORE)) {
@@ -256,7 +257,7 @@ export class PracticeSessionStore {
     return new Promise((resolve, reject) => {
       const result: PracticeSession[] = [];
       const request = index.openCursor(null, "prev");
-      request.onerror = () => reject(request.error ?? new Error("无法读取练习历史"));
+      request.onerror = () => reject(new Error(storageFailureMessage(request.error, "读取练习历史")));
       request.onsuccess = () => {
         const cursor = request.result;
         if (!cursor || result.length >= safeLimit) {

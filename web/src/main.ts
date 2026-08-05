@@ -27,6 +27,12 @@ import { parseMusicXmlFile } from "./musicxml";
 import { ScoreLibrary, sha256Hex } from "./library";
 import type { LibraryFolder, LibraryScore } from "./library";
 import {
+  formatStorageStatus,
+  inspectBrowserStorage,
+  requestPersistentStorage,
+  storageFailureMessage,
+} from "./storage";
+import {
   PerformanceRecorder,
   recordingDuration,
   recordingToMidi,
@@ -114,6 +120,8 @@ const updateProgress = required<HTMLProgressElement>("update-progress");
 const libraryPanel = required("library-panel");
 const libraryList = required("library-list");
 const librarySummary = required("library-summary");
+const storageSummary = required("storage-summary");
+const storagePersist = required<HTMLButtonElement>("storage-persist");
 const librarySearch = required<HTMLInputElement>("library-search");
 const libraryFolderFilter = required<HTMLSelectElement>("library-folder-filter");
 const brightness = required<HTMLInputElement>("brightness");
@@ -158,6 +166,13 @@ let scoreFingerprint: string | undefined;
 let transposeSemitones = 0;
 let libraryFolders: LibraryFolder[] = [];
 let libraryScores: LibraryScore[] = [];
+
+async function refreshStorageStatus(): Promise<void> {
+  const status = await inspectBrowserStorage();
+  storageSummary.textContent = formatStorageStatus(status);
+  storagePersist.disabled = !status.available || status.persistent === true;
+  storagePersist.textContent = status.persistent === true ? "本地数据已保护" : "保护本地数据";
+}
 let keyOffsets = normalizeKeyOffsets([]);
 let followAdvanceTimer: number | undefined;
 let followAdvancePending = false;
@@ -972,7 +987,16 @@ required("library-backup").addEventListener("click", async () => {
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   } catch (error) {
-    librarySummary.textContent = error instanceof Error ? error.message : "无法导出备份";
+    librarySummary.textContent = storageFailureMessage(error, "导出曲库备份");
+  }
+});
+
+storagePersist.addEventListener("click", async () => {
+  storagePersist.disabled = true;
+  const granted = await requestPersistentStorage();
+  await refreshStorageStatus();
+  if (granted === false) {
+    storageSummary.textContent += " · 浏览器未授予保护，请保留定期备份";
   }
 });
 
@@ -985,7 +1009,7 @@ required<HTMLInputElement>("library-restore").addEventListener("change", async (
     await refreshLibrary();
     librarySummary.textContent = `恢复完成：${result.foldersAdded} 个文件夹，${result.scoresAdded} 首乐谱，跳过 ${result.duplicatesSkipped} 个重复文件`;
   } catch (error) {
-    librarySummary.textContent = error instanceof Error ? error.message : "备份恢复失败";
+    librarySummary.textContent = storageFailureMessage(error, "恢复曲库备份");
   } finally {
     input.value = "";
   }
@@ -1144,6 +1168,7 @@ required("library-button").addEventListener("click", () => {
   settingsPanel.hidden = true;
   commissioningPanel.hidden = true;
   libraryPanel.hidden = false;
+  void refreshStorageStatus();
   void refreshLibrary().catch((error: unknown) => {
     librarySummary.textContent = error instanceof Error ? error.message : "无法打开曲库";
   });

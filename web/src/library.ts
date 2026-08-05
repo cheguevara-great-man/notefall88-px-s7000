@@ -1,4 +1,5 @@
 import type { ParsedScore } from "./types";
+import { storageFailureMessage } from "./storage";
 
 const DB_VERSION = 1;
 const FOLDER_STORE = "folders";
@@ -56,15 +57,15 @@ function uniqueId(prefix: string): string {
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"));
+    request.onerror = () => reject(new Error(storageFailureMessage(request.error, "读取曲库")));
   });
 }
 
 function transactionDone(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error("IndexedDB transaction failed"));
-    transaction.onabort = () => reject(transaction.error ?? new Error("IndexedDB transaction aborted"));
+    transaction.onerror = () => reject(new Error(storageFailureMessage(transaction.error, "写入曲库")));
+    transaction.onabort = () => reject(new Error(storageFailureMessage(transaction.error, "写入曲库")));
   });
 }
 
@@ -170,7 +171,7 @@ export class ScoreLibrary {
     if (!this.database) {
       this.database = new Promise((resolve, reject) => {
         const request = indexedDB.open(this.databaseName, DB_VERSION);
-        request.onerror = () => reject(request.error ?? new Error("无法打开曲库"));
+        request.onerror = () => reject(new Error(storageFailureMessage(request.error, "打开曲库")));
         request.onupgradeneeded = () => {
           const db = request.result;
           if (!db.objectStoreNames.contains(FOLDER_STORE)) {
