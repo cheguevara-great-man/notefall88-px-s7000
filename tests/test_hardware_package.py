@@ -54,6 +54,21 @@ def test_wiring_svg_is_valid_and_names_every_harness_interface():
         assert label in text
 
 
+def test_optical_installation_svg_locks_exposed_vertical_strip_geometry():
+    svg = ROOT / "docs" / "optical-installation.svg"
+    ET.parse(svg)
+    text = svg.read_text(encoding="utf-8")
+    for invariant in (
+        "固定黑色立面（不是打印件）",
+        "12 mm 黑色 PCB 灯带",
+        "名义 2.5 mm",
+        "发光主方向朝演奏者",
+        "无贯穿全长的 3D 打印盒",
+        "不得碰白键或黑键",
+    ):
+        assert invariant in text
+
+
 def test_usb_host_and_device_vbus_use_distinct_fused_branches():
     rows = read_harness()
     h5 = [row for row in rows if row["线束ID"] == "H5"]

@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900" role="img" aria-labelledby="title desc">
+  <title id="title">NoteFall 88 裸灯带安装方向与照键光路</title>
+  <desc id="desc">左侧为演奏者视角，右侧为琴键纵向剖面。灯带直接竖直安装在钢琴固定黑色立面，发光面朝演奏者，底边名义高于白键面 2.5 毫米，不使用琴键侧打印盒。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#101827"/><stop offset="1" stop-color="#070b12"/></linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#42dfff" stop-opacity=".55"/><stop offset="1" stop-color="#42dfff" stop-opacity=".08"/></linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#f8c24e"/></marker>
+    <marker id="dim" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto-start-reverse"><path d="M8 0L0 4L8 8Z" fill="#d6dfec"/></marker>
+    <style>
+      text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#edf4ff}.title{font-size:32px;font-weight:700}.head{font-size:22px;font-weight:700}.label{font-size:17px}.small{font-size:14px;fill:#b7c4d7}.panel{fill:#121d2d;stroke:#40536d;stroke-width:2}.piano{fill:#111318;stroke:#596273;stroke-width:2}.white{fill:#edf0f4;stroke:#9aa6b7;stroke-width:2}.black{fill:#171a20;stroke:#687181;stroke-width:2}.pcb{fill:#111318;stroke:#657184;stroke-width:2}.led{fill:#65e6ff;stroke:#d7f9ff;stroke-width:1}.call{stroke:#f8c24e;stroke-width:3;fill:none;marker-end:url(#arrow)}.dimline{stroke:#d6dfec;stroke-width:2;marker-start:url(#dim);marker-end:url(#dim)}
+    </style>
+  </defs>
+  <rect width="1500" height="900" fill="url(#bg)"/>
+  <text x="60" y="58" class="title">裸灯带直接安装：方向、间隙与照键光路</text>
+  <text x="60" y="88" class="small">示意图用于装配认方向；2.5 mm 是照片估算后的名义值，正式粘贴前必须用 12 mm 纸条做全行程复核。</text>
+
+  <rect x="45" y="125" width="730" height="705" rx="18" class="panel"/>
+  <text x="75" y="168" class="head">A. 演奏者正面看到的样子</text>
+  <rect x="100" y="230" width="620" height="150" rx="8" class="piano"/>
+  <text x="120" y="260" class="small">PX-S7000 自带的固定黑色立面（不是打印件）</text>
+  <rect x="105" y="330" width="610" height="36" rx="4" class="pcb"/>
+  <g>
+    <rect x="132" y="338" width="18" height="18" rx="3" class="led"/><rect x="184" y="338" width="18" height="18" rx="3" class="led"/>
+    <rect x="236" y="338" width="18" height="18" rx="3" class="led"/><rect x="288" y="338" width="18" height="18" rx="3" class="led"/>
+    <rect x="340" y="338" width="18" height="18" rx="3" class="led"/><rect x="392" y="338" width="18" height="18" rx="3" class="led"/>
+    <rect x="444" y="338" width="18" height="18" rx="3" class="led"/><rect x="496" y="338" width="18" height="18" rx="3" class="led"/>
+    <rect x="548" y="338" width="18" height="18" rx="3" class="led"/><rect x="600" y="338" width="18" height="18" rx="3" class="led"/>
+    <rect x="652" y="338" width="18" height="18" rx="3" class="led"/>
+  </g>
+  <text x="120" y="410" class="label">12 mm 黑色 PCB 灯带，整条连续，灯珠正面朝演奏者</text>
+  <path d="M285 420L285 365" class="call"/>
+  <g>
+    <rect x="100" y="475" width="103" height="270" class="white"/><rect x="203" y="475" width="103" height="270" class="white"/>
+    <rect x="306" y="475" width="103" height="270" class="white"/><rect x="409" y="475" width="103" height="270" class="white"/>
+    <rect x="512" y="475" width="103" height="270" class="white"/><rect x="615" y="475" width="103" height="270" class="white"/>
+    <rect x="171" y="475" width="58" height="165" rx="3" class="black"/><rect x="276" y="475" width="58" height="165" rx="3" class="black"/>
+    <rect x="480" y="475" width="58" height="165" rx="3" class="black"/><rect x="585" y="475" width="58" height="165" rx="3" class="black"/>
+  </g>
+  <path d="M392 366L330 520L455 520Z" fill="url(#beam)"/>
+  <text x="105" y="785" class="label">无贯穿全长的 3D 打印盒、黑色挡边或扩散盖</text>
+  <text x="105" y="812" class="small">可选 0.8 mm 黑色 PET/PVC 只在背面承载灯带，灯珠前方完全无遮挡。</text>
+
+  <rect x="805" y="125" width="650" height="705" rx="18" class="panel"/>
+  <text x="835" y="168" class="head">B. 琴键纵向剖面（右侧是演奏者）</text>
+  <path d="M900 255H1160V390H1090V430H900Z" class="piano"/>
+  <text x="910" y="285" class="small">钢琴固定黑色立面</text>
+  <rect x="1118" y="310" width="18" height="120" rx="3" class="pcb"/>
+  <rect x="1135" y="358" width="15" height="24" rx="3" class="led"/>
+  <text x="895" y="447" class="small">活动白键</text>
+  <path d="M875 455L1385 455L1420 690L900 690Z" class="white"/>
+  <path d="M1150 370L1390 455L1390 610L1150 382Z" fill="url(#beam)"/>
+  <path d="M1150 370L1325 370" class="call"/>
+  <text x="1220" y="345" class="label">发光主方向朝演奏者</text>
+  <text x="1195" y="425" class="label">宽角光束的下半部照到琴键</text>
+  <line x1="1080" y1="430" x2="1080" y2="455" class="dimline"/>
+  <line x1="1062" y1="430" x2="1118" y2="430" stroke="#d6dfec" stroke-width="2"/>
+  <line x1="1062" y1="455" x2="1110" y2="455" stroke="#d6dfec" stroke-width="2"/>
+  <rect x="830" y="468" width="385" height="48" rx="8" fill="#101827" fill-opacity=".92" stroke="#40536d"/>
+  <text x="850" y="500" class="label">灯带底边距自然白键面：<tspan class="head">名义 2.5 mm</tspan></text>
+  <text x="850" y="740" class="label">安装验收：按到底也不得碰白键或黑键，不得覆盖红毡。</text>
+  <text x="850" y="775" class="small">若纸条试放表明 2.5 mm 不合适，只调整现场高度；不改变灯带、电路或软件方案。</text>
+  <rect x="835" y="795" width="590" height="1" fill="#40536d"/>
+  <text x="850" y="820" class="small">朝向结论：不是朝上，也不是安装得很高；是竖直 90°、正面朝演奏者、紧邻键面。</text>
+</svg>

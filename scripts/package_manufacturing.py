@@ -22,6 +22,7 @@ PACKAGE_FILES = (
     "docs/bom.csv",
     "docs/harness.csv",
     "docs/wiring-harness.svg",
+    "docs/optical-installation.svg",
     "docs/hardware.md",
     "docs/assembly.md",
     "docs/first-build.md",

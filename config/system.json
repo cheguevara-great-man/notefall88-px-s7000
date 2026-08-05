@@ -40,7 +40,7 @@
   "mechanical": {
     "strip_mount": "vertical_exposed",
     "strip_orientation_deg": 90.0,
-    "strip_bottom_clearance_mm": 1.5,
+    "strip_bottom_clearance_mm": 2.5,
     "optional_carrier_material": "black_PET_or_PVC",
     "optional_carrier_length_mm": 1226.0,
     "optional_carrier_height_mm": 14.0,
