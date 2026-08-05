@@ -24,3 +24,8 @@ def test_embedded_web_assets_are_gzipped_and_resolvable() -> None:
     for path in compressed:
         assert len(path.name.encode("utf-8")) <= 31
         assert gzip.decompress(path.read_bytes())
+
+
+def test_embedded_daily_practice_app_stays_within_flash_budget() -> None:
+    total = sum(path.stat().st_size for path in DATA.rglob("*") if path.is_file())
+    assert total < 500 * 1024

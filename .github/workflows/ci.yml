@@ -16,6 +16,11 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python scripts/generate.py --check
       - run: python -m pytest
+      - run: python scripts/package_manufacturing.py --output dist/notefall88-manufacturing-ci.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notefall88-manufacturing
+          path: dist/notefall88-manufacturing-ci.zip
 
   web:
     runs-on: ubuntu-latest

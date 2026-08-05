@@ -21,6 +21,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Validate generated engineering package
+        run: |
+          pip install -r requirements-dev.txt
+          python scripts/generate.py --check
+          python -m pytest
       - name: Build embedded web app
         working-directory: web
         run: |
@@ -29,7 +34,7 @@ jobs:
           npm run build
       - name: Build firmware and LittleFS
         run: |
-          pip install platformio==6.1.18
+          pip install platformio==6.1.19
           platformio run -d firmware
           platformio run -d firmware -t buildfs
       - name: Package checksummed update bundle
@@ -42,6 +47,9 @@ jobs:
             --filesystem dist/littlefs.bin \
             --output dist/notefall88-update-${GITHUB_REF_NAME}.zip \
             > dist/manifest.json
+          python scripts/package_manufacturing.py \
+            --output dist/notefall88-manufacturing-${GITHUB_REF_NAME}.zip \
+            > dist/manufacturing-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: notefall88-${{ github.ref_name }}

@@ -11,6 +11,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+
+
+def write_reproducible(archive: zipfile.ZipFile, name: str, content: bytes) -> None:
+    info = zipfile.ZipInfo(name, date_time=ZIP_TIMESTAMP)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = 0o100644 << 16
+    archive.writestr(info, content, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
 
 
 def firmware_version() -> str:
@@ -57,9 +65,13 @@ def package_update(firmware: Path, filesystem: Path, output: Path) -> dict[str, 
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
-        archive.write(filesystem, filesystem.name)
-        archive.write(firmware, firmware.name)
+        write_reproducible(
+            archive,
+            "manifest.json",
+            (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+        )
+        write_reproducible(archive, filesystem.name, filesystem.read_bytes())
+        write_reproducible(archive, firmware.name, firmware.read_bytes())
     return manifest
 
 
