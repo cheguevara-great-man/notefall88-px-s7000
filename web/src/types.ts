@@ -35,6 +35,11 @@ export interface TargetNote {
 export interface DeviceStatus {
   protocol?: number;
   firmware?: string;
+  controlSessionReady?: boolean;
+  controlAuthorized?: boolean;
+  accessPointClient?: boolean;
+  defaultPassword?: boolean;
+  controlToken?: string;
   piano: boolean;
   clients: number;
   brightness: number;
@@ -66,6 +71,7 @@ export interface DeviceStatus {
   usbOutputMirrorCandidates?: number;
   usbOutOwned?: boolean;
   webRejected?: number;
+  webAuthRejected?: number;
   webMidiDropped?: number;
   ledInputLatencyLastUs?: number;
   ledInputLatencyAvgUs?: number;

@@ -113,6 +113,27 @@ try {
   command(["click", closeRef]);
 
   page = snapshot();
+  const settingsRef = refFor(page, /button "灯带校准"[^\n]*\[ref=(e\d+)\]/, "settings button");
+  command(["click", settingsRef]);
+  page = snapshot();
+  const currentPasswordRef = refFor(
+    page,
+    /textbox "当前热点密码"[^\n]*\[ref=(e\d+)\]/,
+    "current hotspot password input",
+  );
+  const unlockRef = refFor(
+    page,
+    /button "解锁本标签页控制"[^\n]*\[ref=(e\d+)\]/,
+    "session control unlock button",
+  );
+  command(["fill", currentPasswordRef, "short"]);
+  command(["click", unlockRef]);
+  page = snapshot();
+  assert(page.includes("当前热点密码必须为 8–63 字节"), "station control password validation is not visible");
+  const settingsCloseRef = refFor(page, /button "关闭"[^\n]*\[ref=(e\d+)\]/, "settings close button");
+  command(["click", settingsCloseRef]);
+
+  page = snapshot();
   const importRef = refFor(page, /generic \[ref=(e\d+)\][^\n]*: 导入乐谱/, "score import control");
   command(["click", importRef]);
   command(["upload", join(WEB, "test-fixtures", "parser-etude.musicxml")]);

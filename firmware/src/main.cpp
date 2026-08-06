@@ -17,6 +17,7 @@
 #include "Apa102Strip.h"
 #include "UsbMidiHost.h"
 #include "app_config.h"
+#include "control_policy.h"
 #include "layout_generated.h"
 
 namespace {
@@ -103,8 +104,12 @@ size_t nextOutputMirrorProbe = 0;
 uint32_t midiScheduleDropped = 0;
 uint32_t midiOutputMirrorCandidates = 0;
 int16_t midiOutOwner = -1;
-bool webProtocolCompatible[256]{};
+static_assert(WEBSOCKETS_SERVER_CLIENT_MAX <= 255, "WebSocket client id must fit uint8_t");
+bool webProtocolCompatible[WEBSOCKETS_SERVER_CLIENT_MAX]{};
+bool webControlAuthorized[WEBSOCKETS_SERVER_CLIENT_MAX]{};
+bool webAccessPointClient[WEBSOCKETS_SERVER_CLIENT_MAX]{};
 uint32_t webMessagesRejected = 0;
+uint32_t webAuthRejected = 0;
 BrowserMidiEvent browserMidiEvents[kBrowserMidiCapacity]{};
 size_t browserMidiCount = 0;
 uint32_t browserMidiDropped = 0;
@@ -114,6 +119,7 @@ uint32_t ledInputLatencyLastUs = 0;
 uint32_t ledInputLatencyMaxUs = 0;
 uint32_t ledInputLatencySamples = 0;
 String activeApPassword;
+String controlSessionToken;
 WebUpdateState webUpdate;
 
 constexpr Rgb kLeftTarget{28, 178, 255};
@@ -146,6 +152,14 @@ const char* resetReasonName(esp_reset_reason_t reason) {
     case ESP_RST_SDIO: return "sdio";
     default: return "unknown";
   }
+}
+
+String generateControlSessionToken() {
+  char encoded[33]{};
+  for (size_t word = 0; word < 4; ++word) {
+    snprintf(encoded + word * 8, 9, "%08lx", static_cast<unsigned long>(esp_random()));
+  }
+  return String(encoded);
 }
 
 bool validNote(int note) { return note >= kFirstMidiNote && note <= kLastMidiNote; }
@@ -293,11 +307,24 @@ void renderStrip() {
 }
 
 void sendStatus(uint8_t client = 255) {
+  if (client == 255) {
+    for (uint8_t index = 0; index < WEBSOCKETS_SERVER_CLIENT_MAX; ++index) {
+      if (websocket.clientIsConnected(index)) sendStatus(index);
+    }
+    return;
+  }
   const auto usb = usbMidi.diagnostics();
   JsonDocument doc;
   doc["t"] = "status";
   doc["protocol"] = kProtocolVersion;
   doc["firmware"] = kFirmwareVersion;
+  doc["controlSessionReady"] = webProtocolCompatible[client];
+  doc["controlAuthorized"] = webControlAuthorized[client];
+  doc["accessPointClient"] = webAccessPointClient[client];
+  doc["defaultPassword"] = activeApPassword == kApPassword;
+  if (webControlAuthorized[client] && !webAccessPointClient[client]) {
+    doc["controlToken"] = controlSessionToken;
+  }
   doc["piano"] = pianoConnected;
   doc["clients"] = webClients;
   doc["brightness"] = brightness;
@@ -329,6 +356,7 @@ void sendStatus(uint8_t client = 255) {
   doc["usbOutputMirrorCandidates"] = midiOutputMirrorCandidates;
   doc["usbOutOwned"] = midiOutOwner >= 0;
   doc["webRejected"] = webMessagesRejected;
+  doc["webAuthRejected"] = webAuthRejected;
   doc["webMidiDropped"] = browserMidiDropped;
   doc["ledInputLatencyLastUs"] = ledInputLatencyLastUs;
   doc["ledInputLatencyAvgUs"] = ledInputLatencySamples == 0
@@ -338,8 +366,7 @@ void sendStatus(uint8_t client = 255) {
   doc["ledInputLatencySamples"] = ledInputLatencySamples;
   String payload;
   serializeJson(doc, payload);
-  if (client == 255) websocket.broadcastTXT(payload);
-  else websocket.sendTXT(client, payload);
+  websocket.sendTXT(client, payload);
 }
 
 void sendCalibration(uint8_t client = 255) {
@@ -349,8 +376,23 @@ void sendCalibration(uint8_t client = 255) {
   for (const int8_t offset : keyPixelOffsets) offsets.add(offset);
   String payload;
   serializeJson(doc, payload);
-  if (client == 255) websocket.broadcastTXT(payload);
-  else websocket.sendTXT(client, payload);
+  if (client == 255) {
+    for (uint8_t index = 0; index < WEBSOCKETS_SERVER_CLIENT_MAX; ++index) {
+      if (websocket.clientIsConnected(index) && webControlAuthorized[index]) {
+        websocket.sendTXT(index, payload);
+      }
+    }
+  } else if (webControlAuthorized[client]) {
+    websocket.sendTXT(client, payload);
+  }
+}
+
+void sendAuthorizedText(String& payload) {
+  for (uint8_t index = 0; index < WEBSOCKETS_SERVER_CLIENT_MAX; ++index) {
+    if (websocket.clientIsConnected(index) && webControlAuthorized[index]) {
+      websocket.sendTXT(index, payload);
+    }
+  }
 }
 
 void sendMidiEvent(bool on, uint8_t channel, uint8_t note, uint8_t velocity,
@@ -366,7 +408,7 @@ void sendMidiEvent(bool on, uint8_t channel, uint8_t note, uint8_t velocity,
   doc["ts"] = timestampMs;
   String payload;
   serializeJson(doc, payload);
-  websocket.broadcastTXT(payload);
+  sendAuthorizedText(payload);
 }
 
 void sendMidiControl(uint8_t channel, uint8_t controller, uint8_t value, uint32_t timestampMs) {
@@ -378,7 +420,7 @@ void sendMidiControl(uint8_t channel, uint8_t controller, uint8_t value, uint32_
   doc["ts"] = timestampMs;
   String payload;
   serializeJson(doc, payload);
-  websocket.broadcastTXT(payload);
+  sendAuthorizedText(payload);
 }
 
 void queueBrowserMidi(BrowserMidiKind kind, bool on, uint8_t channel,
@@ -501,6 +543,21 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
   if (strcmp(type, "hello") == 0) {
     const int received = doc["v"] | -1;
     webProtocolCompatible[client] = received == kProtocolVersion;
+    const char* suppliedAuth = doc["auth"] | "";
+    const char* suppliedToken = doc["token"] | "";
+    const bool passwordSupplied = suppliedAuth[0] != '\0';
+    const bool tokenSupplied = suppliedToken[0] != '\0';
+    const bool credentialSupplied = passwordSupplied || tokenSupplied;
+    const bool credentialMatches =
+        (passwordSupplied && constantTimeEquals(String(suppliedAuth), activeApPassword)) ||
+        (tokenSupplied && constantTimeEquals(String(suppliedToken), controlSessionToken));
+    webControlAuthorized[client] = notefall::security::controlAuthorized(
+        webProtocolCompatible[client], webAccessPointClient[client],
+        credentialSupplied, credentialMatches);
+    if (webProtocolCompatible[client] && credentialSupplied &&
+        !webAccessPointClient[client] && !webControlAuthorized[client]) {
+      ++webAuthRejected;
+    }
     sendStatus(client);
     if (!webProtocolCompatible[client]) {
       ++webMessagesRejected;
@@ -513,13 +570,28 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
       websocket.sendTXT(client, encoded);
       return;
     }
-    sendCalibration(client);
+    if (webControlAuthorized[client]) sendCalibration(client);
     return;
   }
   // A stale or foreign client may observe status for diagnosis, but cannot
   // mutate lights, calibration, Wi-Fi credentials, or MIDI OUT until it has
   // completed a matching protocol handshake.
   if (!webProtocolCompatible[client]) {
+    ++webMessagesRejected;
+    return;
+  }
+
+  if (strcmp(type, "ping") == 0) {
+    JsonDocument reply;
+    reply["t"] = "pong";
+    reply["ts"] = doc["ts"] | 0;
+    String encoded;
+    serializeJson(reply, encoded);
+    websocket.sendTXT(client, encoded);
+    return;
+  }
+
+  if (!webControlAuthorized[client]) {
     ++webMessagesRejected;
     return;
   }
@@ -605,14 +677,26 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
     String encoded;
     serializeJson(reply, encoded);
     websocket.sendTXT(client, encoded);
-  } else if (strcmp(type, "ping") == 0) {
-    JsonDocument reply;
-    reply["t"] = "pong";
-    reply["ts"] = doc["ts"] | 0;
-    String encoded;
-    serializeJson(reply, encoded);
-    websocket.sendTXT(client, encoded);
   }
+}
+
+bool addressInNetwork(const IPAddress& remote, const IPAddress& local, const IPAddress& mask) {
+  for (uint8_t octet = 0; octet < 4; ++octet) {
+    if ((remote[octet] & mask[octet]) != (local[octet] & mask[octet])) return false;
+  }
+  return true;
+}
+
+bool websocketClientUsesAccessPoint(uint8_t client) {
+  const IPAddress remote = websocket.remoteIP(client);
+  const bool inAccessPointNetwork = addressInNetwork(
+      remote, WiFi.softAPIP(), WiFi.softAPSubnetMask());
+  // If the configured LAN overlaps the SoftAP subnet, fail closed and require
+  // the hotspot password instead of guessing which interface accepted it.
+  const bool alsoInStationNetwork = WiFi.status() == WL_CONNECTED &&
+      addressInNetwork(remote, WiFi.localIP(), WiFi.subnetMask());
+  return notefall::security::automaticAccessPointTrust(
+      inAccessPointNetwork, alsoInStationNetwork);
 }
 
 void webSocketEvent(uint8_t client, WStype_t type, uint8_t* payload, size_t length) {
@@ -620,10 +704,14 @@ void webSocketEvent(uint8_t client, WStype_t type, uint8_t* payload, size_t leng
     case WStype_CONNECTED:
       webClients = std::min<uint8_t>(webClients + 1, 250);
       webProtocolCompatible[client] = false;
+      webAccessPointClient[client] = websocketClientUsesAccessPoint(client);
+      webControlAuthorized[client] = false;
       sendStatus(client);
       break;
     case WStype_DISCONNECTED:
       webProtocolCompatible[client] = false;
+      webControlAuthorized[client] = false;
+      webAccessPointClient[client] = false;
       if (webClients > 0) --webClients;
       if (midiOutOwner == client) {
         panicMidiOutput();
@@ -841,6 +929,7 @@ void setup() {
     Serial.printf("PSRAM ready: %u bytes\n", ESP.getPsramSize());
   }
   preferencesReady = preferences.begin("notefall", false);
+  controlSessionToken = generateControlSessionToken();
   if (!preferencesReady) {
     Serial.println("WARN: NVS unavailable; calibration will not persist");
   } else {

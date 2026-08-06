@@ -88,6 +88,11 @@ function statusMessage(source: Record<string, unknown>): DeviceMessage {
 
   status.protocol = requiredInteger(source, "protocol", 0, 255);
   status.firmware = optionalString(source, "firmware", 64);
+  status.controlSessionReady = optionalBoolean(source, "controlSessionReady");
+  status.controlAuthorized = optionalBoolean(source, "controlAuthorized");
+  status.accessPointClient = optionalBoolean(source, "accessPointClient");
+  status.defaultPassword = optionalBoolean(source, "defaultPassword");
+  status.controlToken = optionalString(source, "controlToken", 64);
   status.rssi = optionalInteger(source, "rssi", -127, 0);
   status.uptimeMs = optionalInteger(source, "uptimeMs", 0, 0xffff_ffff);
   status.freeHeap = optionalInteger(source, "freeHeap", 0, 0xffff_ffff);
@@ -114,6 +119,7 @@ function statusMessage(source: Record<string, unknown>): DeviceMessage {
   status.usbOutputMirrorCandidates = optionalInteger(source, "usbOutputMirrorCandidates", 0, MAX_SAFE_COUNTER);
   status.usbOutOwned = optionalBoolean(source, "usbOutOwned");
   status.webRejected = optionalInteger(source, "webRejected", 0, MAX_SAFE_COUNTER);
+  status.webAuthRejected = optionalInteger(source, "webAuthRejected", 0, MAX_SAFE_COUNTER);
   status.webMidiDropped = optionalInteger(source, "webMidiDropped", 0, MAX_SAFE_COUNTER);
   status.ledInputLatencyLastUs = optionalInteger(source, "ledInputLatencyLastUs", 0, 0xffff_ffff);
   status.ledInputLatencyAvgUs = optionalInteger(source, "ledInputLatencyAvgUs", 0, 0xffff_ffff);

@@ -248,16 +248,20 @@ function renderCommissioning(): void {
   const manualComplete = Object.values(commissioning.manual).filter(Boolean).length;
   const observedComplete = [
     commissioning.observed.deviceSeen,
+    commissioning.observed.passwordChanged,
     commissioning.observed.pianoSeen,
     Boolean(commissioning.observed.usbInEndpoint),
     commissioning.observed.c4Seen,
   ].filter(Boolean).length;
   const completedCount = manualComplete + observedComplete;
   required<HTMLProgressElement>("commission-progress").value = completedCount;
-  required("commission-progress-label").textContent = `${completedCount} / 12`;
+  required("commission-progress-label").textContent = `${completedCount} / 13`;
   required("commission-device").textContent = commissioning.observed.deviceSeen
     ? `${commissioning.observed.firmware ?? "未知版本"} / 协议 v${commissioning.observed.protocol ?? "--"}`
     : "等待实际连接";
+  required("commission-security").textContent = commissioning.observed.passwordChanged
+    ? "默认密码已修改"
+    : "请修改公开的默认热点密码";
   required("commission-piano").textContent = commissioning.observed.pianoSeen
     ? `${formatHex(commissioning.observed.vid)}:${formatHex(commissioning.observed.pid)}`
     : "等待 USB 枚举";
@@ -1378,6 +1382,19 @@ required<HTMLFormElement>("wifi-form").addEventListener("submit", async (event) 
   }
 });
 
+required("control-unlock").addEventListener("click", () => {
+  const current = required<HTMLInputElement>("ap-current-password");
+  const authStatus = required("control-auth-status");
+  try {
+    device.authenticateControl(current.value);
+    authStatus.textContent = "正在验证控制密码…";
+  } catch (error) {
+    authStatus.textContent = error instanceof Error ? error.message : "无法验证控制密码";
+  } finally {
+    current.value = "";
+  }
+});
+
 required<HTMLFormElement>("ap-password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const current = required<HTMLInputElement>("ap-current-password");
@@ -1434,6 +1451,11 @@ device.onConnection((connected) => {
   setStatus(deviceStatus, connected, connected ? "ESP 已连接" : "ESP 未连接");
 });
 device.onStatus((status: DeviceStatus) => {
+  required("control-auth-status").textContent = status.controlSessionReady === false
+    ? "正在建立安全控制会话…"
+    : status.controlAuthorized
+      ? (status.accessPointClient ? "已通过 NoteFall-88 热点自动授权。" : "家庭 Wi-Fi 控制已为本标签页解锁。")
+      : "家庭 Wi-Fi 当前为只读：输入当前热点密码后解锁灯光、校准和 MIDI OUT。";
   storeCommissioning(observeDevice(commissioning, status));
   midiOutAvailable = Boolean(status.usbOut);
   const midiOutOwnedElsewhere = Boolean(status.usbOutOwned) && !midiOutOwnedByThisPage;
@@ -1476,6 +1498,10 @@ device.onStatus((status: DeviceStatus) => {
   required("diag-output-mirror").textContent = String(status.usbOutputMirrorCandidates ?? "--");
   required("diag-connections").textContent = String(status.usbConnections ?? "--");
   required("diag-web-rejected").textContent = `${status.webRejected ?? "--"} / ${device.browserRejectedMessages}`;
+  required("diag-auth-rejected").textContent = String(status.webAuthRejected ?? "--");
+  required("diag-hotspot-security").textContent = status.defaultPassword === undefined
+    ? "--"
+    : status.defaultPassword ? "危险：仍使用公开默认密码" : "已修改默认密码";
   required("diag-web-midi-dropped").textContent = String(status.webMidiDropped ?? "--");
   required("diag-led-latency").textContent = status.ledInputLatencySamples
     ? `${((status.ledInputLatencyAvgUs ?? 0) / 1000).toFixed(2)} 平均 / ${((status.ledInputLatencyMaxUs ?? 0) / 1000).toFixed(2)} 最大 ms · ${status.ledInputLatencySamples} 次`
@@ -1493,7 +1519,7 @@ device.onStatus((status: DeviceStatus) => {
     : status.nvsReady ? "正常" : "异常（设置无法保存）";
   required("diag-reset").textContent = status.resetReason ?? "--";
   required("diag-rssi").textContent = status.rssi ? `${status.rssi} dBm` : "热点模式";
-  if (status.protocol !== undefined && status.protocol !== 5) {
+  if (status.protocol !== undefined && status.protocol !== 6) {
     deviceStatus.textContent = `协议不兼容 v${status.protocol}`;
     deviceStatus.dataset.state = "offline";
   }

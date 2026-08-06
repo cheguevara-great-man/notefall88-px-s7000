@@ -12,6 +12,26 @@ import { decodeDeviceMessage } from "./protocol";
 
 type Listener<T> = (value: T) => void;
 
+const PROTOCOL_VERSION = 6;
+const SESSION_TOKEN_KEY = "notefall-control-token";
+
+function loadSessionToken(): string {
+  try {
+    return window.sessionStorage.getItem(SESSION_TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveSessionToken(value: string): void {
+  try {
+    if (value) window.sessionStorage.setItem(SESSION_TOKEN_KEY, value);
+    else window.sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  } catch {
+    // Private browsing may deny storage; the in-memory session still works.
+  }
+}
+
 export class DeviceLink {
   private socket?: WebSocket;
   private reconnectTimer?: number;
@@ -25,11 +45,17 @@ export class DeviceLink {
   private pingTimer?: number;
   private reconnectAttempt = 0;
   private heartbeatTimer?: number;
+  private sessionToken = "";
+  private pendingPassword = "";
+  private authenticationPending = false;
+  private controlAuthorized = false;
   private readonly targetSync = new TargetSync((targets) => this.sendTargets(targets));
   latencyMs?: number;
   browserRejectedMessages = 0;
 
   connect(): void {
+    if (!this.sessionToken) this.sessionToken = loadSessionToken();
+    this.authenticationPending = Boolean(this.sessionToken);
     window.clearTimeout(this.reconnectTimer);
     const host = window.location.hostname || "192.168.4.1";
     this.socket = new WebSocket(`ws://${host}:81/`);
@@ -37,14 +63,14 @@ export class DeviceLink {
       this.reconnectAttempt = 0;
       window.clearTimeout(this.pingTimer);
       this.connectionListeners.forEach((listener) => listener(true));
-      this.send({ t: "hello", v: 5 });
-      this.targetSync.reconnect();
+      this.sendHello();
       if (this.heartbeatTimer === undefined) {
         this.heartbeatTimer = window.setInterval(() => this.targetSync.heartbeat(), 250);
       }
       this.ping();
     };
     this.socket.onclose = () => {
+      this.controlAuthorized = false;
       window.clearTimeout(this.pingTimer);
       this.connectionListeners.forEach((listener) => listener(false));
       const delay = Math.min(1000 * 2 ** this.reconnectAttempt, 10000);
@@ -63,6 +89,29 @@ export class DeviceLink {
     }
     const message = decoded.message;
     if (message.kind === "status") {
+      const becameAuthorized = message.value.controlAuthorized === true && !this.controlAuthorized;
+      this.controlAuthorized = message.value.controlAuthorized === true;
+      if (message.value.controlSessionReady === true &&
+          message.value.controlAuthorized === true && this.authenticationPending) {
+        if (message.value.accessPointClient === false && message.value.controlToken) {
+          this.sessionToken = message.value.controlToken;
+          saveSessionToken(this.sessionToken);
+        } else {
+          // SoftAP authorization proves only the interface, not that an
+          // optional supplied password was correct. Never persist it there.
+          this.sessionToken = "";
+          saveSessionToken("");
+        }
+        this.pendingPassword = "";
+        this.authenticationPending = false;
+      } else if (message.value.controlSessionReady === true &&
+          message.value.controlAuthorized === false && this.authenticationPending) {
+        this.sessionToken = "";
+        this.pendingPassword = "";
+        this.authenticationPending = false;
+        saveSessionToken("");
+      }
+      if (becameAuthorized) this.targetSync.reconnect();
       this.statusListeners.forEach((listener) => listener(message.value));
     } else if (message.kind === "midi") {
       this.midiListeners.forEach((listener) => listener(message.value));
@@ -83,6 +132,24 @@ export class DeviceLink {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(payload));
   }
 
+  private sendHello(): void {
+    this.send({
+      t: "hello",
+      v: PROTOCOL_VERSION,
+      ...(this.pendingPassword
+        ? { auth: this.pendingPassword }
+        : (this.sessionToken ? { token: this.sessionToken } : {})),
+    });
+  }
+
+  authenticateControl(password: string): void {
+    const bytes = new TextEncoder().encode(password).length;
+    if (bytes < 8 || bytes > 63) throw new Error("当前热点密码必须为 8–63 字节");
+    this.pendingPassword = password;
+    this.authenticationPending = true;
+    this.sendHello();
+  }
+
   ping(): void {
     if (this.socket?.readyState !== WebSocket.OPEN) return;
     this.lastPing = performance.now();
@@ -94,6 +161,7 @@ export class DeviceLink {
   }
 
   private sendTargets(notes: TargetNote[]): void {
+    if (!this.controlAuthorized) return;
     this.send({
       t: "target",
       notes: notes.map((target) => ({ n: target.note, h: target.hand === "left" ? 0 : 1 })),
@@ -101,22 +169,27 @@ export class DeviceLink {
   }
 
   configure(brightness: number, offset: number, reversed: boolean): void {
+    if (!this.controlAuthorized) return;
     this.send({ t: "config", brightness, offset, reversed });
   }
 
   setKeyOffset(note: number, offset: number): void {
+    if (!this.controlAuthorized) return;
     this.send({ t: "keyOffset", n: note, offset });
   }
 
   testNote(note: number): void {
+    if (!this.controlAuthorized) return;
     this.send({ t: "test", n: note });
   }
 
   blackout(): void {
+    if (!this.controlAuthorized) return;
     this.send({ t: "blackout" });
   }
 
   scheduleMidi(events: MidiOutEvent[]): void {
+    if (!this.controlAuthorized) return;
     for (let offset = 0; offset < events.length; offset += 48) {
       this.send({
         t: "midiOut",
@@ -131,6 +204,7 @@ export class DeviceLink {
   }
 
   panicMidi(): void {
+    if (!this.controlAuthorized) return;
     this.send({ t: "midiPanic" });
   }
 

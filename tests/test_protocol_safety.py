@@ -15,6 +15,36 @@ def test_websocket_mutations_require_matching_protocol_handshake() -> None:
     assert 'reply["t"] = "protocolError"' in handler
 
 
+def test_station_clients_require_password_before_any_control_mutation() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    handler = source[source.index("void handleWebMessage") : source.index("bool websocketClientUsesAccessPoint")]
+    hello = handler.index('strcmp(type, "hello")')
+    auth = handler.index("if (!webControlAuthorized[client])")
+    mutation = handler.index('strcmp(type, "target")')
+    assert hello < auth < mutation
+    assert "notefall::security::controlAuthorized" in handler
+    assert "constantTimeEquals(String(suppliedAuth), activeApPassword)" in handler
+    assert "constantTimeEquals(String(suppliedToken), controlSessionToken)" in handler
+    assert "++webAuthRejected" in handler
+    policy = (ROOT / "firmware" / "include" / "control_policy.h").read_text(encoding="utf-8")
+    assert "static_assert(!automaticAccessPointTrust(true, true))" in policy
+    assert "static_assert(!controlAuthorized(false, true, true, true))" in policy
+    assert "static_assert(!controlAuthorized(true, false, false, false))" in policy
+    assert "static_assert(!controlAuthorized(true, false, true, false))" in policy
+
+
+def test_piano_events_and_calibration_only_reach_authorized_clients() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    sender = source[source.index("void sendCalibration") : source.index("void queueBrowserMidi")]
+    assert "webControlAuthorized[index]" in sender
+    assert "sendAuthorizedText(payload)" in sender
+    assert "websocket.broadcastTXT(payload)" not in sender
+    assert 'doc["controlAuthorized"]' in source
+    assert 'doc["accessPointClient"]' in source
+    assert 'doc["controlToken"] = controlSessionToken' in source
+    assert "webControlAuthorized[client] && !webAccessPointClient[client]" in source
+
+
 def test_websocket_rejects_oversized_or_invalid_json_before_mutation() -> None:
     source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
     handler = source[source.index("void handleWebMessage") : source.index("void webSocketEvent")]

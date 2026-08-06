@@ -18,6 +18,7 @@ export interface CommissioningState {
     deviceSeen: boolean;
     pianoSeen: boolean;
     c4Seen: boolean;
+    passwordChanged: boolean;
     usbInEndpoint?: number;
     usbOutEndpoint?: number;
     firmware?: string;
@@ -55,7 +56,7 @@ export function newCommissioningState(): CommissioningState {
       lightC8: false,
       mountStable: false,
     },
-    observed: { deviceSeen: false, pianoSeen: false, c4Seen: false },
+    observed: { deviceSeen: false, pianoSeen: false, c4Seen: false, passwordChanged: false },
   };
 }
 
@@ -75,6 +76,7 @@ function normalize(value: unknown): CommissioningState {
       deviceSeen: candidate.observed.deviceSeen === true,
       pianoSeen: candidate.observed.pianoSeen === true,
       c4Seen: candidate.observed.c4Seen === true,
+      passwordChanged: candidate.observed.passwordChanged === true,
       usbInEndpoint: finite(candidate.observed.usbInEndpoint),
       usbOutEndpoint: finite(candidate.observed.usbOutEndpoint),
       firmware: typeof candidate.observed.firmware === "string" ? candidate.observed.firmware : undefined,
@@ -111,7 +113,8 @@ export function observeDevice(
   status: DeviceStatus,
 ): CommissioningState {
   const next = structuredClone(state);
-  next.observed.deviceSeen = status.protocol === 5;
+  next.observed.deviceSeen = status.protocol === 6;
+  next.observed.passwordChanged = status.defaultPassword === false;
   next.observed.pianoSeen ||= status.piano;
   next.observed.usbInEndpoint = status.usbEndpoint || next.observed.usbInEndpoint;
   next.observed.usbOutEndpoint = status.usbOutEndpoint || next.observed.usbOutEndpoint;
@@ -133,6 +136,7 @@ export function observeDevice(
     next.observed.inputPackets = undefined;
     next.observed.inputErrors = undefined;
   }
+  if (next.completedAt && status.defaultPassword === true) next.completedAt = undefined;
   return next;
 }
 
@@ -159,6 +163,7 @@ export function missingCommissioningEvidence(state: CommissioningState): string[
     if (!state.manual[key]) missing.push(label);
   }
   if (!state.observed.deviceSeen) missing.push("ESP WebSocket 实际连接");
+  if (!state.observed.passwordChanged) missing.push("修改公开的默认热点密码");
   if (!state.observed.pianoSeen) missing.push("PX-S7000 USB 实际枚举");
   if (!state.observed.usbInEndpoint) missing.push("USB MIDI IN 端点");
   if (!state.observed.c4Seen) missing.push("钢琴实际弹下中央 C");

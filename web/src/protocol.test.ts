@@ -3,8 +3,13 @@ import { decodeDeviceMessage } from "./protocol";
 
 const status = {
   t: "status",
-  protocol: 5,
-  firmware: "0.6.4",
+  protocol: 6,
+  firmware: "0.7.0",
+  controlSessionReady: true,
+  controlAuthorized: true,
+  accessPointClient: true,
+  defaultPassword: false,
+  controlToken: "boot-token-0123456789",
   piano: true,
   clients: 1,
   brightness: 2,
@@ -13,6 +18,7 @@ const status = {
   usbVid: 0x07cf,
   usbPid: 0x6802,
   usbOutputMirrorCandidates: 3,
+  webAuthRejected: 2,
   ledInputLatencyLastUs: 840,
   ledInputLatencyAvgUs: 790,
   ledInputLatencyMaxUs: 1210,
@@ -26,6 +32,9 @@ describe("device protocol decoder", () => {
     if (!result.ok || result.message.kind !== "status") return;
     expect(result.message.value.usbVid).toBe(0x07cf);
     expect(result.message.value.usbOutputMirrorCandidates).toBe(3);
+    expect(result.message.value.controlAuthorized).toBe(true);
+    expect(result.message.value.controlToken).toBe("boot-token-0123456789");
+    expect(result.message.value.webAuthRejected).toBe(2);
     expect(result.message.value.ledInputLatencyAvgUs).toBe(790);
   });
 

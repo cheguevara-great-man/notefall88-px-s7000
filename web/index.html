@@ -230,13 +230,15 @@
         </form>
         <hr />
         <h3>设备维护</h3>
-        <p>更新只允许从设备自己的 <code>NoteFall-88</code> 热点发起，并再次校验热点密码。更新时钢琴伴奏会急停、灯光会熄灭；看到“设备确认成功”前不要断电。</p>
+        <p>热点内自动允许练习控制；从家庭 Wi-Fi 打开时，灯光、校准和 MIDI OUT 默认只读，需用当前热点密码解锁本标签页。更新仍只允许从 <code>NoteFall-88</code> 热点发起。密码不会写入曲库、练习记录或导出文件。</p>
         <form id="ap-password-form" class="maintenance-grid">
           <input class="visually-hidden" name="username" value="NoteFall-88" autocomplete="username" tabindex="-1" aria-hidden="true" />
           <input id="ap-current-password" type="password" placeholder="当前热点密码" autocomplete="current-password" />
           <input id="ap-new-password" type="password" placeholder="新热点密码（UTF-8 共 8–63 字节）" autocomplete="new-password" />
+          <button id="control-unlock" type="button">解锁本标签页控制</button>
           <button type="submit">修改热点密码</button>
         </form>
+        <div id="control-auth-status" class="library-summary">热点内自动授权；通过家庭 Wi-Fi 打开时需解锁控制。</div>
         <form id="update-form" class="maintenance-grid">
           <select id="update-target">
             <option value="firmware">固件 firmware.bin</option>
@@ -261,6 +263,8 @@
           <div><dt>疑似输出镜像</dt><dd id="diag-output-mirror">--</dd></div>
           <div><dt>连接次数</dt><dd id="diag-connections">--</dd></div>
           <div><dt>拒绝消息 ESP / 浏览器</dt><dd id="diag-web-rejected">--</dd></div>
+          <div><dt>控制认证失败</dt><dd id="diag-auth-rejected">--</dd></div>
+          <div><dt>热点安全</dt><dd id="diag-hotspot-security">--</dd></div>
           <div><dt>网页 MIDI 丢弃</dt><dd id="diag-web-midi-dropped">--</dd></div>
           <div><dt>USB→灯内部延迟</dt><dd id="diag-led-latency">--</dd></div>
           <div><dt>可用内存</dt><dd id="diag-heap">--</dd></div>
@@ -280,7 +284,7 @@
           <button id="commissioning-close" aria-label="关闭">关闭</button>
         </div>
         <p>这里不会替你“假装验收”。断电项目由你确认；ESP、USB 端点和中央 C 必须由设备实际观测到，证据齐全后才能完成。</p>
-        <div class="commission-progress"><span id="commission-progress-label">0 / 12</span><progress id="commission-progress" max="12" value="0"></progress></div>
+        <div class="commission-progress"><span id="commission-progress-label">0 / 13</span><progress id="commission-progress" max="13" value="0"></progress></div>
 
         <section class="commission-step">
           <div class="step-number">1</div>
@@ -299,6 +303,7 @@
             <h3>设备与钢琴 USB</h3>
             <dl class="diagnostic-grid">
               <div><dt>ESP 链路</dt><dd id="commission-device">等待实际连接</dd></div>
+              <div><dt>控制密码</dt><dd id="commission-security">等待设备状态</dd></div>
               <div><dt>PX-S7000</dt><dd id="commission-piano">等待 USB 枚举</dd></div>
               <div><dt>MIDI IN</dt><dd id="commission-in">--</dd></div>
               <div><dt>MIDI OUT</dt><dd id="commission-out">可选 / --</dd></div>

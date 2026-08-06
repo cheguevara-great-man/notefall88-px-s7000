@@ -44,7 +44,7 @@
 
 ### 1. 只烧录 ESP32
 
-电脑接开发板 `UART/USB-to-UART` 口，按 [烧录说明](flashing.md) 写入固件和 LittleFS。手机应看到 `NoteFall-88` 热点并能打开 `http://192.168.4.1`。
+电脑接开发板 `UART/USB-to-UART` 口，按 [烧录说明](flashing.md) 写入固件和 LittleFS。手机应看到 `NoteFall-88` 热点并能打开 `http://192.168.4.1`。首次密码是 `notefall88`；进入后立即在“设备维护”修改它，确认诊断显示“已修改默认密码”。
 
 ### 2. 只验证钢琴 USB
 
