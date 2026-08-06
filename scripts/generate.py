@@ -297,15 +297,27 @@ def generate(check: bool = False) -> dict[str, Any]:
         # then separately prove that every committed manufacturing file matches
         # its committed hash. This detects stale or tampered artifacts without
         # pretending cross-platform CAD bytes are identical.
-        def semantic(value: dict[str, Any]) -> dict[str, Any]:
-            result = dict(value)
-            result["files"] = [entry["file"] for entry in value["files"]]
-            return result
-
-        if semantic(manifest) != semantic(committed_manifest):
-            raise RuntimeError(
-                "generated CAD metadata is stale; run python scripts/generate.py"
-            )
+        exact_keys = (
+            "schema_version", "config_sha256", "layout_sha256",
+            "power_budget_sha256", "layout", "keyboard_mount", "print_quantities",
+        )
+        if any(manifest[key] != committed_manifest.get(key) for key in exact_keys):
+            raise RuntimeError("generated engineering metadata is stale; run python scripts/generate.py")
+        if [entry["file"] for entry in manifest["files"]] != [
+            entry["file"] for entry in committed_manifest.get("files", [])
+        ]:
+            raise RuntimeError("generated CAD file set is stale; run python scripts/generate.py")
+        if set(manifest["parts"]) != set(committed_manifest.get("parts", {})):
+            raise RuntimeError("generated CAD part set is stale; run python scripts/generate.py")
+        for part_name, candidate_bounds in manifest["parts"].items():
+            committed_bounds = committed_manifest["parts"][part_name]
+            for metric in ("x_mm", "y_mm", "z_mm"):
+                if abs(candidate_bounds[metric] - committed_bounds.get(metric, float("inf"))) > 0.01:
+                    raise RuntimeError(f"generated CAD bounds are stale: {part_name}.{metric}")
+            # OpenCascade's triangulation/boolean volume differs by tiny
+            # floating-point amounts across operating systems.
+            if abs(candidate_bounds["volume_mm3"] - committed_bounds.get("volume_mm3", float("inf"))) > 1.0:
+                raise RuntimeError(f"generated CAD volume is stale: {part_name}")
         for entry in committed_manifest["files"]:
             path = EXPORT_DIR / entry["file"]
             if not path.is_file() or sha256(path) != entry["sha256"]:
