@@ -19,6 +19,7 @@
 #include "app_config.h"
 #include "control_policy.h"
 #include "layout_generated.h"
+#include "midi_core.h"
 
 namespace {
 
@@ -76,8 +77,7 @@ WebServer http(kHttpPort);
 WebSocketsServer websocket(kWebSocketPort);
 Preferences preferences;
 NoteState notes[kNoteCount];
-uint8_t pendingVelocityLsb[16] = {};
-bool pendingVelocityLsbValid[16] = {};
+notefall::midi::HighResolutionVelocityTracker velocityTracker;
 
 bool pianoConnected = false;
 bool mdnsStarted = false;
@@ -178,15 +178,12 @@ bool constantTimeEquals(const String& first, const String& second) {
 size_t noteIndex(uint8_t note) { return static_cast<size_t>(note - kFirstMidiNote); }
 
 int mappedPixel(uint8_t note) {
-  if (!validNote(note)) return -1;
-  const size_t index = noteIndex(note);
-  int pixel = static_cast<int>(kPixelByNote[index]) + pixelOffset + keyPixelOffsets[index];
-  if (stripReversed) pixel = static_cast<int>(kPixelCount) - 1 - pixel;
-  return pixel >= 0 && pixel < static_cast<int>(kPixelCount) ? pixel : -1;
+  return notefall::midi::mapPixel(note, kFirstMidiNote, kLastMidiNote, kPixelCount,
+                                  kPixelByNote, keyPixelOffsets, pixelOffset, stripReversed);
 }
 
 bool timeReached(uint32_t now, uint32_t target) {
-  return static_cast<int32_t>(now - target) >= 0;
+  return notefall::midi::timeReached(now, target);
 }
 
 bool validOutputMessage(uint8_t status, uint8_t data1, uint8_t data2) {
@@ -339,6 +336,7 @@ void sendStatus(uint8_t client = 255) {
   doc["resetReason"] = resetReasonName(bootResetReason);
   doc["usbPackets"] = usb.packetsReceived;
   doc["usbDropped"] = usb.packetsDropped;
+  doc["usbMalformed"] = usb.packetsMalformed;
   doc["usbErrors"] = usb.transferErrors;
   doc["usbConnections"] = usb.connections;
   doc["usbLastPacketMs"] = usb.lastPacketMs;
@@ -458,10 +456,12 @@ void flushBrowserMidi() {
 
 void handleMidiPacket(void*, const uint8_t data[4], uint64_t receivedUs) {
   if (data == nullptr) return;
-  const uint8_t status = data[1];
-  const uint8_t command = status & 0xF0;
-  const uint8_t firstData = data[2];
-  const uint8_t secondData = data[3];
+  notefall::midi::DecodedMessage decoded;
+  if (!notefall::midi::decodeUsbEventPacket(data, decoded)) return;
+  const uint8_t status = decoded.status;
+  const uint8_t command = decoded.command;
+  const uint8_t firstData = decoded.data1;
+  const uint8_t secondData = decoded.data2;
   const uint32_t timestampMs = static_cast<uint32_t>(receivedUs / 1000U);
   // PX-S7000 received messages target its sound-generator parts; the official
   // MIDI implementation does not define a MIDI Thru path back to its output.
@@ -469,13 +469,12 @@ void handleMidiPacket(void*, const uint8_t data[4], uint64_t receivedUs) {
   // discard an indistinguishable real key press based on timing heuristics.
   observeOutputMirrorCandidate(status, firstData, secondData, millis());
   if ((command == 0x80 || command == 0x90) && !validNote(firstData)) return;
-  const uint8_t channel = static_cast<uint8_t>((status & 0x0F) + 1);
-  const uint8_t channelIndex = static_cast<uint8_t>(channel - 1);
-  const bool hasHighResolutionVelocity = pendingVelocityLsbValid[channelIndex]
-      && (command == 0x80 || command == 0x90);
-  const uint16_t highResolutionVelocity = static_cast<uint16_t>(
-      (static_cast<uint16_t>(secondData) << 7U) | pendingVelocityLsb[channelIndex]);
-  if (hasHighResolutionVelocity) pendingVelocityLsbValid[channelIndex] = false;
+  const uint8_t channel = decoded.channel;
+  const auto highResolution = (command == 0x80 || command == 0x90)
+      ? velocityTracker.consumeForNote(channel, secondData)
+      : notefall::midi::HighResolutionVelocity{};
+  const bool hasHighResolutionVelocity = highResolution.valid;
+  const uint16_t highResolutionVelocity = highResolution.value;
   if (command == 0x90 && secondData > 0) {
     const uint8_t note = firstData;
     notes[noteIndex(note)].pressed = true;
@@ -492,8 +491,7 @@ void handleMidiPacket(void*, const uint8_t data[4], uint64_t receivedUs) {
                      highResolutionVelocity, hasHighResolutionVelocity);
   } else if (command == 0xB0) {
     if (firstData == 88) {
-      pendingVelocityLsb[channelIndex] = secondData;
-      pendingVelocityLsbValid[channelIndex] = true;
+      velocityTracker.observeControl(channel, firstData, secondData);
     }
     if (firstData == 120 || firstData == 123) {
       for (auto& note : notes) note.pressed = false;
@@ -510,7 +508,7 @@ void onPianoConnected(void*) {
 
 void onPianoDisconnected(void*) {
   pianoConnected = false;
-  std::fill(std::begin(pendingVelocityLsbValid), std::end(pendingVelocityLsbValid), false);
+  velocityTracker.clear();
   midiOutOwner = -1;
   scheduledMidiCount = 0;
   for (auto& probe : outputMirrorProbes) probe.expiresMs = 0;

@@ -54,6 +54,7 @@ export interface DeviceStatus {
   resetReason?: string;
   usbPackets?: number;
   usbDropped?: number;
+  usbMalformed?: number;
   usbErrors?: number;
   usbConnections?: number;
   usbLastPacketMs?: number;

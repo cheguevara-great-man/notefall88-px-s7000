@@ -4,6 +4,8 @@
 #include <cstring>
 #include <esp_timer.h>
 
+#include "midi_core.h"
+
 namespace notefall {
 
 #ifdef CONFIG_USB_HOST_ENABLE_ENUM_FILTER_CALLBACK
@@ -123,26 +125,8 @@ bool UsbMidiHost::enqueueOutput(const uint8_t packet[4]) {
 
 bool UsbMidiHost::sendMidiMessage(uint8_t status, uint8_t data1, uint8_t data2) {
   if (!outputAvailable()) return false;
-  const uint8_t command = status & 0xF0U;
-  uint8_t cin = 0;
-  switch (command) {
-    case 0x80:
-    case 0x90:
-    case 0xA0:
-    case 0xB0:
-    case 0xE0:
-      cin = command >> 4U;
-      break;
-    case 0xC0:
-    case 0xD0:
-      cin = command >> 4U;
-      data2 = 0;
-      break;
-    default:
-      return false;
-  }
-  const uint8_t packet[4]{cin, status, static_cast<uint8_t>(data1 & 0x7FU),
-                          static_cast<uint8_t>(data2 & 0x7FU)};
+  uint8_t packet[4]{};
+  if (!midi::encodeUsbEventPacket(status, data1, data2, packet)) return false;
   return enqueueOutput(packet);
 }
 
@@ -358,7 +342,15 @@ void UsbMidiHost::inputTransferComplete(usb_transfer_t* transfer) {
     const uint64_t receivedUs = static_cast<uint64_t>(esp_timer_get_time());
     for (int offset = 0; offset + 4 <= transfer->actual_num_bytes; offset += 4) {
       const uint8_t* packet = transfer->data_buffer + offset;
-      if ((packet[0] & 0x0F) == 0) continue;
+      midi::DecodedMessage decoded;
+      const midi::PacketResult packetResult = midi::classifyUsbEventPacket(packet, decoded);
+      if (packetResult == midi::PacketResult::Malformed) {
+        portENTER_CRITICAL(&host->queueMux_);
+        ++host->diagnostics_.packetsMalformed;
+        portEXIT_CRITICAL(&host->queueMux_);
+        continue;
+      }
+      if (packetResult == midi::PacketResult::UnsupportedSystem) continue;
       portENTER_CRITICAL(&host->queueMux_);
       ++host->diagnostics_.packetsReceived;
       host->diagnostics_.lastPacketMs = millis();

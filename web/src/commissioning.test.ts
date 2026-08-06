@@ -53,6 +53,16 @@ describe("commissioning evidence", () => {
     expect(state.observed.passwordChanged).toBe(false);
   });
 
+  it("combines dropped, malformed and transfer counters into blocking USB evidence", () => {
+    const state = observeDevice(newCommissioningState(), {
+      piano: true, clients: 1, brightness: 2, offset: 0, reversed: false,
+      firmware: "0.7.0", protocol: 6, defaultPassword: false,
+      usbPackets: 10, usbDropped: 2, usbMalformed: 3, usbErrors: 4,
+    });
+    expect(state.observed.inputErrors).toBe(9);
+    expect(missingCommissioningEvidence(state)).toContain("USB 输入错误必须归零");
+  });
+
   it("round-trips normalized storage and rejects corrupt versions", () => {
     const target = storage();
     const state = newCommissioningState();

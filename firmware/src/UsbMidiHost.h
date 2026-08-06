@@ -20,6 +20,7 @@ class UsbMidiHost {
   struct Diagnostics {
     uint32_t packetsReceived = 0;
     uint32_t packetsDropped = 0;
+    uint32_t packetsMalformed = 0;
     uint32_t transferErrors = 0;
     uint32_t connections = 0;
     uint32_t lastPacketMs = 0;

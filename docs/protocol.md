@@ -30,7 +30,7 @@ ESP 返回 `status`；只有授权会话才返回 `calibration`、逐键 MIDI �
 - `controlSessionReady`、`controlAuthorized`、`accessPointClient`、`webAuthRejected`；已授权 STA 的个性化状态还包含 `controlToken`，未授权或 SoftAP 客户端不返回该字段；
 - `usbVid`、`usbPid`、`usbEndpoint`、`usbPacketSize`；
 - `usbOut`、`usbOutEndpoint`、`usbOutPacketSize`；
-- `usbPackets`、`usbDropped`、`usbErrors`；
+- `usbPackets`、`usbDropped`、`usbMalformed`、`usbErrors`；其中 `usbMalformed` 只统计 CIN/status/data 边界不一致的坏包，合法但产品不消费的 SysEx、时钟与 Active Sensing 会被安全忽略而不误报；
 - `usbOutPackets`、`usbOutDropped`、`usbOutErrors`、`usbOutQueued`、`usbOutputMirrorCandidates`、`usbOutOwned`；
 - `ledInputLatencyLastUs`、`ledInputLatencyAvgUs`、`ledInputLatencyMaxUs`、`ledInputLatencySamples`；
 - `webMidiDropped`、`brightness`、`offset`、`reversed`、内存、NVS 状态、启动复位原因、运行时间和 RSSI。

@@ -26,14 +26,16 @@ cd ..
 - 网页：`http://192.168.4.1`
 - 家庭 Wi-Fi 下：`http://notefall.local`（取决于路由器/客户端 mDNS）
 - WebSocket：端口 `81`
-- 固件：0.6.4
-- 协议：v5
+- 固件：0.7.1
+- 协议：v6
 
 亮度上限 `4/31` 写在生成头文件中。修改网页滑块不能越过该值。
 
 ## 实机诊断
 
-网页“灯带校准 → 设备诊断”显示 USB VID/PID、MIDI IN/OUT 端点与包长、双向累计包数、OUT 排程深度、队列丢包、传输错误、疑似输出镜像、USB 回调到 SPI 完成的内部延迟、ESP/浏览器拒绝消息、网页 MIDI 丢弃、连接次数、空闲堆、PSRAM、NVS、上次复位原因和 Wi-Fi RSSI。疑似镜像只计数，绝不吞掉无法与真实弹奏区分的输入。N8R8 启动时会检查 OPI PSRAM；网页应显示约 8 MiB 总量。正常连续弹奏和跟随伴奏时两组 `丢包 / 错误`、网页 MIDI 丢弃和两侧拒绝数都应保持 0，并且不得出现 `brownout`、`panic` 或 `watchdog` 复位。
+网页“灯带校准 → 设备诊断”显示 USB VID/PID、MIDI IN/OUT 端点与包长、双向累计包数、OUT 排程深度、输入队列丢包/CIN 坏包/传输错误、疑似输出镜像、USB 回调到 SPI 完成的内部延迟、ESP/浏览器拒绝消息、网页 MIDI 丢弃、连接次数、空闲堆、PSRAM、NVS、上次复位原因和 Wi-Fi RSSI。合法但不消费的 SysEx、时钟和 Active Sensing 会被忽略而不计为坏包；疑似镜像只计数，绝不吞掉无法与真实弹奏区分的输入。N8R8 启动时会检查 OPI PSRAM；网页应显示约 8 MiB 总量。正常连续弹奏和跟随伴奏时输入侧 `丢包 / 坏包 / 传输错误`、输出侧 `丢包 / 错误`、网页 MIDI 丢弃和两侧拒绝数都应保持 0，并且不得出现 `brownout`、`panic` 或 `watchdog` 复位。
+
+`firmware/include/midi_core.h` 是目标固件实际使用且不依赖 Arduino 的实时核心。`python -m pytest tests/test_firmware_core_native.py` 会以主机 `g++` 的严格警告选项编译并执行它；这不是另写的模拟器。随后仍必须用 PlatformIO 的 Xtensa 工具链构建完整固件。
 
 USB Host 传输回调运行在专用 FreeRTOS 任务：IN 回调只打微秒时间戳、写入固定长度环形队列和原子诊断计数，OUT 由另一固定队列批量提交且同一端点最多一个在途传输。`poll()` 在 Arduino 主任务中合并同批 MIDI，先完成一帧灯带 SPI，再从 64 项固定网页事件队列广播；网络库不会从 USB 任务中被调用，也不会排在实体灯帧之前。网页只传相对时间事件，固件以 `millis()` 排程；网页失联会执行 16 通道 Sustain Off 与 All Notes Off。
 

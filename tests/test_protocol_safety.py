@@ -108,9 +108,10 @@ def test_output_mirror_heuristic_never_discards_real_keyboard_input() -> None:
 def test_high_resolution_velocity_prefix_is_channel_scoped_and_backward_compatible() -> None:
     source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
     handler = source[source.index("void handleMidiPacket") : source.index("void onPianoConnected")]
-    assert "pendingVelocityLsb[16]" in source
-    assert "pendingVelocityLsbValid[16]" in source
-    assert "firstData == 88" in handler
-    assert "secondData) << 7U" in handler
+    assert "notefall::midi::HighResolutionVelocityTracker velocityTracker" in source
+    assert "velocityTracker.observeControl(channel, firstData, secondData)" in handler
+    assert "velocityTracker.consumeForNote(channel, secondData)" in handler
+    assert "velocityTracker.clear()" in source
+    assert "pendingVelocityLsb" not in source
     assert 'doc["v"] = velocity' in source
     assert 'doc["vh"] = highResolutionVelocity' in source

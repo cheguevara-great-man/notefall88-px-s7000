@@ -1492,7 +1492,8 @@ device.onStatus((status: DeviceStatus) => {
     ? `0x${formatHex(status.usbOutEndpoint, 2)} / ${status.usbOutPacketSize ?? "--"} B`
     : (status.piano ? "设备未提供" : "--");
   required("diag-packets").textContent = String(status.usbPackets ?? "--");
-  required("diag-errors").textContent = `${status.usbDropped ?? "--"} / ${status.usbErrors ?? "--"}`;
+  required("diag-errors").textContent =
+    `${status.usbDropped ?? "--"} / ${status.usbMalformed ?? "--"} / ${status.usbErrors ?? "--"}`;
   required("diag-out-packets").textContent = `${status.usbOutPackets ?? "--"} / ${status.usbOutQueued ?? "--"}`;
   required("diag-out-errors").textContent = `${status.usbOutDropped ?? "--"} / ${status.usbOutErrors ?? "--"}`;
   required("diag-output-mirror").textContent = String(status.usbOutputMirrorCandidates ?? "--");

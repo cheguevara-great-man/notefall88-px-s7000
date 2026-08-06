@@ -37,3 +37,13 @@ def test_first_build_handoff_links_every_manufacturing_source() -> None:
         "flashing.md",
     ):
         assert required in handoff
+
+
+def test_firmware_readme_version_and_protocol_match_source() -> None:
+    config = (ROOT / "firmware" / "include" / "app_config.h").read_text(encoding="utf-8")
+    readme = (ROOT / "firmware" / "README.md").read_text(encoding="utf-8")
+    version = re.search(r'kFirmwareVersion\[\] = "([^"]+)"', config)
+    protocol = re.search(r"kProtocolVersion = (\d+)", config)
+    assert version is not None and protocol is not None
+    assert f"- 固件：{version.group(1)}" in readme
+    assert f"- 协议：v{protocol.group(1)}" in readme

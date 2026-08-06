@@ -125,7 +125,12 @@ export function observeDevice(
   if (!(next.observed.inputPackets && next.observed.inputPackets > 0)) {
     next.observed.inputPackets = status.usbPackets ?? next.observed.inputPackets;
   }
-  next.observed.inputErrors = status.usbErrors ?? next.observed.inputErrors;
+  const inputCounters = [status.usbDropped, status.usbMalformed, status.usbErrors];
+  if (inputCounters.some((value) => value !== undefined)) {
+    next.observed.inputErrors = inputCounters.reduce<number>(
+      (total, value) => total + (value ?? 0), 0,
+    );
+  }
   if (next.completedAt && next.completedFirmware && status.firmware
       && next.completedFirmware !== status.firmware) {
     next.completedAt = undefined;
