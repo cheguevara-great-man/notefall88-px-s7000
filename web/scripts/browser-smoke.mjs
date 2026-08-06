@@ -61,6 +61,16 @@ function evaluate(expression) {
   return typeof parsed === "string" ? JSON.parse(parsed) : parsed;
 }
 
+async function waitForCondition(expression, message, attempts = 80) {
+  let last = false;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    last = evaluate(expression);
+    if (last) return;
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+  }
+  throw new Error(`${message}; last value: ${JSON.stringify(last)}`);
+}
+
 async function waitForServer() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     try {
@@ -137,6 +147,14 @@ try {
   const importRef = refFor(page, /generic \[ref=(e\d+)\][^\n]*: 导入乐谱/, "score import control");
   command(["click", importRef]);
   command(["upload", join(WEB, "test-fixtures", "parser-etude.musicxml")]);
+  await waitForCondition(
+    `() => JSON.stringify(
+      document.querySelector('#score-name')?.textContent === 'Parser Etude · 4 音符'
+      && document.querySelector('#score-time')?.textContent === '00:00 / 00:04'
+      && Boolean(document.querySelector('#sheet-view svg'))
+    )`,
+    "MusicXML import and OSMD rendering did not finish before the deadline",
+  );
   page = snapshot();
   assert(page.includes("Parser Etude · 4 音符"), "MusicXML score summary is missing or incorrect");
   assert(page.includes('option "五线谱" [selected]'), "MusicXML import did not select sheet view");

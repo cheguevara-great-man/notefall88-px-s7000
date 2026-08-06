@@ -279,18 +279,37 @@ def generate(check: bool = False) -> dict[str, Any]:
             (candidate_generated / "layout.json", GENERATED_DIR / "layout.json"),
             (candidate_generated / "power_budget.json", GENERATED_DIR / "power_budget.json"),
             (candidate_header, FIRMWARE_HEADER),
-            (candidate_exports / "manifest.json", EXPORT_DIR / "manifest.json"),
         ]
-        pairs.extend(
-            (candidate_exports / entry["file"], EXPORT_DIR / entry["file"])
-            for entry in manifest["files"]
-        )
         for candidate, committed in pairs:
             if not committed.is_file() or candidate.read_bytes() != committed.read_bytes():
                 relative = committed.relative_to(ROOT)
                 raise RuntimeError(
                     f"generated artifact is stale: {relative}; run python scripts/generate.py"
                 )
+
+        committed_manifest_path = EXPORT_DIR / "manifest.json"
+        if not committed_manifest_path.is_file():
+            raise RuntimeError("generated artifact is stale: mechanical/exports/manifest.json")
+        committed_manifest = json.loads(committed_manifest_path.read_text(encoding="utf-8"))
+
+        # OpenCascade serializes equivalent STL/STEP solids differently across
+        # Windows and Linux. Compare platform-neutral geometry/config metadata,
+        # then separately prove that every committed manufacturing file matches
+        # its committed hash. This detects stale or tampered artifacts without
+        # pretending cross-platform CAD bytes are identical.
+        def semantic(value: dict[str, Any]) -> dict[str, Any]:
+            result = dict(value)
+            result["files"] = [entry["file"] for entry in value["files"]]
+            return result
+
+        if semantic(manifest) != semantic(committed_manifest):
+            raise RuntimeError(
+                "generated CAD metadata is stale; run python scripts/generate.py"
+            )
+        for entry in committed_manifest["files"]:
+            path = EXPORT_DIR / entry["file"]
+            if not path.is_file() or sha256(path) != entry["sha256"]:
+                raise RuntimeError(f"manufacturing artifact hash mismatch: {path.relative_to(ROOT)}")
         return manifest
 
 
