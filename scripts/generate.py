@@ -194,10 +194,18 @@ def generate_into(
     firmware_header.parent.mkdir(parents=True, exist_ok=True)
     layout_path = generated_dir / "layout.json"
     power_path = generated_dir / "power_budget.json"
-    layout_path.write_text(json.dumps(layout, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    layout_path.write_text(
+        json.dumps(layout, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     power_budget = build_power_budget(config)
-    power_path.write_text(json.dumps(power_budget, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    firmware_header.write_text(render_header(config, layout), encoding="utf-8")
+    power_path.write_text(
+        json.dumps(power_budget, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    firmware_header.write_text(render_header(config, layout), encoding="utf-8", newline="\n")
 
     parts = build_parts(config)
     part_manifest: dict[str, Any] = {}
@@ -241,7 +249,11 @@ def generate_into(
         "files": files,
     }
     manifest_path = export_dir / "manifest.json"
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
     if check_constraints:
         for name, size in part_manifest.items():

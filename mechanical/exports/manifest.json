@@ -1,8 +1,8 @@
 {
   "schema_version": 3,
   "config_sha256": "1b592abc8a026c69819de15b59524793624b71c4c939e04b92cb99147ac7942d",
-  "layout_sha256": "43766ee141f3c6dd8b4b2f156b038c4ca954d6a17bb07b08a8d3222ee70a504d",
-  "power_budget_sha256": "0f9dd7e68427af64f5aa3e87b57ba81169aa39a6ac81a478d995f54b9ae736cc",
+  "layout_sha256": "b5254aa8a40624f2b9f8ec1fd39bd18f64f34ffe4d9bc192521cba025cc26ee2",
+  "power_budget_sha256": "a5c93fd293503f49b839a4525cc167763322489e32c4b58a12879f43b9b7cdc8",
   "layout": {
     "notes": 88,
     "pixels": 176,
