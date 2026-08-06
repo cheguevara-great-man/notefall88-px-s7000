@@ -8,6 +8,8 @@ web/node_modules/
 web/coverage/
 web/dist/
 web/*.tsbuildinfo
+/dist/
+/firmware/compile_commands.json
 tmp/
 output/
 .playwright-cli/

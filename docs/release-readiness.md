@@ -19,11 +19,11 @@ NoteFall 88 只有在数字门禁全部自动通过后才能生成候选包；�
 | 390×844 手机 + 1280×900 桌面布局、STA 控制解锁表单、MusicXML 文件选择器与 OSMD 谱面 | 固定 `@playwright/cli 0.1.17`，Chromium + WebKit 双引擎 `smoke:browser`，GitHub CI 上传截图/快照 | 两个引擎、两个视口均无横向溢出；手机练习抽屉和关闭按钮完整位于视口内；设置页真实填写短密码并显示 8–63 字节边界；真实导入 Parser Etude 后显示 4 音符、4 秒与非空五线谱；不把桌面 WebKit 冒充真 iOS 实机 |
 | README/装机/制造文档本地链接 | Python 文档门禁 | 全部可解析 |
 | 嵌入资源可解析且 `<500 KiB` | Python 资源测试 + `buildfs` 反向列表 | 通过 |
-| ESP32 固件链接 | 仓库内固定 N8R8 板型清单 + PlatformIO；项目源码启用 `-Wall -Wextra -Werror` | 精确识别 8 MB Flash + 8 MB Octal PSRAM；RAM 17.2%，Flash 34.7%，零编译警告 |
-| OTA 与制造包可重复且许可证随包分发 | 双次打包 SHA-256 相同；LICENSE/THIRD_PARTY_NOTICES 逐文件哈希 | 通过 |
+| ESP32 固件链接 | 仓库内固定 N8R8 板型清单 + PlatformIO；项目源码启用 `-Wall -Wextra -Werror` | 精确识别 8 MB Flash + 8 MB Octal PSRAM；RAM 17.2%，Flash 34.8%，零编译警告 |
+| OTA、单文件首刷与制造包可重复且许可证随包分发 | 双次打包 SHA-256 相同；factory 镜像组件偏移/分区上限/篡改拒绝、标签与固件版本一致性、LICENSE/THIRD_PARTY_NOTICES 逐文件哈希 | 通过 |
 | 私密现场照片不进入发布包 | 制造清单显式为 false + Git 路径审计 | 通过 |
 
-GitHub Actions 在每次 push/PR 重跑 G0，并产出 `notefall88-manufacturing` 工件；`v*` 标签另外产出带 SHA-256 清单的 OTA 包与制造包。
+GitHub Actions 在每次 push/PR 重跑 G0，并产出 `notefall88-manufacturing` 工件；合法 `vMAJOR.MINOR.PATCH[-rc.N]` 标签另外产出带 SHA-256 清单的 OTA 包、单文件 N8R8 首刷包与制造包。`-rc.N` 标签强制标为 GitHub Pre-release，且版本号必须与固件一致。
 
 工作流使用 Node 24 运行时的 `checkout@v6`、`setup-node@v6`、`setup-python@v6` 和 `upload-artifact@v6`；GitHub 托管 runner 满足其最低版本，不保留已弃用的 Node 20 Action 运行时警告。
 

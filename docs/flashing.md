@@ -1,5 +1,15 @@
 # 刷机与首次使用
 
+## 推荐：使用发布页单文件首刷包
+
+全新乐鑫官方 `ESP32-S3-DevKitC-1 N8R8` 可直接从 [GitHub Releases](https://github.com/cheguevara-great-man/notefall88-px-s7000/releases) 下载 `notefall88-factory-<版本>.zip`。完整解压后阅读包内 `FLASHING.md`，安装固定版本 esptool，再运行：
+
+```powershell
+python flash_factory.py --port COM5
+```
+
+该路径只需 Python，不需要克隆源码、Node、CadQuery 或 PlatformIO。脚本先验证板型、镜像大小与 SHA-256，明确输入 `ERASE` 后才擦除目标板，并以单一地址 `0x0` 写入包含 bootloader、分区表、OTA 初始数据、固件和 LittleFS 的合并镜像。它不会自动猜串口。以下源码构建流程用于开发、审计和故障恢复。
+
 ## 自动构建
 
 在仓库根目录执行：

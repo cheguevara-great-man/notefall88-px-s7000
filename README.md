@@ -68,6 +68,8 @@ MusicXML 的当前支持范围、目标时间线与 OSMD 谱面之间的边界�
 
 ## 从这里开始
 
+全新乐鑫 N8R8 开发板无需先安装完整 PlatformIO：从 [GitHub Releases](https://github.com/cheguevara-great-man/notefall88-px-s7000/releases) 下载对应版本的 `notefall88-factory-*.zip`，完整解压并按包内 `FLASHING.md` 操作。脚本会验证板型、文件大小和 SHA-256，再要求明确确认后擦写。
+
 1. 照片审查已确认琴键后方约 18–22 mm 固定立面可容纳 12 mm 灯带；下单后按 [一次性现场复核](docs/measurements.md) 用纸条做无接触安装验收，不需要打印试件或购买额外灯带。
 2. 按 [BOM](docs/bom.csv) 买最终件，再按 [装配说明](docs/assembly.md) 让卖家代焊线束并组装。
 3. 按 [刷机说明](docs/flashing.md) 首次写入固件和网页，并立即修改默认热点密码。

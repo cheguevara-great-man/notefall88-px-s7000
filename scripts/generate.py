@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -174,7 +175,12 @@ def bounds(part: cq.Workplane) -> dict[str, float]:
     }
 
 
-def generate(check: bool = False) -> dict[str, Any]:
+def generate_into(
+    generated_dir: Path,
+    export_dir: Path,
+    firmware_header: Path,
+    check_constraints: bool,
+) -> dict[str, Any]:
     config = load_config()
     layout = build_layout(config)
     led_pitch = float(layout["led_pitch_mm"])
@@ -183,15 +189,15 @@ def generate(check: bool = False) -> dict[str, Any]:
     if len(set(layout["pixel_by_note"])) != 88:
         raise RuntimeError("two piano keys map to the same primary pixel")
 
-    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    FIRMWARE_HEADER.parent.mkdir(parents=True, exist_ok=True)
-    layout_path = GENERATED_DIR / "layout.json"
-    power_path = GENERATED_DIR / "power_budget.json"
+    generated_dir.mkdir(parents=True, exist_ok=True)
+    export_dir.mkdir(parents=True, exist_ok=True)
+    firmware_header.parent.mkdir(parents=True, exist_ok=True)
+    layout_path = generated_dir / "layout.json"
+    power_path = generated_dir / "power_budget.json"
     layout_path.write_text(json.dumps(layout, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     power_budget = build_power_budget(config)
     power_path.write_text(json.dumps(power_budget, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    FIRMWARE_HEADER.write_text(render_header(config, layout), encoding="utf-8")
+    firmware_header.write_text(render_header(config, layout), encoding="utf-8")
 
     parts = build_parts(config)
     part_manifest: dict[str, Any] = {}
@@ -201,7 +207,7 @@ def generate(check: bool = False) -> dict[str, Any]:
             raise RuntimeError(f"invalid solid: {name}")
         part_manifest[name] = bounds(part)
         for suffix in ("stl", "step"):
-            path = EXPORT_DIR / f"{name}.{suffix}"
+            path = export_dir / f"{name}.{suffix}"
             exporters.export(part, str(path), tolerance=0.025, angularTolerance=0.12)
             if suffix == "step":
                 normalize_step_header(path)
@@ -234,10 +240,10 @@ def generate(check: bool = False) -> dict[str, Any]:
         "parts": part_manifest,
         "files": files,
     }
-    manifest_path = EXPORT_DIR / "manifest.json"
+    manifest_path = export_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    if check:
+    if check_constraints:
         for name, size in part_manifest.items():
             if size["x_mm"] > 220.0 or size["y_mm"] > 220.0:
                 raise RuntimeError(f"{name} exceeds a 220x220 mm printer: {size}")
@@ -252,6 +258,40 @@ def generate(check: bool = False) -> dict[str, Any]:
         if power_budget["worst_branch_drop_percent"] > float(config["power"]["max_voltage_drop_percent"]):
             raise RuntimeError("power injection voltage drop exceeds configured limit")
     return manifest
+
+
+def generate(check: bool = False) -> dict[str, Any]:
+    if not check:
+        return generate_into(GENERATED_DIR, EXPORT_DIR, FIRMWARE_HEADER, True)
+
+    # A check must not rewrite committed manufacturing files. Generate an
+    # independent candidate tree and compare bytes so CI can detect stale
+    # artifacts without racing virus scanners, editors, or parallel jobs.
+    with tempfile.TemporaryDirectory(prefix="notefall-generate-") as temporary:
+        candidate_root = Path(temporary)
+        candidate_generated = candidate_root / "generated"
+        candidate_exports = candidate_root / "mechanical" / "exports"
+        candidate_header = candidate_root / "firmware" / "include" / FIRMWARE_HEADER.name
+        manifest = generate_into(
+            candidate_generated, candidate_exports, candidate_header, True
+        )
+        pairs = [
+            (candidate_generated / "layout.json", GENERATED_DIR / "layout.json"),
+            (candidate_generated / "power_budget.json", GENERATED_DIR / "power_budget.json"),
+            (candidate_header, FIRMWARE_HEADER),
+            (candidate_exports / "manifest.json", EXPORT_DIR / "manifest.json"),
+        ]
+        pairs.extend(
+            (candidate_exports / entry["file"], EXPORT_DIR / entry["file"])
+            for entry in manifest["files"]
+        )
+        for candidate, committed in pairs:
+            if not committed.is_file() or candidate.read_bytes() != committed.read_bytes():
+                relative = committed.relative_to(ROOT)
+                raise RuntimeError(
+                    f"generated artifact is stale: {relative}; run python scripts/generate.py"
+                )
+        return manifest
 
 
 def main() -> None:

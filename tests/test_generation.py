@@ -1,7 +1,7 @@
 import json
 
 from mechanical.model import controller_dimensions, lid_fastener_centres
-from scripts.generate import EXPORT_DIR, FIXED_STEP_TIMESTAMP, sha256
+from scripts.generate import EXPORT_DIR, FIXED_STEP_TIMESTAMP, FIRMWARE_HEADER, GENERATED_DIR, generate, sha256
 from scripts.generate import load_config
 
 
@@ -15,6 +15,21 @@ def test_manifest_hashes_match_manufacturing_files():
     manifest = json.loads((EXPORT_DIR / "manifest.json").read_text(encoding="utf-8"))
     for entry in manifest["files"]:
         assert sha256(EXPORT_DIR / entry["file"]) == entry["sha256"]
+
+
+def test_check_mode_is_read_only_and_verifies_all_generated_artifacts():
+    paths = [
+        GENERATED_DIR / "layout.json",
+        GENERATED_DIR / "power_budget.json",
+        FIRMWARE_HEADER,
+        EXPORT_DIR / "manifest.json",
+        *EXPORT_DIR.glob("*.stl"),
+        *EXPORT_DIR.glob("*.step"),
+    ]
+    before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in paths}
+    generate(check=True)
+    after = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in paths}
+    assert after == before
 
 
 def test_lid_skirt_and_fasteners_fit_inside_tray():

@@ -1,5 +1,7 @@
 # 安全更新、发布包与恢复
 
+全新或已擦除的开发板不能使用网页 OTA，应从 GitHub Release 下载 `notefall88-factory-*.zip`，用包内校验脚本通过 UART 口完成单文件首刷。factory 包会清除 NVS 中的设备配置、Wi-Fi 和灯位校准；日常升级应使用 `notefall88-update-*.zip`，不要反复刷 factory 镜像。
+
 ## 目标与威胁边界
 
 NoteFall 可选加入家庭 Wi-Fi，因此“同一局域网里能打开网页”不能等于“有权刷固件”。写入接口同时要求：
@@ -24,14 +26,15 @@ NoteFall 可选加入家庭 Wi-Fi，因此“同一局域网里能打开网页�
 
 ## 发布包
 
-标签 `v*` 触发 `.github/workflows/release.yml`：运行网页测试，构建固件/LittleFS，再发布：
+合法版本标签触发 `.github/workflows/release.yml`：重复运行 Python、网页覆盖率、Chromium/WebKit、固件和 LittleFS 门禁，再发布：
 
-- `firmware.bin`；
-- `littlefs.bin`；
-- `manifest.json`；
-- `notefall88-update-<tag>.zip`。
+- `notefall88-update-<tag>.zip` 与 `manifest.json`：已装设备的双槽 OTA；
+- `notefall88-factory-<tag>.zip` 与 `factory-manifest.json`：全新 N8R8 的单文件 UART 首刷；
+- `notefall88-manufacturing-<tag>.zip` 与 `manufacturing-manifest.json`：线束、机械和制造资料。
 
-`manifest.json` 是版本 1 信封，记录产品名、固件版本、协议、分区表 SHA-256，以及两个镜像的目标、字节数和 SHA-256。OTA ZIP 另外固定包含项目 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`，并在 manifest 的 `notices` 中记录两者的字节数与 SHA-256；制造包同样包含两者。这样从 Release 单独取得二进制或制造资料的人也同时取得 MIT/BSD/LGPL 等适用声明。可在本地复现：
+构建中间的裸 `firmware.bin` 和 `littlefs.bin` 不单独作为 Release 附件，避免用户把 OTA 镜像误写到地址 `0x0`。`vMAJOR.MINOR.PATCH-rc.N` 必须与固件版本匹配并自动标为 Pre-release；每个标签还必须有同名人工发布说明。
+
+`manifest.json` 是版本 1 信封，记录产品名、固件版本、协议、分区表 SHA-256，以及两个 OTA 镜像的目标、字节数和 SHA-256。factory 清单另外逐项记录 bootloader、分区表、OTA 初始数据、应用和 LittleFS 的偏移、大小与哈希；合并结果已经与 esptool 4.5.1 独立 `merge_bin` 输出交叉验证。三类 ZIP 都固定包含项目 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`，并在清单中记录字节数与 SHA-256。这样从 Release 单独取得二进制或制造资料的人也同时取得 MIT/BSD/LGPL 等适用声明。可在本地复现 OTA 包；首刷包参数见 `scripts/package_factory.py --help`：
 
 ```powershell
 python scripts/package_update.py `

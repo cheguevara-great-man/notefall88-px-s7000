@@ -24,14 +24,21 @@ jobs:
       - name: Validate generated engineering package
         run: |
           pip install -r requirements-dev.txt
+          python scripts/verify_release_tag.py "$GITHUB_REF_NAME"
+          test -f "docs/releases/${GITHUB_REF_NAME}.md"
           python scripts/generate.py --check
           python -m pytest
       - name: Build embedded web app
         working-directory: web
         run: |
           npm ci
-          npm test -- --run
+          npm audit --omit=dev --audit-level=high
+          npm run coverage
           npm run build
+          npx playwright-cli install-browser chromium --with-deps
+          npm run smoke:browser
+          npx playwright-cli install-browser webkit --with-deps
+          NOTEFALL_BROWSER=webkit npm run smoke:browser
       - name: Build firmware and LittleFS
         run: |
           pip install platformio==6.1.19
@@ -39,17 +46,25 @@ jobs:
           platformio run -d firmware -t buildfs
       - name: Package checksummed update bundle
         run: |
-          mkdir -p dist
-          cp ~/.platformio/build/notefall88/esp32-s3-devkitc-1-n8r8/firmware.bin dist/firmware.bin
-          cp ~/.platformio/build/notefall88/esp32-s3-devkitc-1-n8r8/littlefs.bin dist/littlefs.bin
+          mkdir -p dist release-work
+          cp ~/.platformio/build/notefall88/esp32-s3-devkitc-1-n8r8/firmware.bin release-work/firmware.bin
+          cp ~/.platformio/build/notefall88/esp32-s3-devkitc-1-n8r8/littlefs.bin release-work/littlefs.bin
           python scripts/package_update.py \
-            --firmware dist/firmware.bin \
-            --filesystem dist/littlefs.bin \
+            --firmware release-work/firmware.bin \
+            --filesystem release-work/littlefs.bin \
             --output dist/notefall88-update-${GITHUB_REF_NAME}.zip \
             > dist/manifest.json
           python scripts/package_manufacturing.py \
             --output dist/notefall88-manufacturing-${GITHUB_REF_NAME}.zip \
             > dist/manufacturing-manifest.json
+          python scripts/package_factory.py \
+            --bootloader ~/.platformio/build/notefall88/esp32-s3-devkitc-1-n8r8/bootloader.bin \
+            --partitions ~/.platformio/build/notefall88/esp32-s3-devkitc-1-n8r8/partitions.bin \
+            --boot-app ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
+            --firmware release-work/firmware.bin \
+            --filesystem release-work/littlefs.bin \
+            --output dist/notefall88-factory-${GITHUB_REF_NAME}.zip \
+            > dist/factory-manifest.json
       - uses: actions/upload-artifact@v6
         with:
           name: notefall88-${{ github.ref_name }}
@@ -57,4 +72,9 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag
+        run: |
+          release_args=("$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file "docs/releases/${GITHUB_REF_NAME}.md" --verify-tag)
+          if [[ "$GITHUB_REF_NAME" == *-rc.* ]]; then
+            release_args+=(--prerelease)
+          fi
+          gh release create "${release_args[@]}"
