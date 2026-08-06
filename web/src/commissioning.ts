@@ -27,6 +27,7 @@ export interface CommissioningState {
     pid?: number;
     inputPackets?: number;
     inputErrors?: number;
+    lastUsbError?: string;
   };
   completedAt?: number;
   completedFirmware?: string;
@@ -85,6 +86,8 @@ function normalize(value: unknown): CommissioningState {
       pid: finite(candidate.observed.pid),
       inputPackets: finite(candidate.observed.inputPackets),
       inputErrors: finite(candidate.observed.inputErrors),
+      lastUsbError: typeof candidate.observed.lastUsbError === "string"
+        ? candidate.observed.lastUsbError.slice(0, 160) : undefined,
     },
     completedAt: finite(candidate.completedAt),
     completedFirmware: typeof candidate.completedFirmware === "string" ? candidate.completedFirmware : undefined,
@@ -131,6 +134,7 @@ export function observeDevice(
       (total, value) => total + (value ?? 0), 0,
     );
   }
+  next.observed.lastUsbError = status.usbLastError || undefined;
   if (next.completedAt && next.completedFirmware && status.firmware
       && next.completedFirmware !== status.firmware) {
     next.completedAt = undefined;
@@ -140,6 +144,7 @@ export function observeDevice(
     next.observed.usbOutEndpoint = undefined;
     next.observed.inputPackets = undefined;
     next.observed.inputErrors = undefined;
+    next.observed.lastUsbError = undefined;
   }
   if (next.completedAt && status.defaultPassword === true) next.completedAt = undefined;
   return next;

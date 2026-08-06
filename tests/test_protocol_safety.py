@@ -115,3 +115,12 @@ def test_high_resolution_velocity_prefix_is_channel_scoped_and_backward_compatib
     assert "pendingVelocityLsb" not in source
     assert 'doc["v"] = velocity' in source
     assert 'doc["vh"] = highResolutionVelocity' in source
+
+
+def test_usb_interface_selection_uses_the_native_executed_descriptor_core() -> None:
+    source = (ROOT / "firmware" / "src" / "UsbMidiHost.cpp").read_text(encoding="utf-8")
+    assert '#include "usb_midi_descriptor.h"' in source
+    assert "usb::findMidiStreamingInterface(bytes, total, searchOffset, candidate)" in source
+    assert "candidate.nextSearchOffset" in source
+    assert "malformed USB configuration descriptor" in source
+    assert "USB_B_DESCRIPTOR_TYPE_INTERFACE" not in source

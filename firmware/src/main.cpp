@@ -338,6 +338,7 @@ void sendStatus(uint8_t client = 255) {
   doc["usbDropped"] = usb.packetsDropped;
   doc["usbMalformed"] = usb.packetsMalformed;
   doc["usbErrors"] = usb.transferErrors;
+  doc["usbLastError"] = usbMidi.lastError();
   doc["usbConnections"] = usb.connections;
   doc["usbLastPacketMs"] = usb.lastPacketMs;
   doc["usbVid"] = usb.vendorId;

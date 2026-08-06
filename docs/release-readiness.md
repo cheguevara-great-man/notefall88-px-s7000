@@ -10,13 +10,13 @@ NoteFall 88 只有在数字门禁全部自动通过后才能生成候选包；�
 | CAD 有效、尺寸与哈希一致 | Python 测试 + STL/STEP manifest | 通过 |
 | 供电/保险/压降预算 | `generated/power_budget.json` + Python 测试 | 通过 |
 | 线束防呆与 SVG 可解析 | `tests/test_hardware_package.py` | 通过 |
-| Web 练习/和弦持键与事务记分语义、25%–200% 速度规范化、手机后台暂停、设备 WebSocket 握手/重连/STA 再认证/分批、节拍器音频生命周期、UTF-8 Wi-Fi 凭据边界、自建 + W3C 固定 MusicXML 语料、数据/长录制资源边界与入站协议边界 | Vitest + V8 coverage | 123 项通过；显式纳入除 DOM 主入口和两个浏览器渲染适配器外的全部产品模块，Statements 91.24%、Branches 80.39%、Functions 90.72%、Lines 95.24%，CI 最低门限 85/75/85/90%；排除项由 Playwright 回归 |
+| Web 练习/和弦持键与事务记分语义、25%–200% 速度规范化、手机后台暂停、设备 WebSocket 握手/重连/STA 再认证/分批、节拍器音频生命周期、UTF-8 Wi-Fi 凭据边界、自建 + W3C 固定 MusicXML 语料、数据/长录制资源边界与入站协议边界 | Vitest + V8 coverage | 123 项通过；显式纳入除 DOM 主入口和两个浏览器渲染适配器外的全部产品模块，Statements 91.25%、Branches 80.37%、Functions 90.72%、Lines 95.25%，CI 最低门限 85/75/85/90%；排除项由 Playwright 回归 |
 | W3C MusicXML 官方完整语料 | 固定提交 `b2e6a162` + `npm run audit:musicxml` | 150/150 分类完成：149 解析，1 个非法反复文件按预期安全拒绝，0 意外异常 |
 | 厂商 MusicXML 功能语料 | MuseScore 官方提交 `d6f84b78` + eNote CC-BY-4.0 提交 `03896bf8` | 447/447 MuseScore 仓库文件无异常；100/100 跨厂商文件分类完成（97 解析、3 预期拒绝），0 意外异常 |
 | 谱面引擎互操作语料与示例总谱 | OSMD BSD-3-Clause 提交 `c663e0d3` | 317/317 测试文件 + 2/2 Finale 示例总谱解析，0 意外异常；示例音符数/小节数/时长固定断言 |
 | 真实曲目内容级交叉验证 | `music21 9.9.1` + OSMD 固定提交 + `scripts/crosscheck_musicxml.py` | 6 首、2638 个音符：数量与逐音音高序列完全一致；最大起音差 0.109 ms，小于 2 ms 门限 |
 | NVS 校准、复位原因与灯先于网络的实时顺序 | Python 源码门禁 + 固件诊断 | 通过 |
-| USB-MIDI 包、CC88 与真实灯位核心 | 固件共用 C++ 头文件由主机 `g++` 编译执行，再由 Xtensa 工具链编入固件 | 全 16 通道与 0x8–0xE 消息往返、CIN/status/data 故障、合法系统消息忽略、CC88 通道隔离/一次消费、`millis()` 回绕、176 像素正反 88 键唯一映射通过 |
+| USB-MIDI 包、描述符、CC88 与真实灯位核心 | 固件共用 C++ 头文件由主机 `g++` 编译执行，再由 Xtensa 工具链编入固件 | 全 16 通道与 0x8–0xE 消息往返、CIN/status/data 故障、合法系统消息忽略、CC88 通道隔离/一次消费、`millis()` 回绕、176 像素正反 88 键唯一映射，以及 MIDIStreaming 双向/仅输入/多接口/截断/畸形端点选择通过 |
 | 390×844 手机 + 1280×900 桌面布局、STA 控制解锁表单、MusicXML 文件选择器与 OSMD 谱面 | 固定 `@playwright/cli 0.1.17`，Chromium + WebKit 双引擎 `smoke:browser`，GitHub CI 上传截图/快照 | 两个引擎、两个视口均无横向溢出；手机练习抽屉和关闭按钮完整位于视口内；设置页真实填写短密码并显示 8–63 字节边界；真实导入 Parser Etude 后显示 4 音符、4 秒与非空五线谱；不把桌面 WebKit 冒充真 iOS 实机 |
 | README/装机/制造文档本地链接 | Python 文档门禁 | 全部可解析 |
 | 嵌入资源可解析且 `<500 KiB` | Python 资源测试 + `buildfs` 反向列表 | 通过 |

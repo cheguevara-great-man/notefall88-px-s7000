@@ -5,6 +5,7 @@
 #include <esp_timer.h>
 
 #include "midi_core.h"
+#include "usb_midi_descriptor.h"
 
 namespace notefall {
 
@@ -231,105 +232,73 @@ bool UsbMidiHost::openMidiInterface(uint8_t address) {
     device_ = nullptr;
     return false;
   }
+  lastError_ = "";
 
   const uint8_t* bytes = config->val;
-  const uint16_t total = config->wTotalLength;
-  for (uint16_t offset = 0; offset + 2 <= total;) {
-    const uint8_t length = bytes[offset];
-    if (length < 2 || offset + length > total) break;
-    if (bytes[offset + 1] == USB_B_DESCRIPTOR_TYPE_INTERFACE && length >= 9 &&
-        bytes[offset + 5] == USB_CLASS_AUDIO && bytes[offset + 6] == 0x03) {
-      const uint8_t candidateInterface = bytes[offset + 2];
-      const uint8_t candidateAlternate = bytes[offset + 3];
-      uint8_t inputAddress = 0;
-      uint8_t outputAddress = 0;
-      uint16_t inputPacketSize = 0;
-      uint16_t outputPacketSize = 0;
-
-      uint16_t endpointOffset = offset + length;
-      while (endpointOffset + 2 <= total) {
-        const uint8_t endpointLength = bytes[endpointOffset];
-        if (endpointLength < 2 || endpointOffset + endpointLength > total) break;
-        const uint8_t descriptorType = bytes[endpointOffset + 1];
-        if (descriptorType == USB_B_DESCRIPTOR_TYPE_INTERFACE) break;
-        const bool isBulkEndpoint = descriptorType == USB_B_DESCRIPTOR_TYPE_ENDPOINT &&
-            endpointLength >= 7 && (bytes[endpointOffset + 3] & 0x03U) == 0x02U;
-        if (isBulkEndpoint) {
-          const uint8_t endpointAddress = bytes[endpointOffset + 2];
-          uint16_t packetSize =
-              (static_cast<uint16_t>(bytes[endpointOffset + 4]) |
-               (static_cast<uint16_t>(bytes[endpointOffset + 5]) << 8U)) & 0x07FFU;
-          if (packetSize < 4 || packetSize > 512) packetSize = 64;
-          if ((endpointAddress & USB_B_ENDPOINT_ADDRESS_EP_DIR_MASK) != 0 && inputAddress == 0) {
-            inputAddress = endpointAddress;
-            inputPacketSize = packetSize;
-          } else if ((endpointAddress & USB_B_ENDPOINT_ADDRESS_EP_DIR_MASK) == 0 &&
-                     outputAddress == 0) {
-            outputAddress = endpointAddress;
-            outputPacketSize = packetSize;
-          }
-        }
-        endpointOffset += endpointLength;
-      }
-
-      if (inputAddress == 0) {
-        offset += length;
-        continue;
-      }
-      result = usb_host_interface_claim(client_, device_, candidateInterface, candidateAlternate);
-      if (result != ESP_OK) {
-        offset += length;
-        continue;
-      }
-
-      interfaceNumber_ = candidateInterface;
-      alternateSetting_ = candidateAlternate;
-      inputEndpointAddress_ = inputAddress;
-      inputEndpointPacketSize_ = inputPacketSize;
-      inputTransfer_->device_handle = device_;
-      inputTransfer_->bEndpointAddress = inputEndpointAddress_;
-      inputTransfer_->callback = inputTransferComplete;
-      inputTransfer_->context = this;
-      inputTransfer_->num_bytes = inputEndpointPacketSize_;
-
-      if (outputAddress != 0) {
-        outputEndpointAddress_ = outputAddress;
-        outputEndpointPacketSize_ = outputPacketSize;
-        outputTransfer_->device_handle = device_;
-        outputTransfer_->bEndpointAddress = outputEndpointAddress_;
-        outputTransfer_->callback = outputTransferComplete;
-        outputTransfer_->context = this;
-      } else {
-        outputEndpointAddress_ = 0;
-        outputEndpointPacketSize_ = 0;
-      }
-
-      connected_ = true;
-      result = usb_host_transfer_submit(inputTransfer_);
-      if (result == ESP_OK) {
-        portENTER_CRITICAL(&queueMux_);
-        ++diagnostics_.connections;
-        diagnostics_.endpointAddress = inputEndpointAddress_;
-        diagnostics_.endpointPacketSize = inputEndpointPacketSize_;
-        diagnostics_.outputEndpointAddress = outputEndpointAddress_;
-        diagnostics_.outputEndpointPacketSize = outputEndpointPacketSize_;
-        portEXIT_CRITICAL(&queueMux_);
-        lastError_ = "";
-        return true;
-      }
-
-      connected_ = false;
-      outputEndpointAddress_ = 0;
-      outputEndpointPacketSize_ = 0;
-      inputEndpointAddress_ = 0;
-      inputEndpointPacketSize_ = 0;
-      usb_host_interface_release(client_, device_, interfaceNumber_);
+  const std::size_t total = config->wTotalLength;
+  std::size_t searchOffset = 0;
+  for (;;) {
+    usb::MidiStreamingInterface candidate;
+    const usb::DescriptorResult descriptorResult =
+        usb::findMidiStreamingInterface(bytes, total, searchOffset, candidate);
+    if (descriptorResult == usb::DescriptorResult::Malformed) {
+      lastError_ = "malformed USB configuration descriptor";
       break;
     }
-    offset += length;
+    if (descriptorResult == usb::DescriptorResult::NotFound) break;
+    searchOffset = candidate.nextSearchOffset;
+    result = usb_host_interface_claim(client_, device_, candidate.interfaceNumber,
+                                      candidate.alternateSetting);
+    if (result != ESP_OK) continue;
+
+    interfaceNumber_ = candidate.interfaceNumber;
+    alternateSetting_ = candidate.alternateSetting;
+    inputEndpointAddress_ = candidate.inputEndpointAddress;
+    inputEndpointPacketSize_ = candidate.inputPacketSize;
+    inputTransfer_->device_handle = device_;
+    inputTransfer_->bEndpointAddress = inputEndpointAddress_;
+    inputTransfer_->callback = inputTransferComplete;
+    inputTransfer_->context = this;
+    inputTransfer_->num_bytes = inputEndpointPacketSize_;
+
+    if (candidate.outputEndpointAddress != 0) {
+      outputEndpointAddress_ = candidate.outputEndpointAddress;
+      outputEndpointPacketSize_ = candidate.outputPacketSize;
+      outputTransfer_->device_handle = device_;
+      outputTransfer_->bEndpointAddress = outputEndpointAddress_;
+      outputTransfer_->callback = outputTransferComplete;
+      outputTransfer_->context = this;
+    } else {
+      outputEndpointAddress_ = 0;
+      outputEndpointPacketSize_ = 0;
+    }
+
+    connected_ = true;
+    result = usb_host_transfer_submit(inputTransfer_);
+    if (result == ESP_OK) {
+      portENTER_CRITICAL(&queueMux_);
+      ++diagnostics_.connections;
+      diagnostics_.endpointAddress = inputEndpointAddress_;
+      diagnostics_.endpointPacketSize = inputEndpointPacketSize_;
+      diagnostics_.outputEndpointAddress = outputEndpointAddress_;
+      diagnostics_.outputEndpointPacketSize = outputEndpointPacketSize_;
+      portEXIT_CRITICAL(&queueMux_);
+      lastError_ = "";
+      return true;
+    }
+
+    connected_ = false;
+    outputEndpointAddress_ = 0;
+    outputEndpointPacketSize_ = 0;
+    inputEndpointAddress_ = 0;
+    inputEndpointPacketSize_ = 0;
+    usb_host_interface_release(client_, device_, interfaceNumber_);
+    break;
   }
 
-  lastError_ = "connected USB device has no MIDI streaming IN endpoint";
+  if (lastError_.isEmpty()) {
+    lastError_ = "connected USB device has no MIDI streaming IN endpoint";
+  }
   usb_host_device_close(client_, device_);
   device_ = nullptr;
   return false;

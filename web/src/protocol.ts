@@ -104,6 +104,7 @@ function statusMessage(source: Record<string, unknown>): DeviceMessage {
   status.usbDropped = optionalInteger(source, "usbDropped", 0, MAX_SAFE_COUNTER);
   status.usbMalformed = optionalInteger(source, "usbMalformed", 0, MAX_SAFE_COUNTER);
   status.usbErrors = optionalInteger(source, "usbErrors", 0, MAX_SAFE_COUNTER);
+  status.usbLastError = optionalString(source, "usbLastError", 160);
   status.usbConnections = optionalInteger(source, "usbConnections", 0, MAX_SAFE_COUNTER);
   status.usbLastPacketMs = optionalInteger(source, "usbLastPacketMs", 0, 0xffff_ffff);
   status.usbVid = optionalInteger(source, "usbVid", 0, 0xffff);

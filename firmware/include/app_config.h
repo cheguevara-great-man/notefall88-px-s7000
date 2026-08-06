@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 namespace notefall::app {
-constexpr char kFirmwareVersion[] = "0.7.1";
+constexpr char kFirmwareVersion[] = "0.7.2";
 constexpr uint8_t kProtocolVersion = 6;
 constexpr char kApSsid[] = "NoteFall-88";
 constexpr char kApPassword[] = "notefall88";

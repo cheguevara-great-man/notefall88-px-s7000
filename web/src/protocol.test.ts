@@ -19,6 +19,7 @@ const status = {
   usbPid: 0x6802,
   usbOutputMirrorCandidates: 3,
   usbMalformed: 4,
+  usbLastError: "connected USB device has no MIDI streaming IN endpoint",
   webAuthRejected: 2,
   ledInputLatencyLastUs: 840,
   ledInputLatencyAvgUs: 790,
@@ -34,6 +35,7 @@ describe("device protocol decoder", () => {
     expect(result.message.value.usbVid).toBe(0x07cf);
     expect(result.message.value.usbOutputMirrorCandidates).toBe(3);
     expect(result.message.value.usbMalformed).toBe(4);
+    expect(result.message.value.usbLastError).toMatch(/no MIDI streaming IN/);
     expect(result.message.value.controlAuthorized).toBe(true);
     expect(result.message.value.controlToken).toBe("boot-token-0123456789");
     expect(result.message.value.webAuthRejected).toBe(2);

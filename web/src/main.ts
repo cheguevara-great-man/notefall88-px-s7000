@@ -1494,6 +1494,7 @@ device.onStatus((status: DeviceStatus) => {
   required("diag-packets").textContent = String(status.usbPackets ?? "--");
   required("diag-errors").textContent =
     `${status.usbDropped ?? "--"} / ${status.usbMalformed ?? "--"} / ${status.usbErrors ?? "--"}`;
+  required("diag-usb-last-error").textContent = status.usbLastError || "无";
   required("diag-out-packets").textContent = `${status.usbOutPackets ?? "--"} / ${status.usbOutQueued ?? "--"}`;
   required("diag-out-errors").textContent = `${status.usbOutDropped ?? "--"} / ${status.usbOutErrors ?? "--"}`;
   required("diag-output-mirror").textContent = String(status.usbOutputMirrorCandidates ?? "--");
