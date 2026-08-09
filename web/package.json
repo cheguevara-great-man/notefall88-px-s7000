@@ -6,7 +6,9 @@
   "scripts": {
     "audit:musicxml": "vite-node scripts/audit-musicxml-corpus.ts",
     "dev": "vite --host 0.0.0.0",
+    "dev:studio": "vite --config vite.studio.config.ts --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "build:studio": "tsc -b && vite build --config vite.studio.config.ts",
     "smoke:browser": "node scripts/browser-smoke.mjs",
     "test": "vitest",
     "coverage": "vitest run --coverage"

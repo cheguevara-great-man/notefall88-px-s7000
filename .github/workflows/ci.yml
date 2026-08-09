@@ -38,8 +38,10 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run coverage
       - run: npm run build
+      - run: npm run build:studio
       - run: npx playwright-cli install-browser chromium --with-deps
       - run: npm run smoke:browser
+      - run: NOTEFALL_EDITION=studio npm run smoke:browser
       - run: npx playwright-cli install-browser webkit --with-deps
       - run: NOTEFALL_BROWSER=webkit npm run smoke:browser
       - uses: actions/upload-artifact@v6
@@ -49,6 +51,10 @@ jobs:
           path: output/playwright/smoke-*
           if-no-files-found: ignore
           include-hidden-files: true
+      - uses: actions/upload-artifact@v6
+        with:
+          name: notefall-studio-web
+          path: dist/studio
 
   firmware:
     runs-on: ubuntu-latest
@@ -70,3 +76,38 @@ jobs:
           grep -q '/index.html' /tmp/notefall-littlefs.txt
           grep -q '/assets/.*\.js\.gz' /tmp/notefall-littlefs.txt
           grep -q '/assets/.*\.css\.gz' /tmp/notefall-littlefs.txt
+
+  studio-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            studio/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Install Android SDK 36
+        run: yes | sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - run: npm ci
+        working-directory: web
+      - run: npm run build:studio
+        working-directory: web
+      - run: npm ci
+        working-directory: studio
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: studio
+      - run: npm run sync
+        working-directory: studio
+      - run: ./gradlew assembleDebug
+        working-directory: studio/android
+      - uses: actions/upload-artifact@v6
+        with:
+          name: notefall-studio-android-debug
+          path: studio/android/app/build/outputs/apk/debug/app-debug.apk

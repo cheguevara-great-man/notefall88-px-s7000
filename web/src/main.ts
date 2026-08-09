@@ -29,6 +29,11 @@ import type { LibraryFolder, LibraryScore } from "./library";
 import { planBackgroundSuspension } from "./lifecycle";
 import type { BackgroundSuspension } from "./lifecycle";
 import {
+  endpointSecurityNotice,
+  normalizeDeviceWebSocketUrl,
+  STUDIO_DEVICE_ENDPOINT_KEY,
+} from "./studio";
+import {
   formatStorageStatus,
   inspectBrowserStorage,
   requestPersistentStorage,
@@ -67,7 +72,7 @@ import type {
   PracticeMode,
   TargetNote,
 } from "./types";
-import { WaterfallRenderer } from "./waterfall";
+import { createWaterfallSurface } from "./native-waterfall";
 import { SheetRenderer } from "./sheet";
 import { transposeLabel, transposeScore } from "./transpose";
 import {
@@ -83,6 +88,20 @@ function required<T extends HTMLElement = HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Missing #${id}`);
   return element as T;
+}
+
+const edition = document.querySelector<HTMLMetaElement>('meta[name="notefall-edition"]')?.content ?? "core";
+const studioEdition = edition === "studio";
+document.documentElement.dataset.edition = edition;
+let studioDeviceUrl: string | undefined;
+if (studioEdition) {
+  try {
+    studioDeviceUrl = normalizeDeviceWebSocketUrl(
+      window.localStorage.getItem(STUDIO_DEVICE_ENDPOINT_KEY) ?? "192.168.4.1",
+    );
+  } catch {
+    studioDeviceUrl = normalizeDeviceWebSocketUrl("192.168.4.1");
+  }
 }
 
 const fileInput = required<HTMLInputElement>("midi-file");
@@ -137,9 +156,9 @@ const keyOffset = required<HTMLInputElement>("key-offset");
 const waterfallCanvas = required<HTMLCanvasElement>("waterfall");
 const visualizerCard = required("visualizer-card");
 const sheetView = required("sheet-view");
-const renderer = new WaterfallRenderer(waterfallCanvas);
+const renderer = createWaterfallSurface(waterfallCanvas, studioEdition);
 const sheetRenderer = new SheetRenderer(sheetView);
-const device = new DeviceLink();
+const device = new DeviceLink(studioDeviceUrl);
 const clock = new ScoreClock();
 const waitMatcher = new WaitMatcher();
 const waitHitBuffer = new WaitHitBuffer();
@@ -150,6 +169,45 @@ const library = new ScoreLibrary();
 const sessionStore = new PracticeSessionStore();
 const metronome = new MetronomePlayer();
 const initialPreferences = loadPreferences();
+
+if (studioEdition) {
+  const toolbar = required("studio-toolbar");
+  const endpoint = required<HTMLInputElement>("studio-device-endpoint");
+  const saveEndpoint = required<HTMLButtonElement>("studio-device-save");
+  const installButton = required<HTMLButtonElement>("studio-install");
+  const connectionNote = required("studio-connection-note");
+  toolbar.hidden = false;
+  endpoint.value = studioDeviceUrl ?? "ws://192.168.4.1:81/";
+  const notice = endpointSecurityNotice(endpoint.value, window.location.protocol);
+  if (notice) connectionNote.textContent = notice;
+  saveEndpoint.addEventListener("click", () => {
+    try {
+      const normalized = normalizeDeviceWebSocketUrl(endpoint.value);
+      window.localStorage.setItem(STUDIO_DEVICE_ENDPOINT_KEY, normalized);
+      endpoint.value = normalized;
+      connectionNote.textContent = "设备地址已保存，正在重新连接…";
+      window.location.reload();
+    } catch (error) {
+      connectionNote.textContent = error instanceof Error ? error.message : "设备地址无效";
+    }
+  });
+  let installPrompt: (Event & { prompt(): Promise<void> }) | undefined;
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    installPrompt = event as Event & { prompt(): Promise<void> };
+    installButton.hidden = false;
+  });
+  installButton.addEventListener("click", async () => {
+    await installPrompt?.prompt();
+    installPrompt = undefined;
+    installButton.hidden = true;
+  });
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      void navigator.serviceWorker.register("./sw.js");
+    });
+  }
+}
 
 let score: ParsedScore | undefined;
 let sourceScore: ParsedScore | undefined;
@@ -876,7 +934,7 @@ async function activateScore(parsed: ParsedScore, xml: string | undefined, finge
   followPlanner = new FollowAccompanimentPlanner(score.notes);
   scoreXml = xml;
   if (xml) {
-    viewMode.value = "sheet";
+    viewMode.value = studioEdition ? "split" : "sheet";
     // OSMD must render into a visible, non-zero-width container. Rendering
     // while the sheet panel is still hidden can cause pathological layout.
     updateViewMode();
@@ -932,11 +990,13 @@ fileInput.addEventListener("change", async () => {
 
 function updateViewMode(): void {
   const wantsSheet = viewMode.value === "sheet";
-  const showSheet = wantsSheet && !!scoreXml;
-  if (wantsSheet && !scoreXml) viewMode.value = "waterfall";
-  waterfallCanvas.hidden = showSheet;
+  const wantsSplit = viewMode.value === "split";
+  const showSheet = (wantsSheet || wantsSplit) && !!scoreXml;
+  if ((wantsSheet || wantsSplit) && !scoreXml) viewMode.value = "waterfall";
+  waterfallCanvas.hidden = wantsSheet && showSheet;
+  renderer.setVisible(!waterfallCanvas.hidden);
   sheetView.hidden = !showSheet;
-  visualizerCard.dataset.view = showSheet ? "sheet" : "waterfall";
+  visualizerCard.dataset.view = wantsSplit && showSheet ? "split" : showSheet ? "sheet" : "waterfall";
 }
 
 viewMode.addEventListener("change", updateViewMode);
@@ -1549,6 +1609,23 @@ window.addEventListener("pagehide", suspendForBackground);
 window.addEventListener("pageshow", () => {
   if (document.visibilityState === "visible") restoreFromBackground();
 });
+if (studioEdition) {
+  type NativeAppStatePlugin = {
+    addListener(
+      event: "appStateChange",
+      listener: (state: { isActive: boolean }) => void,
+    ): Promise<{ remove(): Promise<void> }>;
+  };
+  const nativeApp = (window as typeof window & {
+    Capacitor?: { Plugins?: { App?: NativeAppStatePlugin } };
+  }).Capacitor?.Plugins?.App;
+  if (nativeApp) {
+    void nativeApp.addListener("appStateChange", ({ isActive }) => {
+      if (isActive) restoreFromBackground();
+      else suspendForBackground();
+    });
+  }
+}
 renderCommissioning();
 device.connect();
 void refreshLibrary().catch((error: unknown) => {
@@ -1591,11 +1668,12 @@ function frame(now: number): void {
     renderStats();
   }
   const expected = new Set(currentTarget.map((target) => target.note));
-  if (viewMode.value === "sheet" && scoreXml) {
+  if ((viewMode.value === "sheet" || viewMode.value === "split") && scoreXml) {
     sheetRenderer.seek(lastScoreSeconds);
-  } else {
+  }
+  if (viewMode.value !== "sheet" || !scoreXml) {
     renderer.setState(pressed, expected, wrong);
-    renderer.render(lastScoreSeconds);
+    renderer.render(lastScoreSeconds, mode === "realtime" && clock.isRunning());
   }
   latencyStatus.textContent =
     `WebSocket ${device.latencyMs === undefined ? "--" : Math.round(device.latencyMs)} ms`;

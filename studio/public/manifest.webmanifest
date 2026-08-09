@@ -1,0 +1,14 @@
+{
+  "name": "NoteFall Studio",
+  "short_name": "NoteFall",
+  "description": "PX-S7000 乐谱、瀑布流与实体灯带练习工作台",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070910",
+  "theme_color": "#090b10",
+  "icons": [
+    { "src": "./studio-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

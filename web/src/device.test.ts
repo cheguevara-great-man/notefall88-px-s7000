@@ -93,6 +93,12 @@ describe("device websocket link", () => {
     expect(midiOut).toHaveBeenCalledOnce();
   });
 
+  it("supports an independent Studio device endpoint", () => {
+    const link = new DeviceLink("ws://notefall.local:81/");
+    link.connect();
+    expect(FakeWebSocket.instances[0].url).toBe("ws://notefall.local:81/");
+  });
+
   it("encodes controls and splits MIDI output into bounded batches", () => {
     const link = new DeviceLink();
     link.connect();

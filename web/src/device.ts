@@ -53,12 +53,14 @@ export class DeviceLink {
   latencyMs?: number;
   browserRejectedMessages = 0;
 
+  constructor(private readonly webSocketUrl?: string) {}
+
   connect(): void {
     if (!this.sessionToken) this.sessionToken = loadSessionToken();
     this.authenticationPending = Boolean(this.sessionToken);
     window.clearTimeout(this.reconnectTimer);
     const host = window.location.hostname || "192.168.4.1";
-    this.socket = new WebSocket(`ws://${host}:81/`);
+    this.socket = new WebSocket(this.webSocketUrl ?? `ws://${host}:81/`);
     this.socket.onopen = () => {
       this.reconnectAttempt = 0;
       window.clearTimeout(this.pingTimer);

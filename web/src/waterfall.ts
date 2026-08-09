@@ -37,6 +37,10 @@ export class WaterfallRenderer {
     this.loop = loop;
   }
 
+  setVisible(_visible: boolean): void {
+    // The DOM canvas visibility is managed by the shared view switcher.
+  }
+
   resize(): void {
     const rect = this.canvas.getBoundingClientRect();
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -48,7 +52,7 @@ export class WaterfallRenderer {
     }
   }
 
-  render(scoreTime: number): void {
+  render(scoreTime: number, _running = false): void {
     this.resize();
     const { width, height } = this.canvas;
     const keyboardHeight = height * 0.22;

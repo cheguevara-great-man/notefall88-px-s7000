@@ -6,8 +6,9 @@ import { fileURLToPath } from "node:url";
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = resolve(WEB, "..");
 const BROWSER = process.env.NOTEFALL_BROWSER || "chromium";
-const ARTIFACTS = join(ROOT, "output", "playwright", `smoke-${BROWSER}-${Date.now()}-${process.pid}`);
-const SESSION = `notefall-smoke-${BROWSER}-${process.pid}`;
+const EDITION = process.env.NOTEFALL_EDITION === "studio" ? "studio" : "core";
+const ARTIFACTS = join(ROOT, "output", "playwright", `smoke-${EDITION}-${BROWSER}-${Date.now()}-${process.pid}`);
+const SESSION = `notefall-smoke-${EDITION}-${BROWSER}-${process.pid}`;
 const BASE_URL = "http://127.0.0.1:4173";
 const viteCli = join(WEB, "node_modules", "vite", "bin", "vite.js");
 const playwrightCli = join(WEB, "node_modules", "@playwright", "cli", "playwright-cli.js");
@@ -15,7 +16,10 @@ const playwrightCli = join(WEB, "node_modules", "@playwright", "cli", "playwrigh
 mkdirSync(ARTIFACTS, { recursive: true });
 const serverLogPath = join(ARTIFACTS, "vite.log");
 const serverLog = openSync(serverLogPath, "w");
-const server = spawn(process.execPath, [viteCli, "--host", "127.0.0.1", "--port", "4173", "--strictPort"], {
+const viteArguments = EDITION === "studio"
+  ? [viteCli, "--config", "vite.studio.config.ts", "--host", "127.0.0.1", "--port", "4173", "--strictPort"]
+  : [viteCli, "--host", "127.0.0.1", "--port", "4173", "--strictPort"];
+const server = spawn(process.execPath, viteArguments, {
   cwd: WEB,
   stdio: ["ignore", serverLog, serverLog],
   windowsHide: true,
@@ -88,6 +92,12 @@ try {
   await waitForServer();
   command(BROWSER === "chromium" ? ["open", BASE_URL] : ["open", BASE_URL, "--browser", BROWSER]);
   command(["resize", "390", "844"]);
+  const identity = evaluate(`() => JSON.stringify({
+    edition: document.querySelector('meta[name="notefall-edition"]')?.content,
+    studioToolbar: !document.querySelector('#studio-toolbar')?.hasAttribute('hidden')
+  })`);
+  assert(identity.edition === EDITION, `wrong application edition: ${JSON.stringify(identity)}`);
+  assert(identity.studioToolbar === (EDITION === "studio"), "Studio toolbar visibility does not match edition");
   let page = snapshot();
   assert(page.includes("NoteFall 88"), "mobile page did not render NoteFall 88");
   assert(page.includes("硬件尚未验收"), "offline commissioning state is not visible");
@@ -157,19 +167,25 @@ try {
   );
   page = snapshot();
   assert(page.includes("Parser Etude · 4 音符"), "MusicXML score summary is missing or incorrect");
-  assert(page.includes('option "五线谱" [selected]'), "MusicXML import did not select sheet view");
+  if (EDITION === "core") {
+    assert(page.includes('option "五线谱" [selected]'), "Core MusicXML import did not select sheet view");
+  }
   assert(page.includes('generic "五线谱"'), "OSMD sheet container did not render");
   const loadedMobile = evaluate(`() => JSON.stringify({
     overflow: document.documentElement.scrollWidth > innerWidth,
     score: document.querySelector('#score-name')?.textContent,
     duration: document.querySelector('#score-time')?.textContent,
     sheetVisible: !document.querySelector('#sheet-view')?.hasAttribute('hidden'),
-    notation: Boolean(document.querySelector('#sheet-view svg'))
+    notation: Boolean(document.querySelector('#sheet-view svg')),
+    view: document.querySelector('#view-mode')?.value,
+    waterfallVisible: !document.querySelector('#waterfall')?.hasAttribute('hidden')
   })`);
   assert(!loadedMobile.overflow, "loaded mobile score overflows horizontally");
   assert(loadedMobile.score === "Parser Etude · 4 音符", "loaded score identity changed");
   assert(loadedMobile.duration === "00:00 / 00:04", "loaded score duration changed");
   assert(loadedMobile.sheetVisible && loadedMobile.notation, "sheet view is empty after MusicXML import");
+  assert(loadedMobile.view === (EDITION === "studio" ? "split" : "sheet"), "MusicXML selected the wrong default view");
+  assert(loadedMobile.waterfallVisible === (EDITION === "studio"), "split view did not expose the waterfall");
   command(["screenshot"]);
 
   command(["resize", "1280", "900"]);
@@ -187,6 +203,7 @@ try {
 
   console.log(JSON.stringify({
     passed: true,
+    edition: EDITION,
     browser: BROWSER,
     viewports: [[390, 844], [1280, 900]],
     score: "Parser Etude",

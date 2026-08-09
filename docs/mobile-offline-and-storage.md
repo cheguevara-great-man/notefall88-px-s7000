@@ -4,7 +4,7 @@
 
 NoteFall Core 的完整 HTML、压缩 JavaScript、CSS 和乐谱渲染资源都位于 ESP32 LittleFS。手机连接 `NoteFall-88` 热点后访问 `http://192.168.4.1`，即使没有互联网也能重新加载页面；这不是依赖云端缓存的“离线模式”，而是设备本身提供网页。
 
-不要在当前部署上承诺 Service Worker/PWA 离线缓存。Service Worker 通常只允许 HTTPS 或 `localhost` 安全上下文，而 ESP 热点使用局域网 HTTP 地址。即使某个浏览器允许“添加到主屏幕”，也不能据此推断它已安装可靠的离线 Service Worker。未来若另行发布 HTTPS Studio PWA，还必须解决 HTTPS 页面访问本地 `ws://` 设备产生的混合内容限制；可选方向是可信 WSS、本地原生壳或明确的设备桥接，不应靠浏览器偶然放行。
+不要对 ESP 热点上的 **Core** 承诺 Service Worker/PWA 离线缓存。Service Worker 通常只允许 HTTPS 或 `localhost` 安全上下文，而 Core 使用局域网 HTTP 地址。独立 **Studio PWA** 已生成版本化预缓存清单，把 HTML、JS、CSS、OSMD、图标和 manifest 全部纳入；但 HTTPS Studio PWA 访问本地 `ws://` 设备仍可能受混合内容策略限制，因此练琴平板推荐随资源打包的 Android/iOS App，PWA 作为电脑和临时设备备用。
 
 ## 哪些数据保存在手机
 
@@ -13,7 +13,7 @@ NoteFall Core 的完整 HTML、压缩 JavaScript、CSS 和乐谱渲染资源都�
 - 常用练习选项：localStorage；
 - ESP 的亮度、灯位和 Wi-Fi 配置：设备 NVS，不在浏览器备份中。
 
-浏览器数据按 origin 隔离。`http://192.168.4.1`、开发电脑的 `http://localhost` 和未来 HTTPS Studio 是三份不同数据，不能假定自动共享。清除站点数据、卸载浏览器、私密模式结束或系统存储压力都可能删除非持久数据。
+浏览器数据按 origin 隔离。`http://192.168.4.1`、开发电脑的 `http://localhost`、Studio PWA 和 Studio App 是不同数据域，不能假定自动共享。清除站点数据、卸载浏览器、私密模式结束或系统存储压力都可能删除非持久数据；跨发行物迁移必须使用版本化备份。
 
 ## 页面提供的保护
 

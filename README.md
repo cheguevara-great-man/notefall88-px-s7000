@@ -1,6 +1,6 @@
 # NoteFall 88
 
-NoteFall 88 是面向 Casio PX-S7000 的可拆卸单排琴键提示灯。钢琴通过 USB-MIDI 直接连接 ESP32-S3；ESP32-S3 驱动一条覆盖 88 键的 APA102C/SK9822 灯带，并通过 Wi-Fi 向手机、平板或电脑提供瀑布流练习网页。
+NoteFall 88 是面向 Casio PX-S7000 的可拆卸单排琴键提示灯。钢琴通过 USB-MIDI 直接连接 ESP32-S3；ESP32-S3 驱动一条覆盖 88 键的 APA102C/SK9822 灯带，并通过 Wi-Fi 连接 NoteFall Studio 平板 App/PWA 或内置 Core 网页。
 
 > 钢琴上只有一排灯。瀑布流只在屏幕里显示。
 
@@ -19,7 +19,7 @@ PX-S7000 USB TO HOST <──USB-MIDI──> ESP32-S3-DevKitC-1 N8R8
                                              │
                                            Wi-Fi
                                              │
-                              手机 / 平板 / 电脑浏览器
+                         NoteFall Studio App / PWA / Core 网页
 ```
 
 网页端可直接导入 MIDI、MusicXML、XML 和 MXL，按需显示瀑布流或五线谱，并提供实时、等我弹和跟随我三种练习模式、左右手筛选、25%–200% 五个百分点步进变速、±12 半音同步移调、A–B 循环和命中/错键/漏键统计。实时模式可启用按 MIDI/MusicXML 真实拍号、速度变化和反复顺序生成的 Web Audio 节拍器，以及一小节预备拍；常用练习设置刷新后保留。实时分析还会计算拍点早晚、平均/P95 时序误差、力度均值与波动、最长连续命中和逐键难点；每次练习连同原始乐谱 SHA-256、模式、声部、速度、移调与循环范围仅保存在本机，可导出 JSON。自适应教练按内容身份而非曲名汇总同谱近期历史，避免同名不同谱串曲，再找出错漏最集中的片段和较弱声部，给出有证据的模式、速度、A–B 建议并可一键应用；速度建议按表现以 5%/10%/15% 渐进调整。跟随我模式只要求用户弹一只手，另一只手经带时间戳的 USB-MIDI OUT 队列由 PX-S7000 自身音源演奏；若实机没有 OUT 端点则明确降级为无伴奏跟随。IndexedDB 曲库支持文件夹、并发内容去重，以及带 SHA-256、规模上限和原子恢复的完整备份；演奏录制包含力度、MIDI 通道和延音踏板，可导出标准 MIDI。钢琴按键数据走 USB 直达 ESP32，因此按键反馈不依赖无线链路。ESP32 默认建立 `NoteFall-88` 热点，浏览器打开 `http://192.168.4.1` 即可使用。
@@ -60,6 +60,7 @@ MusicXML 目标时间线会按常见反复、多结尾和标准 D.C./D.S./Fine/C
 
 - `firmware/`：ESP32-S3 固件、USB-MIDI Host、Wi-Fi/WebSocket 和 APA102/SK9822 驱动
 - `web/`：手机/平板/电脑通用网页，包含乐谱、曲库、练习、录制、诊断和校准
+- `studio/`：Studio 独立 PWA 资源与 Capacitor Android/iOS 原生平台工程；平板主力入口
 - `mechanical/`：可选控制器保护盒的 CadQuery 参数化模型；琴键侧没有打印导轨
 - `config/system.json`：88 键、灯带、电气和机械参数的唯一来源
 - `scripts/generate.py`：生成灯位映射、固件头文件和制造文件
@@ -88,10 +89,15 @@ cd web
 npm.cmd ci
 npm.cmd test -- --run
 npm.cmd run build
+npm.cmd run build:studio
 npx.cmd playwright-cli install-browser chromium
 npm.cmd run smoke:browser
 npx.cmd playwright-cli install-browser webkit
 $env:NOTEFALL_BROWSER="webkit"; npm.cmd run smoke:browser
+
+cd ..\studio
+npm.cmd ci
+npm.cmd run sync
 
 cd ..
 .\.venv\Scripts\platformio.exe run -d firmware

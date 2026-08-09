@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#090b10" />
+    <meta name="notefall-edition" content="core" />
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
@@ -50,12 +51,27 @@
           <select id="view-mode">
             <option value="waterfall">瀑布流</option>
             <option value="sheet">五线谱</option>
+            <option value="split">五线谱 + 瀑布流</option>
           </select>
         </label>
         <button id="practice-options-button" aria-controls="practice-panel">练习选项</button>
         <button id="library-button" aria-controls="library-panel">我的曲库</button>
         <button id="settings-button" aria-controls="settings-panel">灯带校准</button>
         <button id="commissioning-button" aria-controls="commissioning-panel">安装向导</button>
+      </section>
+
+      <section id="studio-toolbar" class="studio-toolbar" hidden>
+        <div>
+          <span class="eyebrow">NOTE­FALL STUDIO · TABLET EDITION</span>
+          <strong>独立平板工作台</strong>
+        </div>
+        <label>
+          <span>Core 地址</span>
+          <input id="studio-device-endpoint" inputmode="url" autocomplete="off" placeholder="192.168.4.1" />
+        </label>
+        <button id="studio-device-save" type="button">保存并重连</button>
+        <button id="studio-install" type="button" hidden>安装到设备</button>
+        <small id="studio-connection-note">乐谱、曲库和练习在本机运行；Core 只处理钢琴 USB 与灯带。</small>
       </section>
 
       <p id="lifecycle-status" class="lifecycle-status" role="status" hidden></p>

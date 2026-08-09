@@ -1,0 +1,23 @@
+{
+  "name": "notefall-studio-native",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Native Android/iOS container for the NoteFall Studio tablet application",
+  "scripts": {
+    "add:android": "cap add android",
+    "add:ios": "cap add ios",
+    "copy": "cap copy",
+    "sync": "cap sync",
+    "doctor": "cap doctor"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/core": "8.5.0",
+    "@capacitor/ios": "8.5.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.0",
+    "typescript": "5.9.2"
+  }
+}

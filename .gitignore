@@ -5,6 +5,7 @@ __pycache__/
 .pio/
 firmware/.pio/
 web/node_modules/
+studio/node_modules/
 web/coverage/
 web/dist/
 web/*.tsbuildinfo
