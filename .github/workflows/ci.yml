@@ -108,7 +108,9 @@ jobs:
         working-directory: studio
       - run: npm run sync
         working-directory: studio
-      - run: ./gradlew assembleDebug
+      # The repository is also maintained from Windows, where the executable bit
+      # on Gradle's wrapper is not preserved.  Invoke it explicitly via Bash.
+      - run: bash ./gradlew assembleDebug
         working-directory: studio/android
       - uses: actions/upload-artifact@v6
         with:
