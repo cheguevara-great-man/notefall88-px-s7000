@@ -94,7 +94,10 @@ jobs:
           java-version: "21"
           cache: gradle
       - name: Install Android SDK 36
-        run: yes | sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$PATH"
+          command -v sdkmanager
+          yes | sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
         working-directory: web
       - run: npm run build:studio
