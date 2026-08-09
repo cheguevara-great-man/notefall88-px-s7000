@@ -68,15 +68,7 @@ export class WaterfallRenderer {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, keyboardTop);
 
-    ctx.strokeStyle = "rgba(255,255,255,.055)";
-    ctx.lineWidth = 1;
-    for (let second = 0; second <= Math.ceil(visibleSeconds); second += 1) {
-      const y = keyboardTop - (second / visibleSeconds) * rollHeight;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
+    this.drawTimeline(scoreTime, keyboardTop, rollHeight, visibleSeconds, width);
 
     if (this.score) {
       for (const note of this.score.notes) {
@@ -90,11 +82,20 @@ export class WaterfallRenderer {
         const bottom = keyboardTop - (delta / visibleSeconds) * rollHeight;
         const noteHeight = Math.max(5, (duration / visibleSeconds) * rollHeight);
         const y = bottom - noteHeight;
-        ctx.fillStyle = note.hand === "left" ? LEFT : RIGHT;
+        const color = note.hand === "left" ? LEFT : RIGHT;
+        const fill = ctx.createLinearGradient(0, y, 0, bottom);
+        fill.addColorStop(0, color);
+        fill.addColorStop(1, note.hand === "left" ? "#117ca3" : "#b6248a");
+        ctx.fillStyle = fill;
         ctx.globalAlpha = this.hand === "both" || this.hand === note.hand ? 0.86 : 0.16;
         ctx.beginPath();
         ctx.roundRect(x, y, noteWidth, noteHeight, Math.min(5, noteWidth / 3));
         ctx.fill();
+        if (noteWidth >= 7) {
+          ctx.globalAlpha *= 0.38;
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(x + 1, y + 2, Math.max(1, noteWidth * 0.16), Math.max(2, noteHeight - 4));
+        }
       }
       ctx.globalAlpha = 1;
     }
@@ -104,9 +105,49 @@ export class WaterfallRenderer {
       this.drawLoopBoundary(this.loop.end, scoreTime, keyboardTop, rollHeight, visibleSeconds, width, "B");
     }
 
-    ctx.fillStyle = "rgba(255,255,255,.13)";
-    ctx.fillRect(0, keyboardTop - 2, width, 2);
+    this.drawStrikeZone(keyboardTop, width);
     this.drawKeyboard(keyboardTop, keyboardHeight, width);
+  }
+
+  private drawTimeline(scoreTime: number, keyboardTop: number, rollHeight: number, visibleSeconds: number, width: number): void {
+    const ctx = this.context;
+    const beats = this.score?.beatMap ?? [];
+    if (beats.length === 0) {
+      ctx.strokeStyle = "rgba(255,255,255,.055)";
+      ctx.lineWidth = 1;
+      for (let second = 0; second <= Math.ceil(visibleSeconds); second += 1) {
+        const y = keyboardTop - (second / visibleSeconds) * rollHeight;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+      }
+      return;
+    }
+    for (const marker of beats) {
+      const delta = marker.time - scoreTime;
+      if (delta < -0.15 || delta > visibleSeconds) continue;
+      const y = keyboardTop - (delta / visibleSeconds) * rollHeight;
+      ctx.strokeStyle = marker.accent ? "rgba(139,167,255,.38)" : "rgba(255,255,255,.09)";
+      ctx.lineWidth = marker.accent ? 1.5 : 1;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+      if (marker.accent && y > 18) {
+        ctx.fillStyle = "rgba(196,210,255,.72)";
+        ctx.font = "700 11px system-ui";
+        ctx.fillText(`M${marker.measure + 1}`, 10, y - 5);
+      }
+    }
+  }
+
+  private drawStrikeZone(keyboardTop: number, width: number): void {
+    const ctx = this.context;
+    const zone = Math.max(22, keyboardTop * 0.065);
+    const wash = ctx.createLinearGradient(0, keyboardTop - zone, 0, keyboardTop);
+    wash.addColorStop(0, "rgba(104, 229, 255, 0)");
+    wash.addColorStop(1, "rgba(104, 229, 255, .14)");
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, keyboardTop - zone, width, zone);
+    ctx.fillStyle = "rgba(190,244,255,.9)";
+    ctx.fillRect(0, keyboardTop - 2, width, 2);
+    ctx.font = "700 10px system-ui";
+    ctx.fillText("NOW", 10, keyboardTop - 8);
   }
 
   private drawLoopBoundary(
@@ -148,6 +189,11 @@ export class WaterfallRenderer {
       ctx.lineWidth = 1;
       ctx.fillRect(key.x * width, top, key.width * width + 0.5, height);
       ctx.strokeRect(key.x * width, top, key.width * width + 0.5, height);
+      if (key.note % 12 === 0 && key.width * width >= 18) {
+        ctx.fillStyle = "#536070";
+        ctx.font = "600 10px system-ui";
+        ctx.fillText(`C${Math.floor(key.note / 12) - 1}`, key.x * width + 3, top + height - 8);
+      }
     }
     for (const key of keys.filter((item) => item.black)) {
       let color = "#151821";

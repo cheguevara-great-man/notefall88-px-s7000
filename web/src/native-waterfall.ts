@@ -1,6 +1,6 @@
 import { pianoKeys } from "./layout";
 import type { LoopRange } from "./practice";
-import type { HandSelection, ParsedScore } from "./types";
+import type { BeatMarker, HandSelection, ParsedScore } from "./types";
 import { WaterfallRenderer } from "./waterfall";
 
 export interface WaterfallSurface {
@@ -13,7 +13,7 @@ export interface WaterfallSurface {
 
 interface NativeWaterfallPlugin {
   setGeometry(options: { keys: ReturnType<typeof pianoKeys> }): Promise<void>;
-  setScore(options: { notes: NativeNote[] }): Promise<void>;
+  setScore(options: { notes: NativeNote[]; beats: NativeBeat[] }): Promise<void>;
   setState(options: {
     pressed: number[];
     expected: number[];
@@ -34,8 +34,21 @@ export interface NativeNote {
   hand: "left" | "right";
 }
 
+export interface NativeBeat {
+  time: number;
+  accent: boolean;
+  beat: number;
+  measure: number;
+}
+
 export function nativeScoreNotes(score: ParsedScore | undefined): NativeNote[] {
   return (score?.notes ?? []).map(({ note, start, end, hand }) => ({ note, start, end, hand }));
+}
+
+export function nativeScoreBeats(score: ParsedScore | undefined): NativeBeat[] {
+  return (score?.beatMap ?? []).map(({ time, accent, beat, measure }: BeatMarker) => ({
+    time, accent, beat, measure,
+  }));
 }
 
 function nativePlugin(): NativeWaterfallPlugin | undefined {
@@ -65,7 +78,7 @@ class NativeWaterfallSurface implements WaterfallSurface {
   }
 
   setScore(score: ParsedScore | undefined): void {
-    void this.plugin.setScore({ notes: nativeScoreNotes(score) });
+    void this.plugin.setScore({ notes: nativeScoreNotes(score), beats: nativeScoreBeats(score) });
   }
 
   setState(pressed: Set<number>, expected: Set<number>, wrong: Set<number>): void {

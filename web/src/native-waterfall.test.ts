@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createWaterfallSurface, nativeScoreNotes } from "./native-waterfall";
+import { createWaterfallSurface, nativeScoreBeats, nativeScoreNotes } from "./native-waterfall";
 
 describe("native waterfall bridge", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -17,6 +17,14 @@ describe("native waterfall bridge", () => {
 
   it("clears the native score explicitly", () => {
     expect(nativeScoreNotes(undefined)).toEqual([]);
+    expect(nativeScoreBeats(undefined)).toEqual([]);
+  });
+
+  it("keeps real beat and measure markers for the native timeline", () => {
+    expect(nativeScoreBeats({
+      name: "Markers", duration: 1, notes: [],
+      beatMap: [{ time: 0, accent: true, beat: 1, measure: 1 }],
+    })).toEqual([{ time: 0, accent: true, beat: 1, measure: 1 }]);
   });
 
   it("selects the native plugin and sends geometry, state, bounds and a low-rate clock", () => {
@@ -52,7 +60,7 @@ describe("native waterfall bridge", () => {
     surface.render(0.4, true);
 
     expect(plugin.setScore).toHaveBeenCalledWith({
-      notes: [{ note: 60, start: 0, end: 1, hand: "right" }],
+      notes: [{ note: 60, start: 0, end: 1, hand: "right" }], beats: [],
     });
     expect(plugin.setState).toHaveBeenLastCalledWith({
       pressed: [60, 64], expected: [67], wrong: [64], hand: "right", loopStart: 0.25, loopEnd: 0.75,

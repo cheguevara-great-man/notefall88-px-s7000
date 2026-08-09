@@ -57,7 +57,8 @@ public class NativeWaterfallPlugin extends Plugin {
     @PluginMethod
     public void setScore(PluginCall call) {
         JSArray notes = call.getArray("notes");
-        onUi(() -> ensureView().setScore(notes));
+        JSArray beats = call.getArray("beats");
+        onUi(() -> ensureView().setScore(notes, beats));
         call.resolve();
     }
 
@@ -137,6 +138,18 @@ public class NativeWaterfallPlugin extends Plugin {
         }
     }
 
+    private static final class BeatLine {
+        final double time;
+        final boolean accent;
+        final int measure;
+
+        BeatLine(double time, boolean accent, int measure) {
+            this.time = time;
+            this.accent = accent;
+            this.measure = measure;
+        }
+    }
+
     private static final class NativeWaterfallView extends View {
         private static final double VISIBLE_SECONDS = 4.2;
         private static final int LEFT = Color.rgb(40, 215, 255);
@@ -146,6 +159,7 @@ public class NativeWaterfallPlugin extends Plugin {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final List<NoteBar> notes = new ArrayList<>();
+        private final List<BeatLine> beats = new ArrayList<>();
         private final KeyGeometry[] keys = new KeyGeometry[128];
         private final boolean[] pressed = new boolean[128];
         private final boolean[] expected = new boolean[128];
@@ -185,8 +199,9 @@ public class NativeWaterfallPlugin extends Plugin {
             invalidate();
         }
 
-        void setScore(JSArray source) {
+        void setScore(JSArray source, JSArray beatSource) {
             notes.clear();
+            beats.clear();
             if (source != null) {
                 for (int index = 0; index < source.length(); index += 1) {
                     try {
@@ -202,7 +217,19 @@ public class NativeWaterfallPlugin extends Plugin {
                     }
                 }
             }
+            if (beatSource != null) {
+                for (int index = 0; index < beatSource.length(); index += 1) {
+                    try {
+                        JSONObject item = beatSource.getJSONObject(index);
+                        double time = item.getDouble("time");
+                        if (time >= 0) beats.add(new BeatLine(time, item.optBoolean("accent"), item.optInt("measure")));
+                    } catch (JSONException ignored) {
+                        // A damaged visual marker must not discard valid notes.
+                    }
+                }
+            }
             notes.sort(Comparator.comparingDouble(note -> note.start));
+            beats.sort(Comparator.comparingDouble(beat -> beat.time));
             invalidate();
         }
 
@@ -249,19 +276,59 @@ public class NativeWaterfallPlugin extends Plugin {
                 Color.rgb(9, 11, 18), Color.rgb(17, 24, 39), Shader.TileMode.CLAMP));
             canvas.drawRect(0, 0, width, keyboardTop, paint);
             paint.setShader(null);
-            stroke.setColor(Color.argb(18, 255, 255, 255));
             double now = scoreTime();
-            for (int second = 0; second <= 5; second += 1) {
-                float y = keyboardTop - (float) (second / VISIBLE_SECONDS) * keyboardTop;
-                canvas.drawLine(0, y, width, y, stroke);
-            }
+            drawTimeline(canvas, width, keyboardTop, now);
             drawNotes(canvas, width, keyboardTop, now);
             drawLoop(canvas, width, keyboardTop, now, loopStart, "A");
             drawLoop(canvas, width, keyboardTop, now, loopEnd, "B");
-            paint.setColor(Color.argb(34, 255, 255, 255));
-            canvas.drawRect(0, keyboardTop - 2, width, keyboardTop, paint);
+            drawStrikeZone(canvas, width, keyboardTop);
             drawKeyboard(canvas, width, keyboardTop, keyboardHeight);
             if (running && getVisibility() == View.VISIBLE) postInvalidateOnAnimation();
+        }
+
+        private void drawTimeline(Canvas canvas, int width, float keyboardTop, double now) {
+            if (beats.isEmpty()) {
+                stroke.setColor(Color.argb(18, 255, 255, 255));
+                stroke.setStrokeWidth(getResources().getDisplayMetrics().density);
+                for (int second = 0; second <= 5; second += 1) {
+                    float y = keyboardTop - (float) (second / VISIBLE_SECONDS) * keyboardTop;
+                    canvas.drawLine(0, y, width, y, stroke);
+                }
+                return;
+            }
+            for (BeatLine marker : beats) {
+                double delta = marker.time - now;
+                if (delta < -0.15 || delta > VISIBLE_SECONDS) continue;
+                float y = keyboardTop - (float) (delta / VISIBLE_SECONDS) * keyboardTop;
+                stroke.setColor(marker.accent ? Color.argb(97, 139, 167, 255) : Color.argb(23, 255, 255, 255));
+                stroke.setStrokeWidth((marker.accent ? 1.5f : 1f) * getResources().getDisplayMetrics().density);
+                canvas.drawLine(0, y, width, y, stroke);
+                if (marker.accent && y > 18) {
+                    paint.setColor(Color.rgb(196, 210, 255));
+                    paint.setAlpha(184);
+                    paint.setTextSize(11 * getResources().getDisplayMetrics().scaledDensity);
+                    paint.setFakeBoldText(true);
+                    canvas.drawText("M" + (marker.measure + 1), 10, y - 5, paint);
+                    paint.setFakeBoldText(false);
+                    paint.setAlpha(255);
+                }
+            }
+        }
+
+        private void drawStrikeZone(Canvas canvas, int width, float keyboardTop) {
+            float zone = Math.max(22 * getResources().getDisplayMetrics().density, keyboardTop * .065f);
+            paint.setShader(new LinearGradient(0, keyboardTop - zone, 0, keyboardTop,
+                Color.argb(0, 104, 229, 255), Color.argb(36, 104, 229, 255), Shader.TileMode.CLAMP));
+            canvas.drawRect(0, keyboardTop - zone, width, keyboardTop, paint);
+            paint.setShader(null);
+            paint.setColor(Color.rgb(190, 244, 255));
+            paint.setAlpha(230);
+            canvas.drawRect(0, keyboardTop - 2, width, keyboardTop, paint);
+            paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
+            paint.setFakeBoldText(true);
+            canvas.drawText("NOW", 10, keyboardTop - 8, paint);
+            paint.setFakeBoldText(false);
+            paint.setAlpha(255);
         }
 
         private void drawNotes(Canvas canvas, int width, float keyboardTop, double now) {
@@ -276,11 +343,19 @@ public class NativeWaterfallPlugin extends Plugin {
                 float noteWidth = Math.max(3, key.width * width - 2);
                 float bottom = keyboardTop - (float) (delta / VISIBLE_SECONDS) * keyboardTop;
                 float noteHeight = Math.max(5, (float) ((note.end - note.start) / VISIBLE_SECONDS) * keyboardTop);
-                paint.setColor(note.left ? LEFT : RIGHT);
+                int color = note.left ? LEFT : RIGHT;
+                paint.setShader(new LinearGradient(0, bottom - noteHeight, 0, bottom, color,
+                    note.left ? Color.rgb(17, 124, 163) : Color.rgb(182, 36, 138), Shader.TileMode.CLAMP));
                 boolean selected = "both".equals(selectedHand) || (note.left ? "left" : "right").equals(selectedHand);
                 paint.setAlpha(selected ? 220 : 41);
                 float radius = Math.min(8, noteWidth / 3);
                 canvas.drawRoundRect(new RectF(x, bottom - noteHeight, x + noteWidth, bottom), radius, radius, paint);
+                paint.setShader(null);
+                if (noteWidth >= 7) {
+                    paint.setColor(Color.WHITE);
+                    paint.setAlpha(selected ? 82 : 16);
+                    canvas.drawRect(x + 1, bottom - noteHeight + 2, x + 1 + Math.max(1, noteWidth * .16f), bottom - 2, paint);
+                }
             }
             paint.setAlpha(255);
         }
@@ -325,6 +400,13 @@ public class NativeWaterfallPlugin extends Plugin {
                 stroke.setColor(Color.rgb(37, 41, 51));
                 stroke.setStrokeWidth(1);
                 canvas.drawRect(left, top, right, top + height, stroke);
+                if (note % 12 == 0 && key.width * width >= 18) {
+                    paint.setColor(Color.rgb(83, 96, 112));
+                    paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
+                    paint.setFakeBoldText(true);
+                    canvas.drawText("C" + (note / 12 - 1), left + 3, top + height - 8, paint);
+                    paint.setFakeBoldText(false);
+                }
             }
             for (int note = 21; note <= 108; note += 1) {
                 KeyGeometry key = keys[note];
