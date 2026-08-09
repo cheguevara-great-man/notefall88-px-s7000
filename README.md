@@ -52,6 +52,8 @@ MusicXML 目标时间线会按常见反复、多结尾和标准 D.C./D.S./Fine/C
 
 第一次实际制作直接按 [五步装机清单](docs/first-build.md) 执行。完整采购见 [BOM 表](docs/bom.csv)，接线见 [硬件说明](docs/hardware.md) 与 [USB Host/供电决策记录](docs/decisions/001-native-usb-host-and-vbus.md)，可直接发给代焊方的规格见 [线束制造表](docs/harness.csv)、[线束图](docs/wiring-harness.svg) 和 [代工消息模板](docs/vendor-order-template.md)。逐项完成证据与实物边界见 [工程完成度审计](docs/completion-audit.md)。参数化控制盒如下；它只保护 ESP32 和接线，不安装在琴键上。
 
+当前这台 PX-S7000 已购买商家确认可共点的 KF301‑2P/3P 端子与 74AHCT125N 裸芯片；KF301 到货后先逐孔验证共点关系，符合说明就直接用于配电，无需另买端子。实际购买记录、与通用 BOM 的差异及到货后唯一执行顺序见 [本机部署资料](docs/deploy/README.md)。历史问答保留用于解释决策，但不替代接线图和验收规范。
+
 ![控制盒爆炸图](mechanical/renders/controller_case.png)
 
 ## 仓库内容
