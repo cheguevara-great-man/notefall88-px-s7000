@@ -39,6 +39,7 @@ export interface NativeNote {
   note: number;
   start: number;
   end: number;
+  velocity: number;
   hand: "left" | "right";
 }
 
@@ -50,7 +51,7 @@ export interface NativeBeat {
 }
 
 export function nativeScoreNotes(score: ParsedScore | undefined): NativeNote[] {
-  return (score?.notes ?? []).map(({ note, start, end, hand }) => ({ note, start, end, hand }));
+  return (score?.notes ?? []).map(({ note, start, end, velocity, hand }) => ({ note, start, end, velocity, hand }));
 }
 
 export function nativeScoreBeats(score: ParsedScore | undefined): NativeBeat[] {

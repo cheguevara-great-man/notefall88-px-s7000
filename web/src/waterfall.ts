@@ -1,4 +1,6 @@
 import { pianoKeys } from "./layout";
+import { buildDynamicsProfile, normalizedDynamics } from "./dynamics";
+import type { DynamicsProfile } from "./dynamics";
 import { buildPhraseMap, phraseMapProgress } from "./phrase-map";
 import type { PhraseMap } from "./phrase-map";
 import type { LoopRange } from "./practice";
@@ -19,6 +21,7 @@ export class WaterfallRenderer {
   private readonly keys = pianoKeys();
   private score?: ParsedScore;
   private phraseMap: PhraseMap = buildPhraseMap([], 0);
+  private dynamicsProfile: DynamicsProfile = buildDynamicsProfile([]);
   private pressed = new Set<number>();
   private expected = new Set<number>();
   private wrong = new Set<number>();
@@ -37,6 +40,7 @@ export class WaterfallRenderer {
   setScore(score: ParsedScore | undefined): void {
     this.score = score;
     this.phraseMap = buildPhraseMap(score?.notes ?? [], score?.duration ?? 0);
+    this.dynamicsProfile = buildDynamicsProfile(score?.notes ?? []);
   }
 
   setState(pressed: Set<number>, expected: Set<number>, wrong: Set<number>): void {
@@ -114,43 +118,49 @@ export class WaterfallRenderer {
         const noteHeight = Math.max(5, (duration / visibleSeconds) * rollHeight);
         const y = bottom - noteHeight;
         const color = note.hand === "left" ? palette.left : palette.right;
+        const dynamics = normalizedDynamics(note.velocity, this.dynamicsProfile);
+        const selected = this.hand === "both" || this.hand === note.hand;
         const fill = ctx.createLinearGradient(0, y, 0, bottom);
         fill.addColorStop(0, color);
         fill.addColorStop(1, note.hand === "left" ? palette.leftShade : palette.rightShade);
         ctx.fillStyle = fill;
-        ctx.globalAlpha = this.hand === "both" || this.hand === note.hand ? 0.86 : 0.16;
+        ctx.globalAlpha = selected ? 0.62 + dynamics * 0.34 : 0.16;
         if (delta >= 0 && delta < 0.85 && ctx.globalAlpha > 0.5 && bottom < keyboardTop) {
           const runway = ctx.createLinearGradient(0, bottom, 0, keyboardTop);
           runway.addColorStop(0, `${color}${this.theme === "contrast" ? "18" : "08"}`);
           runway.addColorStop(1, `${color}${this.theme === "contrast" ? "38" : "50"}`);
           ctx.save();
-          ctx.globalAlpha = 1 - delta / 1.1;
+          ctx.globalAlpha = (1 - delta / 1.1) * (0.62 + dynamics * 0.38);
           ctx.fillStyle = runway;
           ctx.fillRect(x + noteWidth * 0.18, bottom, noteWidth * 0.64, keyboardTop - bottom);
           ctx.restore();
-          ctx.globalAlpha = this.hand === "both" || this.hand === note.hand ? 0.86 : 0.16;
+          ctx.globalAlpha = selected ? 0.62 + dynamics * 0.34 : 0.16;
           ctx.fillStyle = fill;
         }
         if (this.theme !== "contrast" && delta > -0.08 && delta < 0.32 && ctx.globalAlpha > 0.5) {
           const arrival = 1 - Math.min(1, Math.abs(delta) / 0.32);
           ctx.save();
-          ctx.globalAlpha = 0.12 + arrival * 0.22;
+          ctx.globalAlpha = 0.08 + arrival * (0.1 + dynamics * 0.18);
           ctx.fillStyle = color;
           ctx.beginPath();
           ctx.roundRect(x - 3, y - 3, noteWidth + 6, noteHeight + 6, Math.min(8, noteWidth / 2));
           ctx.fill();
           ctx.restore();
-          ctx.globalAlpha = this.hand === "both" || this.hand === note.hand ? 0.86 : 0.16;
+          ctx.globalAlpha = selected ? 0.62 + dynamics * 0.34 : 0.16;
           ctx.fillStyle = fill;
         }
         ctx.beginPath();
         ctx.roundRect(x, y, noteWidth, noteHeight, Math.min(5, noteWidth / 3));
         ctx.fill();
         if (noteWidth >= 7) {
-          ctx.globalAlpha *= 0.38;
+          ctx.globalAlpha *= 0.2 + dynamics * 0.46;
           ctx.fillStyle = "#ffffff";
-          ctx.fillRect(x + 1, y + 2, Math.max(1, noteWidth * 0.16), Math.max(2, noteHeight - 4));
+          ctx.fillRect(x + 1, y + 2, Math.max(1, noteWidth * (0.1 + dynamics * 0.14)), Math.max(2, noteHeight - 4));
         }
+        ctx.globalAlpha = selected ? 0.42 + dynamics * 0.53 : 0.08;
+        ctx.fillStyle = "#ffffff";
+        const cap = Math.max(1.5, Math.min(6, noteWidth * (0.1 + dynamics * 0.18)));
+        ctx.fillRect(x + 1, bottom - cap, Math.max(1, noteWidth - 2), cap);
       }
       ctx.globalAlpha = 1;
     }

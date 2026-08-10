@@ -15,6 +15,8 @@ const playwrightCli = join(WEB, "node_modules", "@playwright", "cli", "playwrigh
 
 mkdirSync(ARTIFACTS, { recursive: true });
 const longScorePath = join(ARTIFACTS, "long-follow-study.musicxml");
+const dynamicsScorePath = join(ARTIFACTS, "dynamics-visual-probe.musicxml");
+writeFileSync(dynamicsScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Dynamics Visual Probe</work-title></work><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><staves>2</staves><time><beats>4</beats><beat-type>4</beat-type></time><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes><direction><sound tempo="60"/></direction><forward><duration>2</duration></forward><direction><direction-type><dynamics><p/></dynamics></direction-type><staff>1</staff></direction><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note><backup><duration>1</duration></backup><direction><direction-type><dynamics><fff/></dynamics></direction-type><staff>2</staff></direction><note><pitch><step>C</step><octave>6</octave></pitch><duration>1</duration><voice>2</voice><type>quarter</type><staff>2</staff></note></measure></part></score-partwise>`);
 const longMeasures = Array.from({ length: 48 }, (_, index) => {
   const number = index + 1;
   const setup = number === 1
@@ -354,6 +356,44 @@ try {
   command(["screenshot"]);
   evaluate(`() => { document.querySelector('#focus-exit')?.click(); return JSON.stringify(true); }`);
 
+  command(["click", importRef]);
+  command(["upload", dynamicsScorePath]);
+  await waitForCondition(
+    `() => JSON.stringify(document.querySelector('#score-name')?.textContent?.startsWith('Dynamics Visual Probe'))`,
+    "dynamics visual score did not render",
+  );
+  const dynamicsPixels = evaluate(`() => {
+    const select = document.querySelector('#view-mode');
+    select.value = 'waterfall';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return JSON.stringify({ selected: select.value });
+  }`);
+  assert(dynamicsPixels.selected === 'waterfall', "dynamics visual probe did not select the waterfall");
+  evaluate(`async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return JSON.stringify(true);
+  }`);
+  const dynamicsSamples = evaluate(`() => {
+    const canvas = document.querySelector('#waterfall');
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return JSON.stringify({ available: false });
+    const sample = (whiteIndex) => {
+      const center = Math.round((whiteIndex + .5) / 52 * canvas.width);
+      const radius = Math.max(5, Math.floor(canvas.width / 52 * .35));
+      const height = Math.floor(canvas.height * .76);
+      const pixels = context.getImageData(center - radius, 0, radius * 2 + 1, height);
+      let maximum = 0;
+      for (let offset = 0; offset < pixels.data.length; offset += 4) {
+        maximum = Math.max(maximum, (pixels.data[offset] + pixels.data[offset + 1] + pixels.data[offset + 2]) / 3);
+      }
+      return maximum;
+    };
+    return JSON.stringify({ available: true, soft: sample(23), forte: sample(37) });
+  }`);
+  assert(dynamicsSamples.available && dynamicsSamples.forte >= dynamicsSamples.soft + 28,
+    `target dynamics are not visibly encoded at the note head: ${JSON.stringify(dynamicsSamples)}`);
+  command(["screenshot"]);
+
   command(["resize", "1600", "1068"]);
   page = snapshot();
   const longImportRef = refFor(page, /generic \[ref=(e\d+)\][^\n]*: 导入乐谱/, "long score import control");
@@ -439,6 +479,7 @@ try {
     tabletSingleSheet,
     physicalPanelFallback,
     tabletFocus,
+    dynamicsPixels: dynamicsSamples,
     score: "Long Follow Study",
     notes: 240,
     longScoreFollow: { before: followBefore, after: followAfter },

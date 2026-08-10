@@ -12,7 +12,7 @@ describe("native waterfall bridge", () => {
       format: "musicxml",
       beatMap: [{ time: 0, accent: true, beat: 1, measure: 1 }],
       notes: [{ note: 60, start: 0.25, end: 1.5, velocity: 99, hand: "right" }],
-    })).toEqual([{ note: 60, start: 0.25, end: 1.5, hand: "right" }]);
+    })).toEqual([{ note: 60, start: 0.25, end: 1.5, velocity: 99, hand: "right" }]);
   });
 
   it("clears the native score explicitly", () => {
@@ -62,7 +62,7 @@ describe("native waterfall bridge", () => {
     surface.render(0.4, true);
 
     expect(plugin.setScore).toHaveBeenCalledWith({
-      notes: [{ note: 60, start: 0, end: 1, hand: "right" }], beats: [],
+      notes: [{ note: 60, start: 0, end: 1, velocity: 80, hand: "right" }], beats: [],
     });
     expect(plugin.setState).toHaveBeenLastCalledWith({
       pressed: [60, 64], expected: [67], wrong: [64], hand: "right", loopStart: 0.25, loopEnd: 0.75,

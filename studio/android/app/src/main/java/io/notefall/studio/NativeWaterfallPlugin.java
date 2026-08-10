@@ -138,12 +138,14 @@ public class NativeWaterfallPlugin extends Plugin {
         final int note;
         final double start;
         final double end;
+        final int velocity;
         final boolean left;
 
-        NoteBar(int note, double start, double end, boolean left) {
+        NoteBar(int note, double start, double end, int velocity, boolean left) {
             this.note = note;
             this.start = start;
             this.end = end;
+            this.velocity = velocity;
             this.left = left;
         }
     }
@@ -210,6 +212,9 @@ public class NativeWaterfallPlugin extends Plugin {
         private boolean running;
         private double visibleSeconds = 4.2;
         private double scoreDuration;
+        private int dynamicsLow = 32;
+        private int dynamicsHigh = 112;
+        private boolean dynamicsFlat;
 
         NativeWaterfallView(Activity activity) {
             super(activity);
@@ -255,7 +260,8 @@ public class NativeWaterfallPlugin extends Plugin {
                         double start = item.getDouble("start");
                         double end = item.getDouble("end");
                         if (note >= 21 && note <= 108 && start >= 0 && end >= start) {
-                            notes.add(new NoteBar(note, start, end, "left".equals(item.optString("hand"))));
+                            int velocity = Math.max(1, Math.min(127, item.optInt("velocity", 96)));
+                            notes.add(new NoteBar(note, start, end, velocity, "left".equals(item.optString("hand"))));
                         }
                     } catch (JSONException ignored) {
                         // Ignore one malformed note rather than losing an otherwise valid score.
@@ -275,8 +281,34 @@ public class NativeWaterfallPlugin extends Plugin {
             }
             notes.sort(Comparator.comparingDouble(note -> note.start));
             beats.sort(Comparator.comparingDouble(beat -> beat.time));
+            buildDynamicsProfile();
             buildPhraseMap();
             invalidate();
+        }
+
+        private void buildDynamicsProfile() {
+            if (notes.isEmpty()) {
+                dynamicsLow = 32;
+                dynamicsHigh = 112;
+                dynamicsFlat = false;
+                return;
+            }
+            int[] values = new int[notes.size()];
+            for (int index = 0; index < notes.size(); index += 1) values[index] = notes.get(index).velocity;
+            Arrays.sort(values);
+            int lowIndex = values.length >= 10 ? (int) Math.floor((values.length - 1) * .1) : 0;
+            int highIndex = values.length >= 10 ? (int) Math.ceil((values.length - 1) * .9) : values.length - 1;
+            dynamicsLow = values[lowIndex];
+            dynamicsHigh = values[highIndex];
+            dynamicsFlat = dynamicsHigh - dynamicsLow < 12;
+        }
+
+        private float normalizedDynamics(int velocity) {
+            float absolute = Math.max(1, Math.min(127, velocity)) / 127f;
+            float local = dynamicsFlat
+                ? absolute
+                : Math.max(0, Math.min(1, (velocity - dynamicsLow) / (float) Math.max(1, dynamicsHigh - dynamicsLow)));
+            return Math.max(.08f, Math.min(.95f, absolute * .72f + local * .28f));
         }
 
         private void buildPhraseMap() {
@@ -562,13 +594,14 @@ public class NativeWaterfallPlugin extends Plugin {
                     ? themeColor(LEFT, Color.rgb(78, 230, 190), Color.rgb(68, 215, 255))
                     : themeColor(RIGHT, Color.rgb(184, 156, 255), Color.rgb(255, 207, 63));
                 boolean selected = "both".equals(selectedHand) || (note.left ? "left" : "right").equals(selectedHand);
+                float dynamics = normalizedDynamics(note.velocity);
                 float radius = Math.min(8, noteWidth / 3);
                 if (selected && delta >= 0 && delta < .85 && bottom < keyboardTop) {
                     int runwayAlpha = "contrast".equals(theme) ? 56 : 80;
                     paint.setShader(new LinearGradient(0, bottom, 0, keyboardTop,
                         Color.argb("contrast".equals(theme) ? 24 : 8, Color.red(color), Color.green(color), Color.blue(color)),
                         Color.argb(runwayAlpha, Color.red(color), Color.green(color), Color.blue(color)), Shader.TileMode.CLAMP));
-                    paint.setAlpha((int) (255 * (1 - delta / 1.1)));
+                    paint.setAlpha((int) (255 * (1 - delta / 1.1) * (.62f + dynamics * .38f)));
                     canvas.drawRect(x + noteWidth * .18f, bottom, x + noteWidth * .82f, keyboardTop, paint);
                     paint.setShader(null);
                 }
@@ -576,21 +609,28 @@ public class NativeWaterfallPlugin extends Plugin {
                     float arrival = 1 - Math.min(1, (float) Math.abs(delta) / .32f);
                     paint.setShader(null);
                     paint.setColor(color);
-                    paint.setAlpha((int) (31 + arrival * 56));
+                    paint.setAlpha((int) (20 + arrival * (26 + dynamics * 46)));
                     canvas.drawRoundRect(new RectF(x - 3, bottom - noteHeight - 3, x + noteWidth + 3, bottom + 3), radius + 3, radius + 3, paint);
                 }
                 paint.setShader(new LinearGradient(0, bottom - noteHeight, 0, bottom, color,
                     note.left
                         ? themeColor(Color.rgb(17, 124, 163), Color.rgb(22, 135, 118), Color.rgb(20, 125, 163))
                         : themeColor(Color.rgb(182, 36, 138), Color.rgb(112, 80, 186), Color.rgb(181, 122, 8)), Shader.TileMode.CLAMP));
-                paint.setAlpha(selected ? 220 : 41);
+                int bodyAlpha = selected ? (int) (158 + dynamics * 87) : 41;
+                paint.setAlpha(bodyAlpha);
                 canvas.drawRoundRect(new RectF(x, bottom - noteHeight, x + noteWidth, bottom), radius, radius, paint);
                 paint.setShader(null);
                 if (noteWidth >= 7) {
                     paint.setColor(Color.WHITE);
-                    paint.setAlpha(selected ? 82 : 16);
-                    canvas.drawRect(x + 1, bottom - noteHeight + 2, x + 1 + Math.max(1, noteWidth * .16f), bottom - 2, paint);
+                    paint.setAlpha(selected ? (int) (bodyAlpha * (.2f + dynamics * .46f)) : 16);
+                    canvas.drawRect(x + 1, bottom - noteHeight + 2,
+                        x + 1 + Math.max(1, noteWidth * (.1f + dynamics * .14f)), bottom - 2, paint);
                 }
+                float density = getResources().getDisplayMetrics().density;
+                float cap = Math.max(1.5f * density, Math.min(6 * density, noteWidth * (.1f + dynamics * .18f)));
+                paint.setColor(Color.WHITE);
+                paint.setAlpha(selected ? (int) (255 * (.42f + dynamics * .53f)) : 20);
+                canvas.drawRect(x + 1, bottom - cap, x + Math.max(2, noteWidth - 1), bottom, paint);
             }
             paint.setAlpha(255);
         }
