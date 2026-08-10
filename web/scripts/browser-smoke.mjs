@@ -212,7 +212,7 @@ try {
     return JSON.stringify({ selected: select.value, stored: localStorage.getItem('notefall88.visual-theme.v1') });
   }`);
   assert(theme.selected === 'contrast' && theme.stored === 'contrast', "visual theme selection was not applied or persisted");
-  const focusRef = refFor(page, /button "专注演奏"[^\n]*\[ref=(e\d+)\]/, "focus mode button");
+  const focusRef = refFor(page, /button "全屏演奏"[^\n]*\[ref=(e\d+)\]/, "fullscreen performance button");
   command(["click", focusRef]);
   await waitForCondition(
     `() => JSON.stringify({
@@ -232,7 +232,7 @@ try {
   assert(focusState.focused && focusState.exitVisible && focusState.transportHidden, "focus mode does not hide controls safely");
   assert(focusState.visualizerHeight >= mobile.height - 14, "focus mode does not expand the practice surface");
   page = snapshot();
-  const focusExitRef = refFor(page, /button "退出专注"[^\n]*\[ref=(e\d+)\]/, "focus mode exit button");
+  const focusExitRef = refFor(page, /button "退出全屏"[^\n]*\[ref=(e\d+)\]/, "fullscreen performance exit button");
   command(["click", focusExitRef]);
   assert(evaluate(`() => document.querySelector('.app-shell')?.dataset.focus !== 'true'`), "focus mode does not exit");
   command(["screenshot"]);

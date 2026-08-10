@@ -49,6 +49,8 @@ Core 的“离线”是 ESP32 本地托管，不是 Service Worker 缓存。Stud
 
 Studio 仍通过同一语义协议连接 Core，重型资源由手机/平板/电脑存储，ESP 继续保留轻量救援网页。正式平板路线采用混合原生容器：OSMD 谱面保留 WebView；Android 瀑布流由硬件加速原生 View 使用单调时钟逐帧绘制，Web/PWA 与暂未有 Xcode 构建环境的 iOS 使用 Canvas/WebGL 回退。真正重写的是呈现/交互层，不是 MusicXML、评分、曲库、协议或固件。选型、性能门禁与局部原生化边界见 [ADR-004](decisions/004-studio-hybrid-native.md)。
 
+练习页面提供统一的“全屏演奏”状态：Web/PWA 使用 Fullscreen API，并在权限或浏览器策略拒绝时降级为纯 CSS 沉浸布局；Android 通过原生桥隐藏状态栏和导航栏。两条路径共享相同的三视图布局、退出按钮和安全区处理，不把全屏能力绑死在某个浏览器实现上。
+
 ## 练习引擎
 
 - `等我弹`：当前和弦的所有目标音都命中后才前进；重复按同一个正确音不重复计分，错误音单独统计。

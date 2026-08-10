@@ -76,6 +76,7 @@ import type {
   TargetNote,
 } from "./types";
 import { createWaterfallSurface } from "./native-waterfall";
+import { requestImmersiveMode } from "./immersive";
 import { SheetRenderer } from "./sheet";
 import { transposeLabel, transposeScore } from "./transpose";
 import { normalizeVisualTheme } from "./visual-theme";
@@ -1151,11 +1152,13 @@ function updateViewMode(): void {
   scoreNavigator.hidden = !showSheet;
 }
 
-function setFocusMode(enabled: boolean): void {
+function setFocusMode(enabled: boolean, manageSystemFullscreen = true): void {
   appShell?.setAttribute("data-focus", String(enabled));
   focusButton.setAttribute("aria-pressed", String(enabled));
-  focusButton.textContent = enabled ? "退出专注" : "专注演奏";
+  focusButton.textContent = enabled ? "退出全屏" : "全屏演奏";
   focusExit.hidden = !enabled;
+  focusExit.textContent = "退出全屏";
+  if (manageSystemFullscreen) void requestImmersiveMode(enabled);
   // OSMD uses a width observer; let layout settle once the controls disappear.
   window.setTimeout(() => sheetRenderer.seek(lastScoreSeconds), 0);
 }
@@ -1164,6 +1167,12 @@ focusButton.addEventListener("click", () => setFocusMode(appShell?.dataset.focus
 focusExit.addEventListener("click", () => setFocusMode(false));
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && appShell?.dataset.focus === "true") setFocusMode(false);
+});
+document.addEventListener("fullscreenchange", () => {
+  // Browser Escape exits the Fullscreen API before our key handler sees it.
+  // Keep the visual and accessibility states synchronized without requesting
+  // another platform transition from inside the fullscreenchange callback.
+  if (!document.fullscreenElement && appShell?.dataset.focus === "true") setFocusMode(false, false);
 });
 
 function renderMeasureNavigation(seconds: number): void {
