@@ -186,6 +186,13 @@ try {
   assert(loadedMobile.sheetVisible && loadedMobile.notation, "sheet view is empty after MusicXML import");
   assert(loadedMobile.view === (EDITION === "studio" ? "split" : "sheet"), "MusicXML selected the wrong default view");
   assert(loadedMobile.waterfallVisible === (EDITION === "studio"), "split view did not expose the waterfall");
+  const theme = evaluate(`() => {
+    const select = document.querySelector('#visual-theme');
+    select.value = 'contrast';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return JSON.stringify({ selected: select.value, stored: localStorage.getItem('notefall88.visual-theme.v1') });
+  }`);
+  assert(theme.selected === 'contrast' && theme.stored === 'contrast', "visual theme selection was not applied or persisted");
   const focusRef = refFor(page, /button "专注演奏"[^\n]*\[ref=(e\d+)\]/, "focus mode button");
   command(["click", focusRef]);
   await waitForCondition(
