@@ -60,8 +60,13 @@ h1 span { color: #8ba7ff; }
 .score-navigator { display: flex; align-items: center; gap: 14px; margin: 0 0 10px; padding: 9px 12px; border: 1px solid #283142; border-radius: 11px; background: rgba(16,20,29,.8); }
 .score-navigator[hidden] { display: none; }
 .score-navigator > div:first-child { display: grid; gap: 2px; min-width: 78px; }.score-navigator .label { color: #7f899b; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }.score-navigator strong { font-size: 13px; color: #cbd7ff; }
+.measure-navigation-stack { display: grid; min-width: 0; flex: 1; gap: 5px; }
+.measure-overview { display: flex; width: 100%; height: 7px; gap: 1px; overflow: hidden; border-radius: 99px; background: #202634; box-shadow: inset 0 0 0 1px rgba(255,255,255,.04); }
+.measure-heat { flex: 1 1 2px; min-width: 2px; min-height: 7px; padding: 0; border: 0; border-radius: 0; background: #313949; opacity: .72; transition: opacity .15s ease, transform .15s ease; }
+.measure-heat[data-tone="clean"] { background: #45c77a; }.measure-heat[data-tone="watch"] { background: #e2b64b; }.measure-heat[data-tone="weak"] { background: #ef625e; }.measure-heat[data-current="true"] { opacity: 1; box-shadow: 0 0 0 1px #fff, 0 0 8px rgba(255,255,255,.7); transform: scaleY(1.5); z-index: 1; }
 .measure-rail { display: flex; min-width: 0; flex: 1; gap: 5px; overflow: hidden; }
 .measure-pill { display: grid; place-items: center; flex: 0 0 38px; min-height: 27px; padding: 0; border: 1px solid #313a4d; border-radius: 6px; color: #95a2ba; font: 700 11px ui-monospace, SFMono-Regular, Consolas, monospace; background: #111722; }
+.measure-pill[data-tone="clean"] { border-bottom-color: #45c77a; }.measure-pill[data-tone="watch"] { border-bottom-color: #e2b64b; }.measure-pill[data-tone="weak"] { border-bottom-color: #ef625e; box-shadow: inset 0 -3px 0 rgba(239,98,94,.22); }
 .measure-pill[data-loop="true"] { border-color: rgba(255,210,76,.48); }.measure-pill[data-current="true"] { color: #fff; border-color: #9eafff; background: linear-gradient(135deg, #516bc5, #8250c4); box-shadow: 0 0 18px rgba(119,132,255,.35); }
 .measure-pill[data-selected="true"] { outline: 2px solid #ffd24c; outline-offset: 1px; }.score-navigator > small { color: #8995ab; font-size: 11px; white-space: nowrap; }
 .measure-seek { flex: 0 0 auto; min-height: 29px; padding: 0 9px; border-color: rgba(135,181,255,.4); color: #d1e2ff; font-size: 11px; white-space: nowrap; }.measure-seek:disabled { opacity: .45; }

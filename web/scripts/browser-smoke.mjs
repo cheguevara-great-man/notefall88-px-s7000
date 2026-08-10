@@ -9,7 +9,8 @@ const BROWSER = process.env.NOTEFALL_BROWSER || "chromium";
 const EDITION = process.env.NOTEFALL_EDITION === "studio" ? "studio" : "core";
 const ARTIFACTS = join(ROOT, "output", "playwright", `smoke-${EDITION}-${BROWSER}-${Date.now()}-${process.pid}`);
 const SESSION = `notefall-smoke-${EDITION}-${BROWSER}-${process.pid}`;
-const BASE_URL = "http://127.0.0.1:4173";
+const PORT = Number(process.env.NOTEFALL_PORT || 4173);
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 const viteCli = join(WEB, "node_modules", "vite", "bin", "vite.js");
 const playwrightCli = join(WEB, "node_modules", "@playwright", "cli", "playwright-cli.js");
 
@@ -33,8 +34,8 @@ writeFileSync(longScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partw
 const serverLogPath = join(ARTIFACTS, "vite.log");
 const serverLog = openSync(serverLogPath, "w");
 const viteArguments = EDITION === "studio"
-  ? [viteCli, "--config", "vite.studio.config.ts", "--host", "127.0.0.1", "--port", "4173", "--strictPort"]
-  : [viteCli, "--host", "127.0.0.1", "--port", "4173", "--strictPort"];
+  ? [viteCli, "--config", "vite.studio.config.ts", "--host", "127.0.0.1", "--port", String(PORT), "--strictPort"]
+  : [viteCli, "--host", "127.0.0.1", "--port", String(PORT), "--strictPort"];
 const server = spawn(process.execPath, viteArguments, {
   cwd: WEB,
   stdio: ["ignore", serverLog, serverLog],
@@ -395,6 +396,32 @@ try {
     `score cursor did not traverse the repeated playback occurrence: ${JSON.stringify(repeatCursor)}`);
   assert(Math.abs(repeatCursor.first.left - repeatCursor.repeated.left) < 2,
     `repeated written measure did not return to the same notation position: ${JSON.stringify(repeatCursor)}`);
+  const measureHeat = evaluate(`async () => {
+    const emit = (detail) => window.dispatchEvent(new CustomEvent('notefall:test-practice-event', { detail }));
+    emit({ kind: 'hit', note: 60, hand: 'right', velocity: 92, scoreTime: .2, timingMs: 10 });
+    emit({ kind: 'hit', note: 67, hand: 'right', velocity: 86, scoreTime: 4.2, timingMs: 140 });
+    emit({ kind: 'missed', note: 69, hand: 'right', scoreTime: 4.4 });
+    window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { seconds: 4.3 } }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const overview = [...document.querySelectorAll('#measure-overview .measure-heat')];
+    const current = overview.find((item) => item.dataset.current === 'true');
+    const result = {
+      count: overview.length,
+      tones: overview.map((item) => item.dataset.tone),
+      currentTone: current?.dataset.tone,
+      currentOccurrence: current?.dataset.occurrence,
+      currentHeight: current?.getBoundingClientRect().height ?? 0,
+      overviewHeight: document.querySelector('#measure-overview')?.getBoundingClientRect().height ?? 0,
+      weakPill: document.querySelector('.measure-pill[data-occurrence="1"]')?.dataset.tone,
+    };
+    window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { clear: true } }));
+    return JSON.stringify(result);
+  }`);
+  assert(measureHeat.count === 4 && measureHeat.tones[0] === 'clean' && measureHeat.tones[1] === 'weak',
+    `measure heat ribbon did not encode clean and weak measures: ${JSON.stringify(measureHeat)}`);
+  assert(measureHeat.currentOccurrence === '1' && measureHeat.currentTone === 'weak'
+    && measureHeat.currentHeight > measureHeat.overviewHeight,
+    `measure heat ribbon did not emphasize the current weak measure: ${JSON.stringify(measureHeat)}`);
   const sheetFeedback = evaluate(`async () => {
     window.dispatchEvent(new CustomEvent('notefall:test-feedback', { detail: { kind: 'hit', note: 60, timingMs: -90 } }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -595,6 +622,7 @@ try {
     longScoreFollow: { before: followBefore, after: followAfter },
     noteCursor,
     repeatCursor,
+    measureHeat,
     sheetFeedback,
     phraseMapSamples,
     artifacts: ARTIFACTS,

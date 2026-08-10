@@ -23,7 +23,7 @@ import {
 } from "./calibration";
 import { DeviceLink } from "./device";
 import { parseMidiFile } from "./midi";
-import { measureLoopRange, measureNavigation } from "./measure-navigation";
+import { measureLoopRange, measureNavigation, measurePerformance } from "./measure-navigation";
 import { practiceTrend } from "./trend";
 import { MetronomePlayer } from "./metronome";
 import { parseMusicXmlFile } from "./musicxml";
@@ -141,6 +141,7 @@ const scoreTime = required("score-time");
 const scoreResult = required("score-result");
 const scoreNavigator = required("score-navigator");
 const measureCurrent = required("measure-current");
+const measureOverview = required("measure-overview");
 const measureRail = required("measure-rail");
 const measureSeek = required<HTMLButtonElement>("measure-seek");
 const measureNavHint = required("measure-nav-hint");
@@ -278,6 +279,7 @@ let midiOutBlocked = false;
 let followPlanner = new FollowAccompanimentPlanner([]);
 let analytics: PracticeAnalytics | undefined;
 let completedReviewEvents: PracticeEvent[] = [];
+let completedReviewFingerprint: string | undefined;
 let selectedReviewSession: PracticeSession | undefined;
 let reviewRevision = 0;
 let lastReviewSignature = "";
@@ -554,6 +556,7 @@ function sessionContext() {
 function beginPracticeSession(): void {
   analytics = score && chords.length > 0 ? new PracticeAnalytics(sessionContext()) : undefined;
   completedReviewEvents = [];
+  completedReviewFingerprint = undefined;
   selectedReviewSession = undefined;
   reviewRevision += 1;
   renderInsights();
@@ -564,6 +567,7 @@ async function finishPracticeSession(): Promise<void> {
   analytics = undefined;
   if (!completed) return;
   completedReviewEvents = completed.events;
+  completedReviewFingerprint = completed.context.scoreFingerprint;
   selectedReviewSession = undefined;
   reviewRevision += 1;
   renderInsights();
@@ -605,6 +609,11 @@ if (import.meta.env.DEV) {
     if (Number.isFinite(seconds)) {
       testScoreSeekSeconds = seconds;
     }
+  });
+  window.addEventListener("notefall:test-practice-event", (rawEvent) => {
+    const event = (rawEvent as CustomEvent<PracticeEvent>).detail;
+    if (!event || !Number.isInteger(event.note) || !Number.isFinite(event.scoreTime)) return;
+    recordPracticeEvent(event);
   });
 }
 
@@ -1213,9 +1222,16 @@ function renderMeasureNavigation(seconds: number): void {
   const items = measureNavigation(score, seconds, loop);
   const current = items.find((item) => item.current);
   currentMeasureOccurrence = current?.occurrence;
-  const signature = `${current?.occurrence ?? -1}:${loop?.start ?? ""}:${loop?.end ?? ""}:${measureLoopAnchor ?? ""}`;
+  const signature = `${current?.occurrence ?? -1}:${loop?.start ?? ""}:${loop?.end ?? ""}:${measureLoopAnchor ?? ""}:${reviewRevision}`;
   if (signature === lastMeasureNavigationSignature) return;
   lastMeasureNavigationSignature = signature;
+  const historicCompatible = !selectedReviewSession || (scoreFingerprint
+    ? selectedReviewSession.context.scoreFingerprint === scoreFingerprint
+    : selectedReviewSession.context.scoreName === score.name);
+  const events = analytics?.eventsSnapshot()
+    ?? (selectedReviewSession && historicCompatible ? selectedReviewSession.events : undefined)
+    ?? (completedReviewFingerprint === scoreFingerprint ? completedReviewEvents : []);
+  const performance = measurePerformance(score, events);
   measureCurrent.textContent = current ? `M${current.writtenMeasure + 1} · 第 ${current.occurrence + 1} 次` : "--";
   measureSeek.disabled = currentMeasureOccurrence === undefined || loopEnabled.checked;
   measureSeek.textContent = measureLoopAnchor === undefined ? "从此小节开始" : "从 A 开始";
@@ -1227,10 +1243,28 @@ function renderMeasureNavigation(seconds: number): void {
     pill.dataset.current = String(item.current);
     pill.dataset.loop = String(item.inLoop);
     pill.dataset.selected = String(item.occurrence === measureLoopAnchor);
+    const quality = performance[item.occurrence];
+    pill.dataset.tone = quality?.tone ?? "untouched";
     pill.dataset.occurrence = String(item.occurrence);
     pill.textContent = `M${item.writtenMeasure + 1}`;
-    pill.title = `第 ${item.occurrence + 1} 个播放小节 · ${formatTime(item.start)}`;
+    const qualityText = quality && quality.tone !== "untouched"
+      ? ` · 命中 ${quality.hits}，多余 ${quality.wrong}，漏音 ${quality.missed}${quality.meanAbsTimingMs === undefined ? "" : `，平均偏差 ${quality.meanAbsTimingMs.toFixed(0)} ms`}`
+      : " · 尚未练习";
+    pill.title = `第 ${item.occurrence + 1} 个播放小节 · ${formatTime(item.start)}${qualityText}`;
     return pill;
+  }));
+  measureOverview.replaceChildren(...performance.map((quality) => {
+    const marker = document.createElement("button");
+    marker.type = "button";
+    marker.className = "measure-heat";
+    marker.dataset.tone = quality.tone;
+    marker.dataset.current = String(quality.occurrence === current?.occurrence);
+    marker.dataset.occurrence = String(quality.occurrence);
+    marker.setAttribute("aria-label", `第 ${quality.occurrence + 1} 个播放小节`);
+    marker.title = quality.tone === "untouched"
+      ? `第 ${quality.occurrence + 1} 个播放小节：尚未练习`
+      : `第 ${quality.occurrence + 1} 个播放小节：命中 ${quality.hits}，多余 ${quality.wrong}，漏音 ${quality.missed}`;
+    return marker;
   }));
 }
 
@@ -1261,6 +1295,12 @@ measureRail.addEventListener("click", (event) => {
   const pill = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-occurrence]");
   if (!pill) return;
   selectMeasureLoopOccurrence(Number(pill.dataset.occurrence));
+});
+
+measureOverview.addEventListener("click", (event) => {
+  const marker = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-occurrence]");
+  if (!marker) return;
+  startAtMeasure(Number(marker.dataset.occurrence));
 });
 
 function startAtMeasure(occurrence: number): void {
