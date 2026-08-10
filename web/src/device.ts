@@ -9,6 +9,7 @@ import type {
 } from "./types";
 import { TargetSync } from "./target-sync";
 import { decodeDeviceMessage } from "./protocol";
+import { DeviceClockSync } from "./clock-sync";
 
 type Listener<T> = (value: T) => void;
 
@@ -41,7 +42,8 @@ export class DeviceLink {
   private calibrationListeners: Listener<CalibrationState>[] = [];
   private midiOutListeners: Listener<MidiOutResult>[] = [];
   private connectionListeners: Listener<boolean>[] = [];
-  private lastPing = 0;
+  private lastPingSentAt = 0;
+  private lastPingToken = 0;
   private pingTimer?: number;
   private reconnectAttempt = 0;
   private heartbeatTimer?: number;
@@ -50,7 +52,11 @@ export class DeviceLink {
   private authenticationPending = false;
   private controlAuthorized = false;
   private readonly targetSync = new TargetSync((targets) => this.sendTargets(targets));
+  private readonly clockSync = new DeviceClockSync();
   latencyMs?: number;
+  clockSyncAvailable?: boolean;
+  clockSyncErrorMs?: number;
+  midiTransportDelayMs?: number;
   browserRejectedMessages = 0;
 
   constructor(private readonly webSocketUrl?: string) {}
@@ -63,6 +69,10 @@ export class DeviceLink {
     this.socket = new WebSocket(this.webSocketUrl ?? `ws://${host}:81/`);
     this.socket.onopen = () => {
       this.reconnectAttempt = 0;
+      this.clockSync.reset();
+      this.clockSyncAvailable = undefined;
+      this.clockSyncErrorMs = undefined;
+      this.midiTransportDelayMs = undefined;
       window.clearTimeout(this.pingTimer);
       this.connectionListeners.forEach((listener) => listener(true));
       this.sendHello();
@@ -73,6 +83,10 @@ export class DeviceLink {
     };
     this.socket.onclose = () => {
       this.controlAuthorized = false;
+      this.clockSync.reset();
+      this.clockSyncAvailable = undefined;
+      this.clockSyncErrorMs = undefined;
+      this.midiTransportDelayMs = undefined;
       window.clearTimeout(this.pingTimer);
       this.connectionListeners.forEach((listener) => listener(false));
       const delay = Math.min(1000 * 2 ** this.reconnectAttempt, 10000);
@@ -84,6 +98,7 @@ export class DeviceLink {
   }
 
   private handleMessage(raw: string): void {
+    const receivedAt = performance.now();
     const decoded = decodeDeviceMessage(raw);
     if (!decoded.ok) {
       this.browserRejectedMessages += 1;
@@ -116,15 +131,46 @@ export class DeviceLink {
       if (becameAuthorized) this.targetSync.reconnect();
       this.statusListeners.forEach((listener) => listener(message.value));
     } else if (message.kind === "midi") {
-      this.midiListeners.forEach((listener) => listener(message.value));
+      const timing = this.clockSync.estimate(message.value.timestamp, receivedAt);
+      const value = timing ? {
+        ...message.value,
+        capturedAt: timing.browserTime,
+        transportDelayMs: timing.transportDelayMs,
+        clockSyncErrorMs: timing.uncertaintyMs,
+      } : message.value;
+      if (timing) {
+        this.clockSyncErrorMs = timing.uncertaintyMs;
+        this.midiTransportDelayMs = this.midiTransportDelayMs === undefined
+          ? timing.transportDelayMs
+          : this.midiTransportDelayMs * 0.8 + timing.transportDelayMs * 0.2;
+      }
+      this.midiListeners.forEach((listener) => listener(value));
     } else if (message.kind === "control") {
-      this.controlListeners.forEach((listener) => listener(message.value));
+      const timing = this.clockSync.estimate(message.value.timestamp, receivedAt);
+      const value = timing ? {
+        ...message.value,
+        capturedAt: timing.browserTime,
+        transportDelayMs: timing.transportDelayMs,
+        clockSyncErrorMs: timing.uncertaintyMs,
+      } : message.value;
+      this.controlListeners.forEach((listener) => listener(value));
     } else if (message.kind === "calibration") {
       this.calibrationListeners.forEach((listener) => listener(message.value));
     } else if (message.kind === "midiOutResult") {
       this.midiOutListeners.forEach((listener) => listener(message.value));
     } else if (message.kind === "pong") {
-      this.latencyMs = Math.max(0, performance.now() - this.lastPing);
+      if (message.browserTimestamp !== this.lastPingToken) return;
+      this.latencyMs = Math.max(0, receivedAt - this.lastPingSentAt);
+      if (message.deviceTimestamp !== undefined
+        && this.clockSync.observe(this.lastPingSentAt, receivedAt, message.deviceTimestamp)) {
+        this.clockSyncAvailable = true;
+        this.clockSyncErrorMs = this.clockSync.uncertaintyMs();
+      } else if (message.deviceTimestamp === undefined) {
+        this.clockSync.reset();
+        this.clockSyncAvailable = false;
+        this.clockSyncErrorMs = undefined;
+        this.midiTransportDelayMs = undefined;
+      }
       window.clearTimeout(this.pingTimer);
       this.pingTimer = window.setTimeout(() => this.ping(), 2000);
     }
@@ -154,8 +200,9 @@ export class DeviceLink {
 
   ping(): void {
     if (this.socket?.readyState !== WebSocket.OPEN) return;
-    this.lastPing = performance.now();
-    this.send({ t: "ping", ts: Math.round(this.lastPing) });
+    this.lastPingSentAt = performance.now();
+    this.lastPingToken = Math.round(this.lastPingSentAt);
+    this.send({ t: "ping", ts: this.lastPingToken });
   }
 
   setTargets(notes: TargetNote[]): void {

@@ -12,7 +12,7 @@ export type DeviceMessage =
   | { kind: "control"; value: MidiControlEvent }
   | { kind: "calibration"; value: CalibrationState }
   | { kind: "midiOutResult"; value: MidiOutResult }
-  | { kind: "pong" }
+  | { kind: "pong"; browserTimestamp: number; deviceTimestamp?: number }
   | { kind: "protocolError"; expected: number; received: number };
 
 export type DecodeResult =
@@ -183,8 +183,11 @@ function decodeObject(source: Record<string, unknown>): DeviceMessage {
     };
   }
   if (type === "pong") {
-    requiredInteger(source, "ts", 0, MAX_SAFE_COUNTER);
-    return { kind: "pong" };
+    return {
+      kind: "pong",
+      browserTimestamp: requiredInteger(source, "ts", 0, MAX_SAFE_COUNTER),
+      deviceTimestamp: optionalInteger(source, "deviceTs", 0, 0xffff_ffff),
+    };
   }
   if (type === "protocolError") {
     return {

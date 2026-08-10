@@ -107,6 +107,12 @@ export interface MidiInputEvent {
   velocity: number;
   highResolutionVelocity?: number;
   timestamp: number;
+  /** ESP capture time projected onto the browser's performance.now() clock. */
+  capturedAt?: number;
+  /** Estimated ESP queue + WebSocket delivery delay; diagnostic only. */
+  transportDelayMs?: number;
+  /** Half of the best clock-sync ping round trip; bounds projection error. */
+  clockSyncErrorMs?: number;
 }
 
 export interface MidiControlEvent {
@@ -114,6 +120,9 @@ export interface MidiControlEvent {
   controller: number;
   value: number;
   timestamp: number;
+  capturedAt?: number;
+  transportDelayMs?: number;
+  clockSyncErrorMs?: number;
 }
 
 export interface CalibrationState {

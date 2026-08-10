@@ -1080,6 +1080,8 @@ function advanceFollowMode(): void {
 
 function handleMidi(event: MidiInputEvent): void {
   if (event.note < 21 || event.note > 108) return;
+  const capturedAt = event.capturedAt ?? performance.now();
+  const capturedScoreTime = clock.time(capturedAt);
   if (event.state === "on" && event.note === 60) storeCommissioning(observeMidi(commissioning, event));
   if (event.state === "on") {
     const analysisVelocity = event.highResolutionVelocity === undefined
@@ -1106,7 +1108,7 @@ function handleMidi(event: MidiInputEvent): void {
         completeWaitChord();
       }
     } else if (score && mode === "realtime" && clock.isRunning()) {
-      const result = realtimeMatcher.noteOn(event.note, lastScoreSeconds);
+      const result = realtimeMatcher.noteOn(event.note, capturedScoreTime);
       recordMissedNotes(result.missed);
       if (result.newlyMatched) {
         recordPracticeEvent({
@@ -1118,7 +1120,7 @@ function handleMidi(event: MidiInputEvent): void {
           timingMs: result.timingMs,
         });
       } else if (!result.correct) {
-        recordPracticeEvent({ kind: "wrong", note: event.note, velocity: analysisVelocity, scoreTime: lastScoreSeconds });
+        recordPracticeEvent({ kind: "wrong", note: event.note, velocity: analysisVelocity, scoreTime: capturedScoreTime });
       }
       if (!result.correct) wrong.add(event.note);
     }
@@ -1131,13 +1133,13 @@ function handleMidi(event: MidiInputEvent): void {
       completeWaitChord();
     }
   }
-  recorder.handleMidi(event, performance.now());
+  recorder.handleMidi(event, capturedAt);
   finishTruncatedRecording();
   renderStats();
 }
 
 function handleControl(event: MidiControlEvent): void {
-  recorder.handleControl(event, performance.now());
+  recorder.handleControl(event, event.capturedAt ?? performance.now());
   finishTruncatedRecording();
   if (event.controller === 64) {
     const down = event.value >= 64;
@@ -2166,8 +2168,16 @@ function frame(now: number): void {
     renderer.setState(pressed, expected, wrong);
     renderer.render(lastScoreSeconds, mode === "realtime" && clock.isRunning());
   }
-  latencyStatus.textContent =
-    `WebSocket ${device.latencyMs === undefined ? "--" : Math.round(device.latencyMs)} ms`;
+  const network = `WebSocket ${device.latencyMs === undefined ? "--" : Math.round(device.latencyMs)} ms`;
+  const synchronized = device.clockSyncAvailable === false
+    ? "判定时钟：到达时间降级"
+    : device.clockSyncErrorMs === undefined
+      ? "判定时钟校准中"
+      : `判定时钟 ±${Math.max(1, Math.ceil(device.clockSyncErrorMs))} ms`;
+  const transport = device.midiTransportDelayMs === undefined
+    ? ""
+    : ` · MIDI 路径约 ${Math.round(device.midiTransportDelayMs)} ms`;
+  latencyStatus.textContent = `${network} · ${synchronized}${transport}`;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

@@ -26,6 +26,7 @@ describe("device websocket link", () => {
   const clearTimeoutMock = vi.fn();
   const setIntervalMock = vi.fn(() => 42);
   let sessionValues: Map<string, string>;
+  let nowMs: number;
 
   beforeEach(() => {
     FakeWebSocket.instances = [];
@@ -33,7 +34,9 @@ describe("device websocket link", () => {
     clearTimeoutMock.mockClear();
     setIntervalMock.mockClear();
     sessionValues = new Map();
+    nowMs = 1_000;
     vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("performance", { now: () => nowMs });
     vi.stubGlobal("window", {
       location: { hostname: "192.168.4.1" },
       setTimeout: setTimeoutMock,
@@ -73,8 +76,11 @@ describe("device websocket link", () => {
     expect(setIntervalMock).toHaveBeenCalledWith(expect.any(Function), 250);
     expect(sentMessages(socket).slice(0, 2)).toEqual([
       { t: "hello", v: 6 },
-      expect.objectContaining({ t: "ping" }),
+      { t: "ping", ts: 1_000 },
     ]);
+
+    nowMs = 1_020;
+    socket.onmessage?.({ data: JSON.stringify({ t: "pong", ts: 1_000, deviceTs: 500 }) });
 
     socket.onmessage?.({ data: JSON.stringify({
       t: "status", protocol: 6, piano: true, clients: 1,
@@ -82,12 +88,18 @@ describe("device websocket link", () => {
       controlSessionReady: true, controlAuthorized: true, accessPointClient: true,
     }) });
     expect(sentMessages(socket)).toContainEqual({ t: "target", notes: [{ n: 48, h: 0 }] });
-    socket.onmessage?.({ data: JSON.stringify({ t: "midi", s: "on", ch: 1, n: 60, v: 100, ts: 10 }) });
-    socket.onmessage?.({ data: JSON.stringify({ t: "control", ch: 1, c: 64, v: 127, ts: 11 }) });
+    nowMs = 1_050;
+    socket.onmessage?.({ data: JSON.stringify({ t: "midi", s: "on", ch: 1, n: 60, v: 100, ts: 530 }) });
+    socket.onmessage?.({ data: JSON.stringify({ t: "control", ch: 1, c: 64, v: 127, ts: 531 }) });
     socket.onmessage?.({ data: JSON.stringify({ t: "calibration", offsets: Array(88).fill(0) }) });
     socket.onmessage?.({ data: JSON.stringify({ t: "midiOutResult", ok: true, busy: false, accepted: 1, queued: 1 }) });
     expect(statuses).toHaveBeenCalledOnce();
     expect(midi).toHaveBeenCalledOnce();
+    expect(midi).toHaveBeenCalledWith(expect.objectContaining({
+      capturedAt: 1_040,
+      transportDelayMs: 10,
+      clockSyncErrorMs: 10,
+    }));
     expect(controls).toHaveBeenCalledOnce();
     expect(calibration).toHaveBeenCalledOnce();
     expect(midiOut).toHaveBeenCalledOnce();
@@ -206,9 +218,19 @@ describe("device websocket link", () => {
     socket.onopen?.();
     socket.onmessage?.({ data: "not-json" });
     expect(link.browserRejectedMessages).toBe(1);
-    socket.onmessage?.({ data: JSON.stringify({ t: "pong", ts: 1 }) });
-    expect(link.latencyMs).toBeGreaterThanOrEqual(0);
+    nowMs = 1_020;
+    socket.onmessage?.({ data: JSON.stringify({ t: "pong", ts: 1_000, deviceTs: 500 }) });
+    expect(link.latencyMs).toBe(20);
+    expect(link.clockSyncAvailable).toBe(true);
+    expect(link.clockSyncErrorMs).toBe(10);
     expect(setTimeoutMock).toHaveBeenCalledWith(expect.any(Function), 2000);
+
+    nowMs = 3_000;
+    link.ping();
+    nowMs = 3_020;
+    socket.onmessage?.({ data: JSON.stringify({ t: "pong", ts: 3_000 }) });
+    expect(link.clockSyncAvailable).toBe(false);
+    expect(link.clockSyncErrorMs).toBeUndefined();
 
     socket.close();
     expect(connections).toHaveBeenLastCalledWith(false);

@@ -95,6 +95,16 @@ def test_browser_broadcast_cannot_delay_the_local_led_frame() -> None:
     assert 'doc["webMidiDropped"] = browserMidiDropped' in source
 
 
+def test_ping_returns_the_device_clock_used_by_usb_midi_timestamps() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    handler = source[source.index("void handleWebMessage") : source.index("void webSocketEvent")]
+    ping = handler[handler.index('strcmp(type, "ping")') : handler.index('strcmp(type, "target")')]
+    assert 'reply["ts"] = doc["ts"] | 0' in ping
+    assert 'reply["deviceTs"] = millis()' in ping
+    midi = source[source.index("void handleMidiPacket") : source.index("void onPianoConnected")]
+    assert "static_cast<uint32_t>(receivedUs / 1000U)" in midi
+
+
 def test_output_mirror_heuristic_never_discards_real_keyboard_input() -> None:
     source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
     handler = source[source.index("void handleMidiPacket") : source.index("void onPianoConnected")]

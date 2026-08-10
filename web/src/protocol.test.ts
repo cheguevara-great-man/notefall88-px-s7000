@@ -47,10 +47,19 @@ describe("device protocol decoder", () => {
       { t: "midi", s: "on", ch: 16, n: 108, v: 127, vh: 16_383, ts: 123 },
       { t: "control", ch: 1, c: 64, v: 127, ts: 124 },
       { t: "midiOutResult", ok: true, busy: false, accepted: 48, queued: 256 },
-      { t: "pong", ts: 12 },
+      { t: "pong", ts: 12, deviceTs: 0xffff_ffff },
     ]) {
       expect(decodeDeviceMessage(JSON.stringify(message)).ok).toBe(true);
     }
+  });
+
+  it("preserves both sides of a clock-sync pong while accepting legacy pongs", () => {
+    const synchronized = decodeDeviceMessage(JSON.stringify({ t: "pong", ts: 12, deviceTs: 345 }));
+    expect(synchronized.ok && synchronized.message.kind === "pong" ? synchronized.message : undefined)
+      .toEqual({ kind: "pong", browserTimestamp: 12, deviceTimestamp: 345 });
+    const legacy = decodeDeviceMessage(JSON.stringify({ t: "pong", ts: 13 }));
+    expect(legacy.ok && legacy.message.kind === "pong" ? legacy.message.deviceTimestamp : "invalid")
+      .toBeUndefined();
   });
 
   it("decodes optional 14-bit velocity without breaking 7-bit clients", () => {
@@ -87,6 +96,7 @@ describe("device protocol decoder", () => {
       JSON.stringify({ t: "midi", s: "on", ch: 1, n: 60, v: 90, vh: 16_384, ts: 1 }),
       JSON.stringify({ t: "control", ch: 1, c: 64, v: -1, ts: 1 }),
       JSON.stringify({ t: "pong", ts: 12.5 }),
+      JSON.stringify({ t: "pong", ts: 12, deviceTs: -1 }),
       JSON.stringify({ t: "midiOutResult", ok: 1, busy: false, accepted: 0, queued: 0 }),
       JSON.stringify({ t: "midiOutResult", ok: true, busy: false, accepted: 0, queued: 257 }),
       JSON.stringify({ t: "futureMessage" }),

@@ -584,6 +584,7 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
     JsonDocument reply;
     reply["t"] = "pong";
     reply["ts"] = doc["ts"] | 0;
+    reply["deviceTs"] = millis();
     String encoded;
     serializeJson(reply, encoded);
     websocket.sendTXT(client, encoded);
