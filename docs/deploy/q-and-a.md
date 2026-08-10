@@ -240,7 +240,7 @@
 
 - **双视图**：PTS 只有谱面跟随（◐），Openthesia 只有瀑布流（●），PLV/PianoLux 是 ◐；NoteFall 是 ● 两种视图可切换（`view-mode`）。
 - **谱面正确性**：真实反复/结尾/D.C./D.S./Fine/Coda 播放顺序、普通/复合/自由拍号、metric modulation 精确换算——PTS 也有完整反复语义，其余项目多为 ◐。
-- **性能定位**：瀑布流是浏览器 Canvas + `requestAnimationFrame`，五线谱是 OSMD SVG + 跟随光标；当前嵌入资源共 417,315 B（约 407.5 KiB，门禁 <500 KiB），OSMD 压缩后约 299 KB；已在 Chromium + WebKit 的 390×844、1280×900、1600×1068 和 3200×2136 视口回归无横向溢出。
+- **性能定位**：瀑布流是浏览器 Canvas + `requestAnimationFrame`，五线谱是 OSMD SVG + 稳定阅读带跟随光标；当前嵌入资源共 418,465 B（约 408.7 KiB，门禁 <500 KiB），OSMD 压缩后约 299 KB；已在 Chromium + WebKit 的 390×844、1280×900、1600×1068 和 3200×2136 视口回归无横向溢出，并用 48 小节/192 音符合成长谱验证自动翻谱。
 - **观感诚实对比**：Openthesia 桌面 GPU 画面上限更高；NoteFall 是“能在手机浏览器跑、能随 ESP 离线携带”的轻量实现，观感目标是清晰可用，不是桌面级特效。这就是组合领先与单项上限的区别。
 
 **功能层强项清单（原 Q56，按 `../competitive-benchmark.md` 可审计矩阵）**：USB→ESP→SPI 本地确定性链路（按键不经过浏览器/Wi-Fi）、MIDI+MusicXML 双格式、谱面+瀑布双视图、三种练习模式、琴内音源 Follow Me 带安全排程、完整反复/跳转语义、逐音时序/力度/历史、可解释自适应建议（唯一）、逐键灯位校准、认证 OTA+双槽更新（唯一）、参数化机械/电气制造包（唯一）、跨层 CI（175 项测试 + 1016 语料）。

@@ -90,6 +90,13 @@ public class NativeWaterfallPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setPreview(PluginCall call) {
+        double seconds = call.getDouble("seconds", 4.2);
+        onUi(() -> ensureView().setPreview(seconds));
+        call.resolve();
+    }
+
+    @PluginMethod
     public void showFeedback(PluginCall call) {
         String kind = call.getString("kind", "hit");
         int note = call.getInt("note", -1);
@@ -178,7 +185,6 @@ public class NativeWaterfallPlugin extends Plugin {
     }
 
     private static final class NativeWaterfallView extends View {
-        private static final double VISIBLE_SECONDS = 4.2;
         private static final int LEFT = Color.rgb(40, 215, 255);
         private static final int RIGHT = Color.rgb(255, 79, 200);
         private static final int CORRECT = Color.rgb(101, 245, 154);
@@ -199,12 +205,18 @@ public class NativeWaterfallPlugin extends Plugin {
         private double baseScoreTime;
         private long baseRealtimeMs;
         private boolean running;
+        private double visibleSeconds = 4.2;
 
         NativeWaterfallView(Activity activity) {
             super(activity);
             setLayerType(View.LAYER_TYPE_HARDWARE, null);
             stroke.setStrokeWidth(getResources().getDisplayMetrics().density);
             stroke.setStyle(Paint.Style.STROKE);
+        }
+
+        void setPreview(double seconds) {
+            visibleSeconds = Math.max(2.4, Math.min(8.0, seconds));
+            invalidate();
         }
 
         void setGeometry(JSArray source) {
@@ -344,15 +356,15 @@ public class NativeWaterfallPlugin extends Plugin {
                 stroke.setColor(Color.argb(18, 255, 255, 255));
                 stroke.setStrokeWidth(getResources().getDisplayMetrics().density);
                 for (int second = 0; second <= 5; second += 1) {
-                    float y = keyboardTop - (float) (second / VISIBLE_SECONDS) * keyboardTop;
+                    float y = keyboardTop - (float) (second / visibleSeconds) * keyboardTop;
                     canvas.drawLine(0, y, width, y, stroke);
                 }
                 return;
             }
             for (BeatLine marker : beats) {
                 double delta = marker.time - now;
-                if (delta < -0.15 || delta > VISIBLE_SECONDS) continue;
-                float y = keyboardTop - (float) (delta / VISIBLE_SECONDS) * keyboardTop;
+                if (delta < -0.15 || delta > visibleSeconds) continue;
+                float y = keyboardTop - (float) (delta / visibleSeconds) * keyboardTop;
                 stroke.setColor(marker.accent ? Color.argb(97, 139, 167, 255) : Color.argb(23, 255, 255, 255));
                 stroke.setStrokeWidth((marker.accent ? 1.5f : 1f) * getResources().getDisplayMetrics().density);
                 canvas.drawLine(0, y, width, y, stroke);
@@ -451,13 +463,13 @@ public class NativeWaterfallPlugin extends Plugin {
             for (int index = first; index < notes.size(); index += 1) {
                 NoteBar note = notes.get(index);
                 double delta = note.start - now;
-                if (delta > VISIBLE_SECONDS) break;
+                if (delta > visibleSeconds) break;
                 KeyGeometry key = keys[note.note];
                 if (key == null || note.end < now - 0.35) continue;
                 float x = key.x * width + 1;
                 float noteWidth = Math.max(3, key.width * width - 2);
-                float bottom = keyboardTop - (float) (delta / VISIBLE_SECONDS) * keyboardTop;
-                float noteHeight = Math.max(5, (float) ((note.end - note.start) / VISIBLE_SECONDS) * keyboardTop);
+                float bottom = keyboardTop - (float) (delta / visibleSeconds) * keyboardTop;
+                float noteHeight = Math.max(5, (float) ((note.end - note.start) / visibleSeconds) * keyboardTop);
                 int color = note.left
                     ? themeColor(LEFT, Color.rgb(78, 230, 190), Color.rgb(68, 215, 255))
                     : themeColor(RIGHT, Color.rgb(184, 156, 255), Color.rgb(255, 207, 63));
@@ -509,8 +521,8 @@ public class NativeWaterfallPlugin extends Plugin {
         private void drawLoop(Canvas canvas, int width, float keyboardTop, double now, Double boundary, String label) {
             if (boundary == null) return;
             double delta = boundary - now;
-            if (delta < 0 || delta > VISIBLE_SECONDS) return;
-            float y = keyboardTop - (float) (delta / VISIBLE_SECONDS) * keyboardTop;
+            if (delta < 0 || delta > visibleSeconds) return;
+            float y = keyboardTop - (float) (delta / visibleSeconds) * keyboardTop;
             stroke.setColor(Color.rgb(255, 210, 76));
             stroke.setStrokeWidth(2 * getResources().getDisplayMetrics().density);
             canvas.drawLine(0, y, width, y, stroke);

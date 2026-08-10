@@ -9,6 +9,7 @@ export interface AppPreferences {
   hand: HandSelection;
   tempo: number;
   leadMs: number;
+  previewSeconds: number;
   metronome: boolean;
   countIn: boolean;
 }
@@ -19,6 +20,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   hand: "both",
   tempo: 1,
   leadMs: 900,
+  previewSeconds: 4.2,
   metronome: false,
   countIn: true,
 };
@@ -37,15 +39,27 @@ function normalize(value: unknown): AppPreferences {
     : DEFAULT_PREFERENCES.hand;
   const tempo = normalizeTempo(Number(candidate.tempo), DEFAULT_PREFERENCES.tempo);
   const leadMs = Math.round(Math.max(300, Math.min(2_000, Number(candidate.leadMs) || DEFAULT_PREFERENCES.leadMs)) / 100) * 100;
+  const previewSeconds = normalizePreviewSeconds(candidate.previewSeconds);
   return {
     version: 1,
     mode,
     hand: mode === "follow" && hand === "both" ? "right" : hand,
     tempo,
     leadMs,
+    previewSeconds,
     metronome: candidate.metronome === true,
     countIn: candidate.countIn !== false,
   };
+}
+
+export const PREVIEW_SECONDS_OPTIONS = [2.8, 4.2, 6.5] as const;
+
+export function normalizePreviewSeconds(value: unknown): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_PREFERENCES.previewSeconds;
+  return PREVIEW_SECONDS_OPTIONS.reduce((closest, option) => (
+    Math.abs(option - numeric) < Math.abs(closest - numeric) ? option : closest
+  ));
 }
 
 export function loadPreferences(storage?: PreferenceStorage): AppPreferences {

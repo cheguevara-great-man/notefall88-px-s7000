@@ -22,6 +22,7 @@ export class WaterfallRenderer {
   private hand: HandSelection = "both";
   private loop?: LoopRange;
   private theme: VisualTheme = "neon";
+  private previewSeconds = 4.2;
   private feedback: WaterfallFeedback[] = [];
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -47,6 +48,10 @@ export class WaterfallRenderer {
 
   setTheme(theme: VisualTheme): void {
     this.theme = theme;
+  }
+
+  setPreviewSeconds(seconds: number): void {
+    this.previewSeconds = Math.max(2.4, Math.min(8, seconds));
   }
 
   /** Shows a short, key-local confirmation without hiding the upcoming notes. */
@@ -78,7 +83,7 @@ export class WaterfallRenderer {
     const keyboardHeight = height * 0.22;
     const keyboardTop = height - keyboardHeight;
     const rollHeight = keyboardTop;
-    const visibleSeconds = 4.2;
+    const visibleSeconds = this.previewSeconds;
     const ctx = this.context;
     const palette = visualPalette(this.theme);
 

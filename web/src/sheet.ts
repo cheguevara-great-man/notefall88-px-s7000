@@ -1,4 +1,5 @@
 import type { ParsedScore } from "./types";
+import { cursorScrollTarget } from "./score-follow";
 
 interface OsmdCursorIterator {
   EndReached: boolean;
@@ -8,6 +9,7 @@ interface OsmdCursorIterator {
 
 interface OsmdCursor {
   Iterator: OsmdCursorIterator;
+  cursorElement?: HTMLImageElement;
   hide?(): void;
   reset(): void;
   show(): void;
@@ -63,6 +65,9 @@ export class SheetRenderer {
       drawTitle: true,
       drawingParameters: "compacttight",
       followCursor: true,
+      // Preserve intentional line breaks from edited scores. Responsive
+      // reflow still applies when the source omits explicit system breaks.
+      newSystemFromXML: true,
       // Practice screens benefit more from a readable full-width system than
       // from print-layout ragged endings, especially on 3:2 tablets.
       stretchLastSystemLine: true,
@@ -138,6 +143,7 @@ export class SheetRenderer {
       }
       cursor.show();
       cursor.update();
+      window.requestAnimationFrame(() => this.followCursor(cursor.cursorElement));
     } catch (error) {
       // A readable MusicXML document can still omit staff/voice information
       // needed by OSMD's optional cursor. Keep the rendered score usable.
@@ -146,5 +152,24 @@ export class SheetRenderer {
       try { cursor.hide?.(); } catch { /* Rendering remains usable without a cursor. */ }
     }
     this.currentMeasure = target;
+  }
+
+  private followCursor(element: HTMLElement | undefined): void {
+    if (!element?.isConnected) return;
+    const viewport = this.container.getBoundingClientRect();
+    const cursor = element.getBoundingClientRect();
+    const target = cursorScrollTarget({
+      cursorTop: cursor.top - viewport.top,
+      cursorHeight: cursor.height,
+      viewportHeight: this.container.clientHeight,
+      scrollTop: this.container.scrollTop,
+      scrollHeight: this.container.scrollHeight,
+    });
+    if (target === undefined) return;
+    const distance = Math.abs(target - this.container.scrollTop);
+    this.container.scrollTo({
+      top: target,
+      behavior: distance <= this.container.clientHeight * 1.25 ? "smooth" : "auto",
+    });
   }
 }

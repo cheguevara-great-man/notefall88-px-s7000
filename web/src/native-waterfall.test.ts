@@ -33,6 +33,7 @@ describe("native waterfall bridge", () => {
       setScore: vi.fn(async () => undefined),
       setState: vi.fn(async () => undefined),
       setPlayback: vi.fn(async () => undefined),
+      setPreview: vi.fn(async () => undefined),
       show: vi.fn(async () => undefined),
       hide: vi.fn(async () => undefined),
     };
@@ -57,6 +58,7 @@ describe("native waterfall bridge", () => {
     });
     surface.setState(new Set([64, 60]), new Set([67]), new Set([64]));
     surface.setPracticeView("right", { start: 0.25, end: 0.75 });
+    surface.setPreviewSeconds(6.5);
     surface.render(0.4, true);
 
     expect(plugin.setScore).toHaveBeenCalledWith({
@@ -67,6 +69,7 @@ describe("native waterfall bridge", () => {
     });
     expect(plugin.show).toHaveBeenCalledWith({ left: 12.25, top: 44.5, width: 900, height: 420 });
     expect(plugin.setPlayback).toHaveBeenCalledWith({ scoreTime: 0.4, running: true });
+    expect(plugin.setPreview).toHaveBeenCalledWith({ seconds: 6.5 });
 
     surface.setVisible(false);
     surface.render(0.5, true);

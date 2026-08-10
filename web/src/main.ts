@@ -124,6 +124,7 @@ const handSelect = required<HTMLSelectElement>("hand-selection");
 const leadTime = required<HTMLInputElement>("lead-time");
 const transposeInput = required<HTMLInputElement>("transpose");
 const visualThemeSelect = required<HTMLSelectElement>("visual-theme");
+const previewSecondsSelect = required<HTMLSelectElement>("preview-seconds");
 const metronomeEnabled = required<HTMLInputElement>("metronome-enabled");
 const countInEnabled = required<HTMLInputElement>("count-in-enabled");
 const loopEnabled = required<HTMLInputElement>("loop-enabled");
@@ -244,6 +245,7 @@ let wrong = new Set<number>();
 let mode: PracticeMode = initialPreferences.mode;
 let hand: HandSelection = initialPreferences.hand;
 let leadMs = initialPreferences.leadMs;
+let previewSeconds = initialPreferences.previewSeconds;
 let lastScoreSeconds = 0;
 let lastStatsSignature = "";
 let lastMeasureNavigationSignature = "";
@@ -297,6 +299,8 @@ clock.speed = initialPreferences.tempo;
 metronome.setEnabled(initialPreferences.metronome);
 visualThemeSelect.value = visualTheme;
 renderer.setTheme(visualTheme);
+previewSecondsSelect.value = String(previewSeconds);
+renderer.setPreviewSeconds(previewSeconds);
 required("lead-value").textContent = `${(leadMs / 1000).toFixed(1)} 秒`;
 required("metronome-status").textContent = initialPreferences.metronome
   ? "已开启 · 按乐谱拍号与速度"
@@ -309,6 +313,7 @@ function persistPreferences(): void {
     hand,
     tempo: selectedTempo(),
     leadMs,
+    previewSeconds,
     metronome: metronomeEnabled.checked,
     countIn: countInEnabled.checked,
   });
@@ -1537,6 +1542,11 @@ visualThemeSelect.addEventListener("change", () => {
   visualThemeSelect.value = visualTheme;
   renderer.setTheme(visualTheme);
   try { window.localStorage.setItem(VISUAL_THEME_STORAGE_KEY, visualTheme); } catch { /* visual preference is optional */ }
+});
+previewSecondsSelect.addEventListener("change", () => {
+  previewSeconds = Number(previewSecondsSelect.value);
+  renderer.setPreviewSeconds(previewSeconds);
+  persistPreferences();
 });
 loopEnabled.addEventListener("change", () => {
   loopStart.disabled = !loopEnabled.checked;

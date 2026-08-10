@@ -1,4 +1,4 @@
-import { closeSync, mkdirSync, openSync, readFileSync, readdirSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,17 @@ const viteCli = join(WEB, "node_modules", "vite", "bin", "vite.js");
 const playwrightCli = join(WEB, "node_modules", "@playwright", "cli", "playwright-cli.js");
 
 mkdirSync(ARTIFACTS, { recursive: true });
+const longScorePath = join(ARTIFACTS, "long-follow-study.musicxml");
+const longMeasures = Array.from({ length: 48 }, (_, index) => {
+  const number = index + 1;
+  const setup = number === 1
+    ? `<attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>2400</per-minute></metronome></direction-type><sound tempo="2400"/></direction>`
+    : number % 4 === 1 ? `<print new-system="yes"/>` : "";
+  const octave = 4 + Math.floor((index % 8) / 4);
+  const notes = ["C", "E", "G", "D"].map((step) => `<note><pitch><step>${step}</step><octave>${octave}</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("");
+  return `<measure number="${number}">${setup}${notes}</measure>`;
+}).join("");
+writeFileSync(longScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Long Follow Study</work-title></work><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1">${longMeasures}</part></score-partwise>`);
 const serverLogPath = join(ARTIFACTS, "vite.log");
 const serverLog = openSync(serverLogPath, "w");
 const viteArguments = EDITION === "studio"
@@ -119,6 +130,17 @@ try {
   command(["click", practiceRef]);
   page = snapshot();
   assert(page.includes('heading "练习选项"'), "practice panel did not open");
+  const preview = evaluate(`() => {
+    const select = document.querySelector('#preview-seconds');
+    if (!select) return JSON.stringify({ missing: true });
+    select.value = '6.5';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return JSON.stringify({
+      selected: select.value,
+      stored: JSON.parse(localStorage.getItem('notefall88.preferences.v1') ?? '{}').previewSeconds,
+    });
+  }`);
+  assert(!preview.missing && preview.selected === '6.5' && preview.stored === 6.5, "waterfall preview horizon was not applied or persisted");
   const drawer = evaluate(`() => {
     const panel = document.querySelector('#practice-panel:not([hidden])');
     const close = panel?.querySelector('button');
@@ -311,6 +333,46 @@ try {
   assert(physicalPanelFallback.width === 3200 && physicalPanelFallback.height === 2136 && physicalPanelFallback.threeByTwoLayout, "physical-panel fallback viewport was not applied");
   assert(!physicalPanelFallback.overflow && !physicalPanelFallback.sheetHorizontalOverflow && physicalPanelFallback.notation, `physical-panel fallback layout is invalid: ${JSON.stringify(physicalPanelFallback)}`);
 
+  command(["resize", "1600", "1068"]);
+  page = snapshot();
+  const longImportRef = refFor(page, /generic \[ref=(e\d+)\][^\n]*: 导入乐谱/, "long score import control");
+  command(["click", longImportRef]);
+  command(["upload", longScorePath]);
+  await waitForCondition(
+    `() => JSON.stringify(document.querySelector('#score-name')?.textContent === 'Long Follow Study · 192 音符')`,
+    "synthetic long score did not render",
+  );
+  const followBefore = evaluate(`() => JSON.stringify({
+    scrollTop: document.querySelector('#sheet-view')?.scrollTop ?? -1,
+    scrollHeight: document.querySelector('#sheet-view')?.scrollHeight ?? 0,
+    clientHeight: document.querySelector('#sheet-view')?.clientHeight ?? 0,
+    svgHeight: document.querySelector('#sheet-view svg')?.getBoundingClientRect().height ?? 0,
+  })`);
+  assert(followBefore.scrollHeight > followBefore.clientHeight, `synthetic long score is not scrollable: ${JSON.stringify(followBefore)}`);
+  const longPlayback = evaluate(`() => {
+    const mode = document.querySelector('#practice-mode');
+    mode.value = 'realtime';
+    mode.dispatchEvent(new Event('change', { bubbles: true }));
+    const countIn = document.querySelector('#count-in-enabled');
+    countIn.checked = false;
+    countIn.dispatchEvent(new Event('change', { bubbles: true }));
+    const play = document.querySelector('#play-button');
+    play.click();
+    return JSON.stringify({ mode: mode.value, button: play.textContent, countIn: countIn.checked });
+  }`);
+  assert(longPlayback.mode === 'realtime' && longPlayback.countIn === false, `long-score realtime mode did not start: ${JSON.stringify(longPlayback)}`);
+  await waitForCondition(
+    `() => JSON.stringify((document.querySelector('#sheet-view')?.scrollTop ?? 0) > 20)`,
+    "score cursor did not advance the long sheet to a later system",
+    100,
+  );
+  const followAfter = evaluate(`() => JSON.stringify({
+    scrollTop: document.querySelector('#sheet-view')?.scrollTop ?? -1,
+    currentMeasure: document.querySelector('#measure-current')?.textContent,
+  })`);
+  assert(followAfter.scrollTop > followBefore.scrollTop, `long-score following did not move forward: ${JSON.stringify({ followBefore, followAfter })}`);
+  command(["screenshot"]);
+
   console.log(JSON.stringify({
     passed: true,
     edition: EDITION,
@@ -319,9 +381,9 @@ try {
     tabletPhysicalPanel: [3200, 2136],
     tabletSingleSheet,
     physicalPanelFallback,
-    score: "Parser Etude",
-    notes: 4,
-    durationSeconds: 4,
+    score: "Long Follow Study",
+    notes: 192,
+    longScoreFollow: { before: followBefore, after: followAfter },
     artifacts: ARTIFACTS,
   }, null, 2));
 } finally {
