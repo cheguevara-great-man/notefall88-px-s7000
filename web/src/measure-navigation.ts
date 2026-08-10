@@ -41,3 +41,20 @@ export function currentMeasureOccurrence(score: ParsedScore | undefined, seconds
   const items = measureNavigation(score, seconds, undefined, 1);
   return items.find((item) => item.current)?.occurrence;
 }
+
+/** Returns a whole-measure practice loop covering both selected rail pills. */
+export function measureLoopRange(
+  score: ParsedScore | undefined,
+  firstOccurrence: number,
+  secondOccurrence: number,
+): { start: number; end: number } | undefined {
+  const starts = score?.measureStarts ?? [];
+  if (starts.length === 0) return undefined;
+  const first = Math.max(0, Math.min(starts.length - 1, Math.floor(firstOccurrence)));
+  const second = Math.max(0, Math.min(starts.length - 1, Math.floor(secondOccurrence)));
+  const from = Math.min(first, second);
+  const through = Math.max(first, second);
+  const start = starts[from];
+  const end = starts[through + 1] ?? score?.duration ?? starts[through];
+  return end > start ? { start, end } : undefined;
+}

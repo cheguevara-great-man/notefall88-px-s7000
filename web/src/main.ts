@@ -23,7 +23,7 @@ import {
 } from "./calibration";
 import { DeviceLink } from "./device";
 import { parseMidiFile } from "./midi";
-import { measureNavigation } from "./measure-navigation";
+import { measureLoopRange, measureNavigation } from "./measure-navigation";
 import { MetronomePlayer } from "./metronome";
 import { parseMusicXmlFile } from "./musicxml";
 import { ScoreLibrary, sha256Hex } from "./library";
@@ -133,6 +133,7 @@ const scoreResult = required("score-result");
 const scoreNavigator = required("score-navigator");
 const measureCurrent = required("measure-current");
 const measureRail = required("measure-rail");
+const measureNavHint = required("measure-nav-hint");
 const recordResult = required("record-result");
 const latencyStatus = required("latency-status");
 const lifecycleStatus = required("lifecycle-status");
@@ -232,6 +233,7 @@ let leadMs = initialPreferences.leadMs;
 let lastScoreSeconds = 0;
 let lastStatsSignature = "";
 let lastMeasureNavigationSignature = "";
+let measureLoopAnchor: number | undefined;
 let lastRecording = recorder.snapshot();
 let lastRecordingControls = recorder.controlSnapshot();
 let pianoWasConnected = false;
@@ -982,6 +984,7 @@ function parseScoreSource(buffer: ArrayBuffer, fileName: string): { parsed: Pars
 async function activateScore(parsed: ParsedScore, xml: string | undefined, fingerprint: string): Promise<void> {
   clearLifecycleStatus();
   lastMeasureNavigationSignature = "";
+  measureLoopAnchor = undefined;
   sourceScore = parsed;
   scoreFingerprint = fingerprint;
   score = transposeScore(parsed, transposeSemitones);
@@ -1059,20 +1062,52 @@ function renderMeasureNavigation(seconds: number): void {
   const loop = selectedLoop();
   const items = measureNavigation(score, seconds, loop);
   const current = items.find((item) => item.current);
-  const signature = `${current?.occurrence ?? -1}:${loop?.start ?? ""}:${loop?.end ?? ""}`;
+  const signature = `${current?.occurrence ?? -1}:${loop?.start ?? ""}:${loop?.end ?? ""}:${measureLoopAnchor ?? ""}`;
   if (signature === lastMeasureNavigationSignature) return;
   lastMeasureNavigationSignature = signature;
   measureCurrent.textContent = current ? `M${current.writtenMeasure + 1} · 第 ${current.occurrence + 1} 次` : "--";
   measureRail.replaceChildren(...items.map((item) => {
-    const pill = document.createElement("span");
+    const pill = document.createElement("button");
+    pill.type = "button";
     pill.className = "measure-pill";
     pill.dataset.current = String(item.current);
     pill.dataset.loop = String(item.inLoop);
+    pill.dataset.selected = String(item.occurrence === measureLoopAnchor);
+    pill.dataset.occurrence = String(item.occurrence);
     pill.textContent = `M${item.writtenMeasure + 1}`;
     pill.title = `第 ${item.occurrence + 1} 个播放小节 · ${formatTime(item.start)}`;
     return pill;
   }));
 }
+
+function selectMeasureLoopOccurrence(occurrence: number): void {
+  if (!score?.measureStarts?.length) return;
+  if (measureLoopAnchor === undefined) {
+    measureLoopAnchor = occurrence;
+    lastMeasureNavigationSignature = "";
+    measureNavHint.textContent = `已选 A：M${(score.measureMap?.[occurrence] ?? occurrence) + 1}；再点一个小节设定循环终点。`;
+    renderMeasureNavigation(lastScoreSeconds);
+    return;
+  }
+  const loop = measureLoopRange(score, measureLoopAnchor, occurrence);
+  measureLoopAnchor = undefined;
+  if (!loop) return;
+  loopEnabled.checked = true;
+  loopStart.value = String(loop.start);
+  loopEnd.value = String(loop.end);
+  updateLoopLabels();
+  rebuildPractice();
+  resetPractice(false);
+  lastMeasureNavigationSignature = "";
+  measureNavHint.textContent = `循环已设为 ${formatTime(loop.start)}–${formatTime(loop.end)}；再点两次可替换。`;
+  renderMeasureNavigation(lastScoreSeconds);
+}
+
+measureRail.addEventListener("click", (event) => {
+  const pill = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-occurrence]");
+  if (!pill) return;
+  selectMeasureLoopOccurrence(Number(pill.dataset.occurrence));
+});
 
 viewMode.addEventListener("change", updateViewMode);
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { currentMeasureOccurrence, measureNavigation } from "./measure-navigation";
+import { currentMeasureOccurrence, measureLoopRange, measureNavigation } from "./measure-navigation";
 
 const score = {
   name: "Navigation", duration: 12, notes: [],
@@ -20,5 +20,11 @@ describe("score measure navigation", () => {
     expect(currentMeasureOccurrence(score, -1)).toBe(0);
     expect(currentMeasureOccurrence(score, 99)).toBe(5);
     expect(measureNavigation(undefined, 0)).toEqual([]);
+  });
+
+  it("creates inclusive whole-measure loops from two rail selections", () => {
+    expect(measureLoopRange(score, 3, 1)).toEqual({ start: 2, end: 8 });
+    expect(measureLoopRange(score, 5, 5)).toEqual({ start: 10, end: 12 });
+    expect(measureLoopRange(undefined, 0, 1)).toBeUndefined();
   });
 });

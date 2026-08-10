@@ -61,8 +61,9 @@ h1 span { color: #8ba7ff; }
 .score-navigator[hidden] { display: none; }
 .score-navigator > div:first-child { display: grid; gap: 2px; min-width: 78px; }.score-navigator .label { color: #7f899b; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }.score-navigator strong { font-size: 13px; color: #cbd7ff; }
 .measure-rail { display: flex; min-width: 0; flex: 1; gap: 5px; overflow: hidden; }
-.measure-pill { display: grid; place-items: center; flex: 0 0 38px; min-height: 27px; border: 1px solid #313a4d; border-radius: 6px; color: #95a2ba; font: 700 11px ui-monospace, SFMono-Regular, Consolas, monospace; background: #111722; }
+.measure-pill { display: grid; place-items: center; flex: 0 0 38px; min-height: 27px; padding: 0; border: 1px solid #313a4d; border-radius: 6px; color: #95a2ba; font: 700 11px ui-monospace, SFMono-Regular, Consolas, monospace; background: #111722; }
 .measure-pill[data-loop="true"] { border-color: rgba(255,210,76,.48); }.measure-pill[data-current="true"] { color: #fff; border-color: #9eafff; background: linear-gradient(135deg, #516bc5, #8250c4); box-shadow: 0 0 18px rgba(119,132,255,.35); }
+.measure-pill[data-selected="true"] { outline: 2px solid #ffd24c; outline-offset: 1px; }.score-navigator > small { color: #8995ab; font-size: 11px; white-space: nowrap; }
 .visualizer-card { position: relative; min-height: 420px; height: min(67vh, 820px); overflow: hidden; border: 1px solid #242b39; border-radius: 16px; background: #0a0d14; box-shadow: 0 24px 80px rgba(0,0,0,.28); }
 #waterfall { width: 100%; height: 100%; display: block; }
 #waterfall[hidden], #sheet-view[hidden] { display: none; }
@@ -188,7 +189,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .score-strip > div:first-child { grid-column: 1 / -1; }
   .score-strip > div:not(:first-child) { text-align: right; }
   .score-strip > div:nth-child(2) { text-align: left; }
-  .score-navigator { gap: 9px; }.score-navigator > div:first-child { min-width: 66px; }.measure-pill { flex-basis: 31px; }
+  .score-navigator { gap: 9px; flex-wrap: wrap; }.score-navigator > div:first-child { min-width: 66px; }.measure-pill { flex-basis: 31px; }.score-navigator > small { width: 100%; white-space: normal; }
   .visualizer-card { height: 62vh; min-height: 380px; }
   .visualizer-card[data-view="split"] { height: 78vh; grid-template-rows: minmax(220px, 43%) minmax(300px, 57%); }
   .visualizer-card[data-view="split"] .legend { top: calc(43% + 8px); }
