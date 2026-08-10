@@ -10,6 +10,7 @@ export interface AppPreferences {
   tempo: number;
   leadMs: number;
   previewSeconds: number;
+  autoFullscreen: boolean;
   metronome: boolean;
   countIn: boolean;
 }
@@ -21,6 +22,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   tempo: 1,
   leadMs: 900,
   previewSeconds: 4.2,
+  autoFullscreen: false,
   metronome: false,
   countIn: true,
 };
@@ -47,6 +49,7 @@ function normalize(value: unknown): AppPreferences {
     tempo,
     leadMs,
     previewSeconds,
+    autoFullscreen: candidate.autoFullscreen === true,
     metronome: candidate.metronome === true,
     countIn: candidate.countIn !== false,
   };

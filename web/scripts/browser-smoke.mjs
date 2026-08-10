@@ -18,11 +18,12 @@ const longScorePath = join(ARTIFACTS, "long-follow-study.musicxml");
 const longMeasures = Array.from({ length: 48 }, (_, index) => {
   const number = index + 1;
   const setup = number === 1
-    ? `<attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>2400</per-minute></metronome></direction-type><sound tempo="2400"/></direction>`
+    ? `<attributes><divisions>1</divisions><staves>2</staves><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes><direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>2400</per-minute></metronome></direction-type><sound tempo="2400"/></direction>`
     : number % 4 === 1 ? `<print new-system="yes"/>` : "";
   const octave = 4 + Math.floor((index % 8) / 4);
-  const notes = ["C", "E", "G", "D"].map((step) => `<note><pitch><step>${step}</step><octave>${octave}</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("");
-  return `<measure number="${number}">${setup}${notes}</measure>`;
+  const notes = ["C", "E", "G", "D"].map((step) => `<note><pitch><step>${step}</step><octave>${octave}</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>`).join("");
+  const bass = `<backup><duration>4</duration></backup><note><pitch><step>C</step><octave>${2 + index % 2}</octave></pitch><duration>4</duration><voice>2</voice><type>whole</type><staff>2</staff></note>`;
+  return `<measure number="${number}">${setup}${notes}${bass}</measure>`;
 }).join("");
 writeFileSync(longScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Long Follow Study</work-title></work><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1">${longMeasures}</part></score-partwise>`);
 const serverLogPath = join(ARTIFACTS, "vite.log");
@@ -332,6 +333,26 @@ try {
   })`);
   assert(physicalPanelFallback.width === 3200 && physicalPanelFallback.height === 2136 && physicalPanelFallback.threeByTwoLayout, "physical-panel fallback viewport was not applied");
   assert(!physicalPanelFallback.overflow && !physicalPanelFallback.sheetHorizontalOverflow && physicalPanelFallback.notation, `physical-panel fallback layout is invalid: ${JSON.stringify(physicalPanelFallback)}`);
+  const tabletFocus = evaluate(`() => {
+    document.querySelector('#focus-button')?.click();
+    const shell = document.querySelector('.app-shell');
+    const card = document.querySelector('#visualizer-card');
+    return JSON.stringify({
+      focused: shell?.dataset.focus === 'true',
+      entryHidden: getComputedStyle(document.querySelector('#focus-button')).display === 'none',
+      exitVisible: getComputedStyle(document.querySelector('#focus-exit')).display !== 'none',
+      topbarHidden: getComputedStyle(document.querySelector('.topbar')).display === 'none',
+      transportHidden: getComputedStyle(document.querySelector('.transport-card')).display === 'none',
+      scoreStripHidden: getComputedStyle(document.querySelector('.score-strip')).display === 'none',
+      cardHeight: card?.getBoundingClientRect().height ?? 0,
+      cardTop: card?.getBoundingClientRect().top ?? -1,
+    });
+  }`);
+  assert(tabletFocus.focused && tabletFocus.entryHidden && tabletFocus.exitVisible, `3200x2136 focus controls are invalid: ${JSON.stringify(tabletFocus)}`);
+  assert(tabletFocus.topbarHidden && tabletFocus.transportHidden && tabletFocus.scoreStripHidden, `3200x2136 focus mode leaves top controls in layout: ${JSON.stringify(tabletFocus)}`);
+  assert(tabletFocus.cardHeight >= 2122 && tabletFocus.cardTop <= 7, `3200x2136 focus surface does not fill the panel: ${JSON.stringify(tabletFocus)}`);
+  command(["screenshot"]);
+  evaluate(`() => { document.querySelector('#focus-exit')?.click(); return JSON.stringify(true); }`);
 
   command(["resize", "1600", "1068"]);
   page = snapshot();
@@ -339,7 +360,7 @@ try {
   command(["click", longImportRef]);
   command(["upload", longScorePath]);
   await waitForCondition(
-    `() => JSON.stringify(document.querySelector('#score-name')?.textContent === 'Long Follow Study · 192 音符')`,
+    `() => JSON.stringify(document.querySelector('#score-name')?.textContent === 'Long Follow Study · 240 音符')`,
     "synthetic long score did not render",
   );
   const followBefore = evaluate(`() => JSON.stringify({
@@ -356,11 +377,23 @@ try {
     const countIn = document.querySelector('#count-in-enabled');
     countIn.checked = false;
     countIn.dispatchEvent(new Event('change', { bubbles: true }));
+    const autoFullscreen = document.querySelector('#auto-fullscreen');
+    autoFullscreen.checked = true;
+    autoFullscreen.dispatchEvent(new Event('change', { bubbles: true }));
     const play = document.querySelector('#play-button');
     play.click();
-    return JSON.stringify({ mode: mode.value, button: play.textContent, countIn: countIn.checked });
+    const stored = JSON.parse(localStorage.getItem('notefall88.preferences.v1') ?? '{}');
+    return JSON.stringify({
+      mode: mode.value,
+      button: play.textContent,
+      countIn: countIn.checked,
+      autoFullscreen: autoFullscreen.checked,
+      storedAutoFullscreen: stored.autoFullscreen,
+      focused: document.querySelector('.app-shell')?.dataset.focus === 'true',
+    });
   }`);
   assert(longPlayback.mode === 'realtime' && longPlayback.countIn === false, `long-score realtime mode did not start: ${JSON.stringify(longPlayback)}`);
+  assert(longPlayback.autoFullscreen && longPlayback.storedAutoFullscreen && longPlayback.focused, `automatic fullscreen preference did not persist or activate: ${JSON.stringify(longPlayback)}`);
   await waitForCondition(
     `() => JSON.stringify((document.querySelector('#sheet-view')?.scrollTop ?? 0) > 20)`,
     "score cursor did not advance the long sheet to a later system",
@@ -371,6 +404,30 @@ try {
     currentMeasure: document.querySelector('#measure-current')?.textContent,
   })`);
   assert(followAfter.scrollTop > followBefore.scrollTop, `long-score following did not move forward: ${JSON.stringify({ followBefore, followAfter })}`);
+  let phraseMapSamples = null;
+  if (EDITION === "studio") {
+    phraseMapSamples = evaluate(`() => {
+      const canvas = document.querySelector('#waterfall');
+      const context = canvas?.getContext('2d');
+      if (!canvas || !context) return JSON.stringify({ available: false, colored: 0 });
+      const keyboardTop = canvas.height * .78;
+      const railWidth = Math.max(12, Math.min(22, canvas.width * .012));
+      const railX = canvas.width - railWidth - Math.max(6, canvas.width * .004);
+      const leftX = Math.round(railX + railWidth * .25);
+      const rightX = Math.round(railX + railWidth * .75);
+      let coloredLeft = 0;
+      let coloredRight = 0;
+      for (let index = 0; index < 72; index += 1) {
+        const y = Math.round(Math.max(12, keyboardTop * .025) + (index + .5) * (keyboardTop - Math.max(12, keyboardTop * .025) - 12) / 72);
+        const left = context.getImageData(leftX, y, 1, 1).data;
+        const right = context.getImageData(rightX, y, 1, 1).data;
+        if (Math.max(left[0], left[1], left[2]) - Math.min(left[0], left[1], left[2]) > 28) coloredLeft += 1;
+        if (Math.max(right[0], right[1], right[2]) - Math.min(right[0], right[1], right[2]) > 28) coloredRight += 1;
+      }
+      return JSON.stringify({ available: true, coloredLeft, coloredRight });
+    }`);
+    assert(phraseMapSamples.available && phraseMapSamples.coloredLeft >= 8 && phraseMapSamples.coloredRight >= 8, `whole-score phrase map is not visible in both Canvas hand lanes: ${JSON.stringify(phraseMapSamples)}`);
+  }
   command(["screenshot"]);
 
   console.log(JSON.stringify({
@@ -381,9 +438,11 @@ try {
     tabletPhysicalPanel: [3200, 2136],
     tabletSingleSheet,
     physicalPanelFallback,
+    tabletFocus,
     score: "Long Follow Study",
-    notes: 192,
+    notes: 240,
     longScoreFollow: { before: followBefore, after: followAfter },
+    phraseMapSamples,
     artifacts: ARTIFACTS,
   }, null, 2));
 } finally {

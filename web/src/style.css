@@ -66,7 +66,9 @@ h1 span { color: #8ba7ff; }
 .measure-pill[data-selected="true"] { outline: 2px solid #ffd24c; outline-offset: 1px; }.score-navigator > small { color: #8995ab; font-size: 11px; white-space: nowrap; }
 .measure-seek { flex: 0 0 auto; min-height: 29px; padding: 0 9px; border-color: rgba(135,181,255,.4); color: #d1e2ff; font-size: 11px; white-space: nowrap; }.measure-seek:disabled { opacity: .45; }
 .visualizer-card { position: relative; min-height: 420px; height: min(67vh, 820px); overflow: hidden; border: 1px solid #242b39; border-radius: 16px; background: #0a0d14; box-shadow: 0 24px 80px rgba(0,0,0,.28); }
-.focus-exit { position: absolute; z-index: 3; top: 12px; right: 12px; min-height: 34px; padding: 0 11px; border-color: rgba(208,220,255,.5); background: rgba(8,12,20,.78); backdrop-filter: blur(10px); font-size: 12px; }
+.focus-enter, .focus-exit { position: absolute; z-index: 3; top: 12px; right: 12px; min-height: 34px; padding: 0 11px; border-color: rgba(208,220,255,.5); background: rgba(8,12,20,.78); backdrop-filter: blur(10px); font-size: 12px; }
+.focus-enter { opacity: .72; transition: opacity .15s ease, border-color .15s ease; }
+.focus-enter:hover, .focus-enter:focus-visible { opacity: 1; }
 #waterfall { width: 100%; height: 100%; display: block; }
 #waterfall[hidden], #sheet-view[hidden] { display: none; }
   #sheet-view { width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; padding: 22px clamp(8px, 2vw, 24px) 120px; background: #f5f4ef; color: #111; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-behavior: smooth; }
@@ -183,6 +185,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 .app-shell[data-focus="true"] > .topbar, .app-shell[data-focus="true"] > .transport-card, .app-shell[data-focus="true"] > .studio-toolbar, .app-shell[data-focus="true"] > .score-strip, .app-shell[data-focus="true"] > .score-navigator, .app-shell[data-focus="true"] > footer { display: none; }
 .app-shell[data-focus="true"] .visualizer-card { height: calc(100dvh - max(6px, env(safe-area-inset-top) + env(safe-area-inset-bottom))); min-height: 0; border-radius: 10px; }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] { height: calc(100dvh - max(6px, env(safe-area-inset-top) + env(safe-area-inset-bottom))); grid-template-rows: minmax(250px, 46%) minmax(320px, 54%); }
 .app-shell[data-focus="true"] .legend { top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] .legend { top: calc(46% + 12px); }.app-shell[data-focus="true"] .focus-exit { display: block; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
+.app-shell[data-focus="true"] .focus-enter { display: none; }
 
 /* Large 3:2 tablets in landscape (including Xiaomi Pad-class displays).
    Android may expose different CSS-pixel sizes at different display scales,

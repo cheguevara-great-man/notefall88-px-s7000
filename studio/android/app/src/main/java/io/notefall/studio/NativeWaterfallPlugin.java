@@ -185,6 +185,7 @@ public class NativeWaterfallPlugin extends Plugin {
     }
 
     private static final class NativeWaterfallView extends View {
+        private static final int PHRASE_MAP_BINS = 72;
         private static final int LEFT = Color.rgb(40, 215, 255);
         private static final int RIGHT = Color.rgb(255, 79, 200);
         private static final int CORRECT = Color.rgb(101, 245, 154);
@@ -198,6 +199,8 @@ public class NativeWaterfallPlugin extends Plugin {
         private final boolean[] pressed = new boolean[128];
         private final boolean[] expected = new boolean[128];
         private final boolean[] wrong = new boolean[128];
+        private final float[] phraseLeft = new float[PHRASE_MAP_BINS];
+        private final float[] phraseRight = new float[PHRASE_MAP_BINS];
         private String selectedHand = "both";
         private String theme = "neon";
         private Double loopStart;
@@ -206,6 +209,7 @@ public class NativeWaterfallPlugin extends Plugin {
         private long baseRealtimeMs;
         private boolean running;
         private double visibleSeconds = 4.2;
+        private double scoreDuration;
 
         NativeWaterfallView(Activity activity) {
             super(activity);
@@ -271,7 +275,30 @@ public class NativeWaterfallPlugin extends Plugin {
             }
             notes.sort(Comparator.comparingDouble(note -> note.start));
             beats.sort(Comparator.comparingDouble(beat -> beat.time));
+            buildPhraseMap();
             invalidate();
+        }
+
+        private void buildPhraseMap() {
+            Arrays.fill(phraseLeft, 0);
+            Arrays.fill(phraseRight, 0);
+            scoreDuration = 0;
+            for (NoteBar note : notes) scoreDuration = Math.max(scoreDuration, note.end);
+            if (scoreDuration <= 0) return;
+            float peak = 0;
+            for (NoteBar note : notes) {
+                int bin = Math.max(0, Math.min(PHRASE_MAP_BINS - 1,
+                    (int) Math.floor(note.start / scoreDuration * PHRASE_MAP_BINS)));
+                float weight = 1f + (float) Math.min(2, Math.max(0, note.end - note.start)) * .25f;
+                if (note.left) phraseLeft[bin] += weight;
+                else phraseRight[bin] += weight;
+                peak = Math.max(peak, phraseLeft[bin] + phraseRight[bin]);
+            }
+            if (peak <= 0) return;
+            for (int index = 0; index < PHRASE_MAP_BINS; index += 1) {
+                phraseLeft[index] = (float) Math.sqrt(phraseLeft[index] / peak);
+                phraseRight[index] = (float) Math.sqrt(phraseRight[index] / peak);
+            }
         }
 
         void setState(JSArray pressedNotes, JSArray expectedNotes, JSArray wrongNotes, String hand, Double start, Double end) {
@@ -343,12 +370,73 @@ public class NativeWaterfallPlugin extends Plugin {
             drawOctaveGuides(canvas, width, keyboardTop);
             drawTimeline(canvas, width, keyboardTop, now);
             drawNotes(canvas, width, keyboardTop, now);
+            drawPhraseMap(canvas, width, keyboardTop, now);
             drawLoop(canvas, width, keyboardTop, now, loopStart, "A");
             drawLoop(canvas, width, keyboardTop, now, loopEnd, "B");
             drawStrikeZone(canvas, width, keyboardTop);
             drawFeedback(canvas, width, keyboardTop);
             drawKeyboard(canvas, width, keyboardTop, keyboardHeight);
             if ((running || !feedback.isEmpty()) && getVisibility() == View.VISIBLE) postInvalidateOnAnimation();
+        }
+
+        private float phraseProgress(double time) {
+            if (scoreDuration <= 0 || !Double.isFinite(time)) return 0;
+            return Math.max(0, Math.min(1, (float) (time / scoreDuration)));
+        }
+
+        private void drawPhraseMap(Canvas canvas, int width, float keyboardTop, double now) {
+            if (scoreDuration <= 0) return;
+            float density = getResources().getDisplayMetrics().density;
+            float railWidth = Math.max(12 * density, Math.min(22 * density, width * .012f));
+            float x = width - railWidth - Math.max(6 * density, width * .004f);
+            float top = Math.max(12 * density, keyboardTop * .025f);
+            float height = Math.max(80 * density, keyboardTop - top - 12 * density);
+            float half = railWidth / 2;
+            float rowHeight = height / PHRASE_MAP_BINS;
+            paint.setColor(Color.argb(189, 3, 6, 12));
+            canvas.drawRoundRect(new RectF(x, top, x + railWidth, top + height), railWidth / 2, railWidth / 2, paint);
+            boolean selectedLeft = "both".equals(selectedHand) || "left".equals(selectedHand);
+            boolean selectedRight = "both".equals(selectedHand) || "right".equals(selectedHand);
+            int leftColor = themeColor(LEFT, Color.rgb(78, 230, 190), Color.rgb(68, 215, 255));
+            int rightColor = themeColor(RIGHT, Color.rgb(184, 156, 255), Color.rgb(255, 207, 63));
+            canvas.save();
+            canvas.clipRect(x, top, x + railWidth, top + height);
+            for (int index = 0; index < PHRASE_MAP_BINS; index += 1) {
+                float y = top + index * rowHeight;
+                paint.setColor(leftColor);
+                paint.setAlpha((int) (255 * (selectedLeft
+                    ? (phraseLeft[index] > 0 ? .15f + phraseLeft[index] * .85f : .02f)
+                    : (phraseLeft[index] > 0 ? .06f + phraseLeft[index] * .14f : .01f))));
+                canvas.drawRect(x, y, x + half, y + Math.max(1, rowHeight + .35f), paint);
+                paint.setColor(rightColor);
+                paint.setAlpha((int) (255 * (selectedRight
+                    ? (phraseRight[index] > 0 ? .15f + phraseRight[index] * .85f : .02f)
+                    : (phraseRight[index] > 0 ? .06f + phraseRight[index] * .14f : .01f))));
+                canvas.drawRect(x + half, y, x + railWidth, y + Math.max(1, rowHeight + .35f), paint);
+            }
+            float playheadY = top + phraseProgress(now) * height;
+            float previewBottom = top + phraseProgress(now + visibleSeconds) * height;
+            paint.setColor(Color.argb(20, 255, 255, 255));
+            canvas.drawRect(x, playheadY, x + railWidth, Math.max(playheadY + 2, previewBottom), paint);
+            stroke.setColor(Color.argb(194, 255, 255, 255));
+            stroke.setStrokeWidth(Math.max(1, density));
+            canvas.drawRect(x, playheadY, x + railWidth, Math.max(playheadY + 1, previewBottom), stroke);
+            if (loopStart != null && loopEnd != null) {
+                float loopTop = top + phraseProgress(loopStart) * height;
+                float loopBottom = top + phraseProgress(loopEnd) * height;
+                paint.setColor(Color.argb(36, 255, 210, 76));
+                canvas.drawRect(x, loopTop, x + railWidth, Math.max(loopTop + 1, loopBottom), paint);
+                stroke.setColor(Color.argb(230, 255, 210, 76));
+                canvas.drawRect(x, loopTop, x + railWidth, Math.max(loopTop + 1, loopBottom), stroke);
+            }
+            paint.setColor(Color.WHITE);
+            paint.setAlpha(255);
+            canvas.drawRect(x - 3 * density, playheadY - density, x + railWidth + 3 * density, playheadY + density, paint);
+            canvas.restore();
+            stroke.setColor(Color.argb(61, 210, 224, 255));
+            stroke.setStrokeWidth(Math.max(1, density));
+            canvas.drawRoundRect(new RectF(x, top, x + railWidth, top + height), railWidth / 2, railWidth / 2, stroke);
+            paint.setAlpha(255);
         }
 
         private void drawTimeline(Canvas canvas, int width, float keyboardTop, double now) {

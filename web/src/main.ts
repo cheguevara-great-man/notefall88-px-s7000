@@ -125,6 +125,7 @@ const leadTime = required<HTMLInputElement>("lead-time");
 const transposeInput = required<HTMLInputElement>("transpose");
 const visualThemeSelect = required<HTMLSelectElement>("visual-theme");
 const previewSecondsSelect = required<HTMLSelectElement>("preview-seconds");
+const autoFullscreen = required<HTMLInputElement>("auto-fullscreen");
 const metronomeEnabled = required<HTMLInputElement>("metronome-enabled");
 const countInEnabled = required<HTMLInputElement>("count-in-enabled");
 const loopEnabled = required<HTMLInputElement>("loop-enabled");
@@ -300,6 +301,7 @@ metronome.setEnabled(initialPreferences.metronome);
 visualThemeSelect.value = visualTheme;
 renderer.setTheme(visualTheme);
 previewSecondsSelect.value = String(previewSeconds);
+autoFullscreen.checked = initialPreferences.autoFullscreen;
 renderer.setPreviewSeconds(previewSeconds);
 required("lead-value").textContent = `${(leadMs / 1000).toFixed(1)} 秒`;
 required("metronome-status").textContent = initialPreferences.metronome
@@ -314,6 +316,7 @@ function persistPreferences(): void {
     tempo: selectedTempo(),
     leadMs,
     previewSeconds,
+    autoFullscreen: autoFullscreen.checked,
     metronome: metronomeEnabled.checked,
     countIn: countInEnabled.checked,
   });
@@ -1454,6 +1457,8 @@ required<HTMLInputElement>("library-restore").addEventListener("change", async (
 playButton.addEventListener("click", () => {
   clearLifecycleStatus();
   if (!score || chords.length === 0) return;
+  const beginsPractice = mode !== "realtime" || (!clock.isRunning() && countInTimer === undefined);
+  if (beginsPractice && autoFullscreen.checked && appShell?.dataset.focus !== "true") setFocusMode(true);
   if (mode !== "realtime") {
     clock.seek(currentWaitChord()?.start ?? rangeEnd());
     playButton.textContent = mode === "follow"
@@ -1548,6 +1553,7 @@ previewSecondsSelect.addEventListener("change", () => {
   renderer.setPreviewSeconds(previewSeconds);
   persistPreferences();
 });
+autoFullscreen.addEventListener("change", persistPreferences);
 loopEnabled.addEventListener("change", () => {
   loopStart.disabled = !loopEnabled.checked;
   loopEnd.disabled = !loopEnabled.checked;

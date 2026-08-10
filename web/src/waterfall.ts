@@ -1,4 +1,6 @@
 import { pianoKeys } from "./layout";
+import { buildPhraseMap, phraseMapProgress } from "./phrase-map";
+import type { PhraseMap } from "./phrase-map";
 import type { LoopRange } from "./practice";
 import type { HandSelection, ParsedScore } from "./types";
 import { visualPalette } from "./visual-theme";
@@ -16,6 +18,7 @@ export class WaterfallRenderer {
   private context: CanvasRenderingContext2D;
   private readonly keys = pianoKeys();
   private score?: ParsedScore;
+  private phraseMap: PhraseMap = buildPhraseMap([], 0);
   private pressed = new Set<number>();
   private expected = new Set<number>();
   private wrong = new Set<number>();
@@ -33,6 +36,7 @@ export class WaterfallRenderer {
 
   setScore(score: ParsedScore | undefined): void {
     this.score = score;
+    this.phraseMap = buildPhraseMap(score?.notes ?? [], score?.duration ?? 0);
   }
 
   setState(pressed: Set<number>, expected: Set<number>, wrong: Set<number>): void {
@@ -151,6 +155,8 @@ export class WaterfallRenderer {
       ctx.globalAlpha = 1;
     }
 
+    this.drawPhraseMap(scoreTime, visibleSeconds, keyboardTop, width, palette);
+
     if (this.loop) {
       this.drawLoopBoundary(this.loop.start, scoreTime, keyboardTop, rollHeight, visibleSeconds, width, "A");
       this.drawLoopBoundary(this.loop.end, scoreTime, keyboardTop, rollHeight, visibleSeconds, width, "B");
@@ -159,6 +165,65 @@ export class WaterfallRenderer {
     this.drawStrikeZone(keyboardTop, width, palette.strike);
     this.drawFeedback(keyboardTop, width, palette);
     this.drawKeyboard(keyboardTop, keyboardHeight, width, palette);
+  }
+
+  private drawPhraseMap(
+    scoreTime: number,
+    visibleSeconds: number,
+    keyboardTop: number,
+    width: number,
+    palette: ReturnType<typeof visualPalette>,
+  ): void {
+    if (this.phraseMap.duration <= 0 || this.phraseMap.bins.length === 0) return;
+    const ctx = this.context;
+    const railWidth = Math.max(12, Math.min(22, width * 0.012));
+    const x = width - railWidth - Math.max(6, width * 0.004);
+    const top = Math.max(12, keyboardTop * 0.025);
+    const height = Math.max(80, keyboardTop - top - 12);
+    const half = railWidth / 2;
+    const rowHeight = height / this.phraseMap.bins.length;
+    const selectedLeft = this.hand === "both" || this.hand === "left";
+    const selectedRight = this.hand === "both" || this.hand === "right";
+    ctx.save();
+    ctx.fillStyle = "rgba(3,6,12,.74)";
+    ctx.strokeStyle = "rgba(210,224,255,.24)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, top, railWidth, height, railWidth / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.roundRect(x, top, railWidth, height, railWidth / 2);
+    ctx.clip();
+    this.phraseMap.bins.forEach((bin, index) => {
+      const y = top + index * rowHeight;
+      ctx.globalAlpha = selectedLeft ? (bin.left > 0 ? 0.15 + bin.left * 0.85 : 0.02) : (bin.left > 0 ? 0.06 + bin.left * 0.14 : 0.01);
+      ctx.fillStyle = palette.left;
+      ctx.fillRect(x, y, half, Math.max(1, rowHeight + 0.35));
+      ctx.globalAlpha = selectedRight ? (bin.right > 0 ? 0.15 + bin.right * 0.85 : 0.02) : (bin.right > 0 ? 0.06 + bin.right * 0.14 : 0.01);
+      ctx.fillStyle = palette.right;
+      ctx.fillRect(x + half, y, half, Math.max(1, rowHeight + 0.35));
+    });
+    const progress = phraseMapProgress(scoreTime, this.phraseMap.duration);
+    const previewEnd = phraseMapProgress(scoreTime + visibleSeconds, this.phraseMap.duration);
+    const playheadY = top + progress * height;
+    const previewBottom = top + previewEnd * height;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "rgba(255,255,255,.08)";
+    ctx.fillRect(x, playheadY, railWidth, Math.max(2, previewBottom - playheadY));
+    ctx.strokeStyle = "rgba(255,255,255,.76)";
+    ctx.strokeRect(x + 0.5, playheadY + 0.5, railWidth - 1, Math.max(1, previewBottom - playheadY - 1));
+    if (this.loop) {
+      const loopTop = top + phraseMapProgress(this.loop.start, this.phraseMap.duration) * height;
+      const loopBottom = top + phraseMapProgress(this.loop.end, this.phraseMap.duration) * height;
+      ctx.fillStyle = "rgba(255,210,76,.14)";
+      ctx.fillRect(x, loopTop, railWidth, Math.max(1, loopBottom - loopTop));
+      ctx.strokeStyle = "rgba(255,210,76,.9)";
+      ctx.strokeRect(x + 0.5, loopTop + 0.5, railWidth - 1, Math.max(1, loopBottom - loopTop - 1));
+    }
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x - 3, playheadY - 1, railWidth + 6, 2);
+    ctx.restore();
   }
 
   private drawFeedback(keyboardTop: number, width: number, palette: ReturnType<typeof visualPalette>): void {
