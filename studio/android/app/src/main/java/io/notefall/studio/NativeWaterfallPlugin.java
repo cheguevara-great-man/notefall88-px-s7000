@@ -90,6 +90,14 @@ public class NativeWaterfallPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void showFeedback(PluginCall call) {
+        String kind = call.getString("kind", "hit");
+        int note = call.getInt("note", -1);
+        onUi(() -> ensureView().addFeedback(kind, note));
+        call.resolve();
+    }
+
+    @PluginMethod
     public void show(PluginCall call) {
         double left = call.getDouble("left", 0.0);
         double top = call.getDouble("top", 0.0);
@@ -157,6 +165,18 @@ public class NativeWaterfallPlugin extends Plugin {
         }
     }
 
+    private static final class Feedback {
+        final String kind;
+        final int note;
+        final long createdMs;
+
+        Feedback(String kind, int note) {
+            this.kind = kind;
+            this.note = note;
+            this.createdMs = SystemClock.elapsedRealtime();
+        }
+    }
+
     private static final class NativeWaterfallView extends View {
         private static final double VISIBLE_SECONDS = 4.2;
         private static final int LEFT = Color.rgb(40, 215, 255);
@@ -167,6 +187,7 @@ public class NativeWaterfallPlugin extends Plugin {
         private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final List<NoteBar> notes = new ArrayList<>();
         private final List<BeatLine> beats = new ArrayList<>();
+        private final List<Feedback> feedback = new ArrayList<>();
         private final KeyGeometry[] keys = new KeyGeometry[128];
         private final boolean[] pressed = new boolean[128];
         private final boolean[] expected = new boolean[128];
@@ -272,6 +293,18 @@ public class NativeWaterfallPlugin extends Plugin {
             invalidate();
         }
 
+        void addFeedback(String kind, int note) {
+            if (note < 21 || note > 108) return;
+            String safeKind = "wrong".equals(kind) || "missed".equals(kind) ? kind : "hit";
+            long now = SystemClock.elapsedRealtime();
+            for (int index = feedback.size() - 1; index >= 0; index -= 1) {
+                if (now - feedback.get(index).createdMs >= 900) feedback.remove(index);
+            }
+            while (feedback.size() >= 24) feedback.remove(0);
+            feedback.add(new Feedback(safeKind, note));
+            invalidate();
+        }
+
         private int themeColor(int neon, int aurora, int contrast) {
             return "aurora".equals(theme) ? aurora : "contrast".equals(theme) ? contrast : neon;
         }
@@ -300,8 +333,9 @@ public class NativeWaterfallPlugin extends Plugin {
             drawLoop(canvas, width, keyboardTop, now, loopStart, "A");
             drawLoop(canvas, width, keyboardTop, now, loopEnd, "B");
             drawStrikeZone(canvas, width, keyboardTop);
+            drawFeedback(canvas, width, keyboardTop);
             drawKeyboard(canvas, width, keyboardTop, keyboardHeight);
-            if (running && getVisibility() == View.VISIBLE) postInvalidateOnAnimation();
+            if ((running || !feedback.isEmpty()) && getVisibility() == View.VISIBLE) postInvalidateOnAnimation();
         }
 
         private void drawTimeline(Canvas canvas, int width, float keyboardTop, double now) {
@@ -347,6 +381,43 @@ public class NativeWaterfallPlugin extends Plugin {
             canvas.drawText("NOW", 10, keyboardTop - 8, paint);
             paint.setFakeBoldText(false);
             paint.setAlpha(255);
+        }
+
+        private void drawFeedback(Canvas canvas, int width, float keyboardTop) {
+            long now = SystemClock.elapsedRealtime();
+            for (int index = feedback.size() - 1; index >= 0; index -= 1) {
+                Feedback item = feedback.get(index);
+                float progress = Math.min(1f, (now - item.createdMs) / 900f);
+                if (progress >= 1f) {
+                    feedback.remove(index);
+                    continue;
+                }
+                KeyGeometry key = keys[item.note];
+                if (key == null) continue;
+                int color = "hit".equals(item.kind)
+                    ? themeColor(CORRECT, Color.rgb(184, 244, 109), Color.rgb(125, 255, 90))
+                    : "wrong".equals(item.kind)
+                        ? themeColor(WRONG, Color.rgb(255, 154, 95), Color.rgb(255, 89, 77))
+                        : Color.rgb(255, 210, 76);
+                float x = (key.x + key.width / 2f) * width;
+                float y = keyboardTop - 18 * getResources().getDisplayMetrics().density
+                    - progress * 44 * getResources().getDisplayMetrics().density;
+                paint.setColor(color);
+                paint.setAlpha((int) ((1f - progress) * 242));
+                paint.setTextSize(20 * getResources().getDisplayMetrics().scaledDensity);
+                paint.setFakeBoldText(true);
+                paint.setTextAlign(Paint.Align.CENTER);
+                canvas.drawText("hit".equals(item.kind) ? "✓" : "wrong".equals(item.kind) ? "×" : "!", x, y, paint);
+                stroke.setColor(color);
+                stroke.setAlpha((int) ((1f - progress) * 140));
+                stroke.setStrokeWidth(1.5f * getResources().getDisplayMetrics().density);
+                canvas.drawCircle(x, keyboardTop - 8 * getResources().getDisplayMetrics().density,
+                    (5 + progress * 13) * getResources().getDisplayMetrics().density, stroke);
+                paint.setTextAlign(Paint.Align.LEFT);
+                paint.setFakeBoldText(false);
+                paint.setAlpha(255);
+                stroke.setAlpha(255);
+            }
         }
 
         private void drawNotes(Canvas canvas, int width, float keyboardTop, double now) {

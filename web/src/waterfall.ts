@@ -4,6 +4,14 @@ import type { HandSelection, ParsedScore } from "./types";
 import { visualPalette } from "./visual-theme";
 import type { VisualTheme } from "./visual-theme";
 
+export type WaterfallFeedbackKind = "hit" | "wrong" | "missed";
+
+interface WaterfallFeedback {
+  kind: WaterfallFeedbackKind;
+  note: number;
+  createdAt: number;
+}
+
 export class WaterfallRenderer {
   private context: CanvasRenderingContext2D;
   private score?: ParsedScore;
@@ -13,6 +21,7 @@ export class WaterfallRenderer {
   private hand: HandSelection = "both";
   private loop?: LoopRange;
   private theme: VisualTheme = "neon";
+  private feedback: WaterfallFeedback[] = [];
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext("2d");
@@ -37,6 +46,14 @@ export class WaterfallRenderer {
 
   setTheme(theme: VisualTheme): void {
     this.theme = theme;
+  }
+
+  /** Shows a short, key-local confirmation without hiding the upcoming notes. */
+  pushFeedback(kind: WaterfallFeedbackKind, note: number): void {
+    if (!Number.isInteger(note) || note < 21 || note > 108) return;
+    const now = performance.now();
+    this.feedback = this.feedback.filter((item) => now - item.createdAt < 900).slice(-23);
+    this.feedback.push({ kind, note, createdAt: now });
   }
 
   setVisible(_visible: boolean): void {
@@ -109,7 +126,35 @@ export class WaterfallRenderer {
     }
 
     this.drawStrikeZone(keyboardTop, width, palette.strike);
+    this.drawFeedback(keyboardTop, width, palette);
     this.drawKeyboard(keyboardTop, keyboardHeight, width, palette);
+  }
+
+  private drawFeedback(keyboardTop: number, width: number, palette: ReturnType<typeof visualPalette>): void {
+    const now = performance.now();
+    const ctx = this.context;
+    this.feedback = this.feedback.filter((item) => now - item.createdAt < 900);
+    for (const item of this.feedback) {
+      const key = pianoKeys().find((candidate) => candidate.note === item.note);
+      if (!key) continue;
+      const progress = Math.max(0, Math.min(1, (now - item.createdAt) / 900));
+      const x = (key.x + key.width / 2) * width;
+      const y = keyboardTop - 18 - progress * 44;
+      const color = item.kind === "hit" ? palette.correct : item.kind === "wrong" ? palette.wrong : "#ffd24c";
+      ctx.save();
+      ctx.globalAlpha = (1 - progress) * 0.95;
+      ctx.fillStyle = color;
+      ctx.font = "800 20px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText(item.kind === "hit" ? "✓" : item.kind === "wrong" ? "×" : "!", x, y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha *= 0.55;
+      ctx.beginPath();
+      ctx.arc(x, keyboardTop - 8, 5 + progress * 13, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   private drawTimeline(scoreTime: number, keyboardTop: number, rollHeight: number, visibleSeconds: number, width: number): void {

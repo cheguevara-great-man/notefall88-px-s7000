@@ -558,6 +558,7 @@ async function finishPracticeSession(): Promise<void> {
 function recordPracticeEvent(event: PracticeEvent): void {
   if (!analytics && score && chords.length > 0) analytics = new PracticeAnalytics(sessionContext());
   analytics?.record(event);
+  renderer.pushFeedback(event.kind, event.note);
   reviewRevision += 1;
 }
 

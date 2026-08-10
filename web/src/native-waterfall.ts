@@ -2,6 +2,7 @@ import { pianoKeys } from "./layout";
 import type { LoopRange } from "./practice";
 import type { BeatMarker, HandSelection, ParsedScore } from "./types";
 import { WaterfallRenderer } from "./waterfall";
+import type { WaterfallFeedbackKind } from "./waterfall";
 import type { VisualTheme } from "./visual-theme";
 
 export interface WaterfallSurface {
@@ -9,6 +10,7 @@ export interface WaterfallSurface {
   setState(pressed: Set<number>, expected: Set<number>, wrong: Set<number>): void;
   setPracticeView(hand: HandSelection, loop: LoopRange | undefined): void;
   setTheme(theme: VisualTheme): void;
+  pushFeedback(kind: WaterfallFeedbackKind, note: number): void;
   setVisible(visible: boolean): void;
   render(scoreTime: number, running?: boolean): void;
 }
@@ -26,6 +28,7 @@ interface NativeWaterfallPlugin {
   }): Promise<void>;
   setPlayback(options: { scoreTime: number; running: boolean }): Promise<void>;
   setTheme(options: { theme: VisualTheme }): Promise<void>;
+  showFeedback(options: { kind: WaterfallFeedbackKind; note: number }): Promise<void>;
   show(options: { left: number; top: number; width: number; height: number }): Promise<void>;
   hide(): Promise<void>;
 }
@@ -99,6 +102,10 @@ class NativeWaterfallSurface implements WaterfallSurface {
 
   setTheme(theme: VisualTheme): void {
     void this.plugin.setTheme({ theme });
+  }
+
+  pushFeedback(kind: WaterfallFeedbackKind, note: number): void {
+    void this.plugin.showFeedback({ kind, note });
   }
 
   setVisible(visible: boolean): void {
