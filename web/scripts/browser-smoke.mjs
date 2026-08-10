@@ -453,9 +453,48 @@ try {
   }`);
   assert(dynamicsPixels.selected === 'waterfall', "dynamics visual probe did not select the waterfall");
   evaluate(`async () => {
+    window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { seconds: .5 } }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     return JSON.stringify(true);
   }`);
+  const chordGuidePixels = evaluate(`() => {
+    const canvas = document.querySelector('#waterfall');
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return JSON.stringify({ available: false });
+    const keyboardTop = canvas.height * .78;
+    const previewSeconds = Number(document.querySelector('#preview-seconds')?.value ?? 4.2);
+    const noteY = keyboardTop - (1.5 / previewSeconds) * keyboardTop;
+    const firstX = (23.5 / 52) * canvas.width;
+    const lastX = (37.5 / 52) * canvas.width;
+    const regionLeft = Math.round(firstX + (lastX - firstX) * .25);
+    const regionTop = Math.max(0, Math.round(noteY - 36));
+    const regionWidth = Math.max(17, Math.round((lastX - firstX) * .5));
+    const regionHeight = 38;
+    const pixels = context.getImageData(regionLeft, regionTop, regionWidth, regionHeight);
+    let luminous = 0;
+    let maximum = 0;
+    let maximumAt = [0, 0];
+    for (let offset = 0; offset < pixels.data.length; offset += 4) {
+      const red = pixels.data[offset];
+      const green = pixels.data[offset + 1];
+      const blue = pixels.data[offset + 2];
+      if (red + green + blue > maximum) {
+        maximum = red + green + blue;
+        const pixel = offset / 4;
+        maximumAt = [regionLeft + pixel % regionWidth, regionTop + Math.floor(pixel / regionWidth)];
+      }
+      if (red + green + blue > 330 && (blue > red + 8 || Math.max(red, green, blue) - Math.min(red, green, blue) < 45)) luminous += 1;
+    }
+    window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { clear: true } }));
+    return JSON.stringify({
+      available: true, luminous, maximum, maximumAt, noteY, firstX, lastX, previewSeconds,
+      theme: document.querySelector('#visual-theme')?.value,
+      drawn: canvas.dataset.chordGuides,
+      total: canvas.dataset.chordGuideTotal,
+    });
+  }`);
+  assert(chordGuidePixels.available && chordGuidePixels.luminous >= 2 && chordGuidePixels.maximum >= 230,
+    `the cross-hand chord constellation is not visible between note bars: ${JSON.stringify(chordGuidePixels)}`);
   const dynamicsSamples = evaluate(`() => {
     const canvas = document.querySelector('#waterfall');
     const context = canvas?.getContext('2d');
@@ -616,6 +655,7 @@ try {
     physicalPanelFallback,
     tabletFocus,
     dynamicsPixels: dynamicsSamples,
+    chordGuidePixels,
     timingPixels,
     score: "Long Follow Study",
     notes: 240,

@@ -8,6 +8,8 @@ import type { HandSelection, ParsedScore } from "./types";
 import { timingCue } from "./timing-feedback";
 import { visualPalette } from "./visual-theme";
 import type { VisualTheme } from "./visual-theme";
+import { buildChordGuides } from "./chord-guide";
+import type { ChordGuide } from "./chord-guide";
 
 export type WaterfallFeedbackKind = "hit" | "wrong" | "missed";
 
@@ -32,6 +34,7 @@ export class WaterfallRenderer {
   private theme: VisualTheme = "neon";
   private previewSeconds = 4.2;
   private feedback: WaterfallFeedback[] = [];
+  private chordGuides: ChordGuide[] = [];
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext("2d");
@@ -43,6 +46,7 @@ export class WaterfallRenderer {
     this.score = score;
     this.phraseMap = buildPhraseMap(score?.notes ?? [], score?.duration ?? 0);
     this.dynamicsProfile = buildDynamicsProfile(score?.notes ?? []);
+    this.chordGuides = buildChordGuides(score?.notes ?? []);
   }
 
   setState(pressed: Set<number>, expected: Set<number>, wrong: Set<number>): void {
@@ -165,6 +169,7 @@ export class WaterfallRenderer {
         ctx.fillRect(x + 1, bottom - cap, Math.max(1, noteWidth - 2), cap);
       }
       ctx.globalAlpha = 1;
+      this.drawChordGuides(scoreTime, visibleSeconds, keyboardTop, rollHeight, width, palette);
     }
 
     this.drawPhraseMap(scoreTime, visibleSeconds, keyboardTop, width, palette);
@@ -177,6 +182,63 @@ export class WaterfallRenderer {
     this.drawStrikeZone(keyboardTop, width, palette.strike);
     this.drawFeedback(keyboardTop, width, palette);
     this.drawKeyboard(keyboardTop, keyboardHeight, width, palette);
+  }
+
+  private drawChordGuides(
+    scoreTime: number,
+    visibleSeconds: number,
+    keyboardTop: number,
+    rollHeight: number,
+    width: number,
+    palette: ReturnType<typeof visualPalette>,
+  ): void {
+    const ctx = this.context;
+    const horizon = Math.min(1.8, visibleSeconds);
+    let drawn = 0;
+    for (const guide of this.chordGuides) {
+      const delta = guide.start - scoreTime;
+      if (delta < -0.06 || delta > horizon) continue;
+      const notes = guide.notes.filter((note) => this.hand === "both" || note.hand === this.hand);
+      if (notes.length < 2) continue;
+      const points = notes.flatMap((note) => {
+        const key = this.keys.find((candidate) => candidate.note === note.note);
+        return key ? [{ x: (key.x + key.width / 2) * width, hand: note.hand }] : [];
+      });
+      if (points.length < 2) continue;
+      drawn += 1;
+      const y = keyboardTop - (delta / visibleSeconds) * rollHeight;
+      const first = points[0];
+      const last = points.at(-1)!;
+      const proximity = 1 - Math.max(0, delta) / horizon;
+      const lift = Math.min(18, 5 + (last.x - first.x) * 0.035);
+      ctx.save();
+      ctx.globalCompositeOperation = this.theme === "contrast" ? "source-over" : "screen";
+      ctx.globalAlpha = (this.theme === "contrast" ? 0.6 : 0.34) + proximity * 0.38;
+      ctx.strokeStyle = palette.strike;
+      ctx.lineWidth = Math.max(1, Math.min(2.4, width * 0.0014));
+      ctx.beginPath();
+      ctx.moveTo(first.x, y - 2);
+      ctx.quadraticCurveTo((first.x + last.x) / 2, y - lift, last.x, y - 2);
+      ctx.stroke();
+      points.forEach((point) => {
+        ctx.fillStyle = point.hand === "left" ? palette.left : palette.right;
+        ctx.globalAlpha = 0.38 + proximity * 0.5;
+        ctx.beginPath();
+        ctx.arc(point.x, y - 2, 2 + proximity * 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      if (guide.hands.length > 1 && this.hand === "both") {
+        const center = (first.x + last.x) / 2;
+        ctx.translate(center, y - lift);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = palette.strike;
+        ctx.globalAlpha = 0.42 + proximity * 0.42;
+        ctx.fillRect(-2.4, -2.4, 4.8, 4.8);
+      }
+      ctx.restore();
+    }
+    this.canvas.dataset.chordGuides = String(drawn);
+    this.canvas.dataset.chordGuideTotal = String(this.chordGuides.length);
   }
 
   private drawPhraseMap(

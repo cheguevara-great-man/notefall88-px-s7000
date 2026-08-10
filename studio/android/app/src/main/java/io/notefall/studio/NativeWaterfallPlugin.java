@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.SystemClock;
@@ -197,6 +198,7 @@ public class NativeWaterfallPlugin extends Plugin {
         private static final int WRONG = Color.rgb(255, 101, 79);
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path chordPath = new Path();
         private final List<NoteBar> notes = new ArrayList<>();
         private final List<BeatLine> beats = new ArrayList<>();
         private final List<Feedback> feedback = new ArrayList<>();
@@ -204,6 +206,8 @@ public class NativeWaterfallPlugin extends Plugin {
         private final boolean[] pressed = new boolean[128];
         private final boolean[] expected = new boolean[128];
         private final boolean[] wrong = new boolean[128];
+        private final int[] chordSeen = new int[128];
+        private int chordGeneration = 1;
         private final float[] phraseLeft = new float[PHRASE_MAP_BINS];
         private final float[] phraseRight = new float[PHRASE_MAP_BINS];
         private String selectedHand = "both";
@@ -407,6 +411,7 @@ public class NativeWaterfallPlugin extends Plugin {
             drawOctaveGuides(canvas, width, keyboardTop);
             drawTimeline(canvas, width, keyboardTop, now);
             drawNotes(canvas, width, keyboardTop, now);
+            drawChordGuides(canvas, width, keyboardTop, now);
             drawPhraseMap(canvas, width, keyboardTop, now);
             drawLoop(canvas, width, keyboardTop, now, loopStart, "A");
             drawLoop(canvas, width, keyboardTop, now, loopEnd, "B");
@@ -664,6 +669,88 @@ public class NativeWaterfallPlugin extends Plugin {
                 canvas.drawRect(x + 1, bottom - cap, x + Math.max(2, noteWidth - 1), bottom, paint);
             }
             paint.setAlpha(255);
+        }
+
+        private void drawChordGuides(Canvas canvas, int width, float keyboardTop, double now) {
+            int first = lowerBound(now - .061);
+            double horizon = Math.min(1.8, visibleSeconds);
+            float density = getResources().getDisplayMetrics().density;
+            int index = first;
+            while (index < notes.size()) {
+                NoteBar base = notes.get(index);
+                double delta = base.start - now;
+                if (delta > horizon) break;
+                int end = index + 1;
+                while (end < notes.size() && notes.get(end).start - base.start <= .035000001) end += 1;
+                if (delta >= -.06) {
+                    chordGeneration += 1;
+                    if (chordGeneration == Integer.MAX_VALUE) {
+                        Arrays.fill(chordSeen, 0);
+                        chordGeneration = 1;
+                    }
+                    int count = 0;
+                    float minX = Float.POSITIVE_INFINITY;
+                    float maxX = Float.NEGATIVE_INFINITY;
+                    boolean left = false;
+                    boolean right = false;
+                    for (int noteIndex = index; noteIndex < end; noteIndex += 1) {
+                        NoteBar note = notes.get(noteIndex);
+                        if (!("both".equals(selectedHand) || (note.left ? "left" : "right").equals(selectedHand))) continue;
+                        if (chordSeen[note.note] == chordGeneration) continue;
+                        chordSeen[note.note] = chordGeneration;
+                        KeyGeometry key = keys[note.note];
+                        if (key == null) continue;
+                        float x = (key.x + key.width / 2f) * width;
+                        minX = Math.min(minX, x);
+                        maxX = Math.max(maxX, x);
+                        left |= note.left;
+                        right |= !note.left;
+                        count += 1;
+                    }
+                    if (count >= 2) {
+                        float y = keyboardTop - (float) (delta / visibleSeconds) * keyboardTop;
+                        float proximity = 1 - (float) Math.max(0, delta) / (float) horizon;
+                        float lift = Math.min(18 * density, 5 * density + (maxX - minX) * .035f);
+                        int strike = themeColor(Color.rgb(190, 244, 255), Color.rgb(221, 255, 232), Color.WHITE);
+                        stroke.setColor(strike);
+                        stroke.setAlpha((int) (255 * (("contrast".equals(theme) ? .6f : .34f) + proximity * .38f)));
+                        stroke.setStrokeWidth(Math.max(density, Math.min(2.4f * density, width * .0014f)));
+                        chordPath.reset();
+                        chordPath.moveTo(minX, y - 2 * density);
+                        chordPath.quadTo((minX + maxX) / 2, y - lift, maxX, y - 2 * density);
+                        canvas.drawPath(chordPath, stroke);
+                        for (int noteIndex = index; noteIndex < end; noteIndex += 1) {
+                            NoteBar note = notes.get(noteIndex);
+                            if (!("both".equals(selectedHand) || (note.left ? "left" : "right").equals(selectedHand))) continue;
+                            boolean duplicate = false;
+                            for (int prior = index; prior < noteIndex; prior += 1) {
+                                if (notes.get(prior).note == note.note) { duplicate = true; break; }
+                            }
+                            if (duplicate) continue;
+                            KeyGeometry key = keys[note.note];
+                            if (key == null) continue;
+                            paint.setColor(note.left
+                                ? themeColor(LEFT, Color.rgb(78, 230, 190), Color.rgb(68, 215, 255))
+                                : themeColor(RIGHT, Color.rgb(184, 156, 255), Color.rgb(255, 207, 63)));
+                            paint.setAlpha((int) (255 * (.38f + proximity * .5f)));
+                            canvas.drawCircle((key.x + key.width / 2f) * width, y - 2 * density,
+                                (2 + proximity * 1.8f) * density, paint);
+                        }
+                        if (left && right && "both".equals(selectedHand)) {
+                            canvas.save();
+                            canvas.translate((minX + maxX) / 2, y - lift);
+                            canvas.rotate(45);
+                            paint.setColor(strike);
+                            paint.setAlpha((int) (255 * (.42f + proximity * .42f)));
+                            canvas.drawRect(-2.4f * density, -2.4f * density, 2.4f * density, 2.4f * density, paint);
+                            canvas.restore();
+                        }
+                    }
+                }
+                index = end;
+            }
+            paint.setAlpha(255);
+            stroke.setAlpha(255);
         }
 
         private int lowerBound(double earliestEnd) {
