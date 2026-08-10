@@ -463,6 +463,15 @@ public class NativeWaterfallPlugin extends Plugin {
                     : themeColor(RIGHT, Color.rgb(184, 156, 255), Color.rgb(255, 207, 63));
                 boolean selected = "both".equals(selectedHand) || (note.left ? "left" : "right").equals(selectedHand);
                 float radius = Math.min(8, noteWidth / 3);
+                if (selected && delta >= 0 && delta < .85 && bottom < keyboardTop) {
+                    int runwayAlpha = "contrast".equals(theme) ? 56 : 80;
+                    paint.setShader(new LinearGradient(0, bottom, 0, keyboardTop,
+                        Color.argb("contrast".equals(theme) ? 24 : 8, Color.red(color), Color.green(color), Color.blue(color)),
+                        Color.argb(runwayAlpha, Color.red(color), Color.green(color), Color.blue(color)), Shader.TileMode.CLAMP));
+                    paint.setAlpha((int) (255 * (1 - delta / 1.1)));
+                    canvas.drawRect(x + noteWidth * .18f, bottom, x + noteWidth * .82f, keyboardTop, paint);
+                    paint.setShader(null);
+                }
                 if (!"contrast".equals(theme) && selected && delta > -.08 && delta < .32) {
                     float arrival = 1 - Math.min(1, (float) Math.abs(delta) / .32f);
                     paint.setShader(null);

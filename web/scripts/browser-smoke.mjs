@@ -252,6 +252,34 @@ try {
 
   command(["resize", "1600", "1068"]);
   evaluate(`() => JSON.stringify(Boolean(window.scrollTo(0, 0) ?? true))`);
+  let tabletSingleSheet = null;
+  if (EDITION === "studio") {
+    tabletSingleSheet = evaluate(`() => {
+      const select = document.querySelector('#view-mode');
+      select.value = 'waterfall';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      select.value = 'sheet';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      const sheet = document.querySelector('#sheet-view');
+      const notation = sheet?.querySelector('svg');
+      return JSON.stringify({
+        view: select.value,
+        visible: sheet ? !sheet.hasAttribute('hidden') : false,
+        overflow: sheet ? sheet.scrollWidth > sheet.clientWidth + 1 : true,
+        sheetWidth: sheet?.getBoundingClientRect().width ?? 0,
+        notationWidth: notation?.getBoundingClientRect().width ?? 0,
+      });
+    }`);
+    assert(tabletSingleSheet.view === "sheet" && tabletSingleSheet.visible, "3:2 Studio single-sheet mode was not applied");
+    assert(!tabletSingleSheet.overflow, "3:2 Studio single-sheet mode overflows horizontally");
+    assert(tabletSingleSheet.notationWidth >= tabletSingleSheet.sheetWidth * 0.9, `3:2 Studio notation does not use the performance surface: ${JSON.stringify(tabletSingleSheet)}`);
+    evaluate(`() => {
+      const select = document.querySelector('#view-mode');
+      select.value = 'split';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return JSON.stringify(select.value);
+    }`);
+  }
   const tablet = evaluate(`() => JSON.stringify({
     width: innerWidth,
     height: innerHeight,
@@ -271,11 +299,26 @@ try {
   }
   command(["screenshot"]);
 
+  command(["resize", "3200", "2136"]);
+  const physicalPanelFallback = evaluate(`() => JSON.stringify({
+    width: innerWidth,
+    height: innerHeight,
+    threeByTwoLayout: matchMedia('(min-width: 1000px) and (min-aspect-ratio: 7 / 5) and (max-aspect-ratio: 8 / 5)').matches,
+    overflow: document.documentElement.scrollWidth > innerWidth,
+    notation: Boolean(document.querySelector('#sheet-view svg')),
+    sheetHorizontalOverflow: document.querySelector('#sheet-view') ? document.querySelector('#sheet-view').scrollWidth > document.querySelector('#sheet-view').clientWidth + 1 : true,
+  })`);
+  assert(physicalPanelFallback.width === 3200 && physicalPanelFallback.height === 2136 && physicalPanelFallback.threeByTwoLayout, "physical-panel fallback viewport was not applied");
+  assert(!physicalPanelFallback.overflow && !physicalPanelFallback.sheetHorizontalOverflow && physicalPanelFallback.notation, `physical-panel fallback layout is invalid: ${JSON.stringify(physicalPanelFallback)}`);
+
   console.log(JSON.stringify({
     passed: true,
     edition: EDITION,
     browser: BROWSER,
-    viewports: [[390, 844], [1280, 900], [1600, 1068]],
+    viewports: [[390, 844], [1280, 900], [1600, 1068], [3200, 2136]],
+    tabletPhysicalPanel: [3200, 2136],
+    tabletSingleSheet,
+    physicalPanelFallback,
     score: "Parser Etude",
     notes: 4,
     durationSeconds: 4,

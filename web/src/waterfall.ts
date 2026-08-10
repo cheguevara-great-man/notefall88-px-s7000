@@ -110,6 +110,18 @@ export class WaterfallRenderer {
         fill.addColorStop(1, note.hand === "left" ? palette.leftShade : palette.rightShade);
         ctx.fillStyle = fill;
         ctx.globalAlpha = this.hand === "both" || this.hand === note.hand ? 0.86 : 0.16;
+        if (delta >= 0 && delta < 0.85 && ctx.globalAlpha > 0.5 && bottom < keyboardTop) {
+          const runway = ctx.createLinearGradient(0, bottom, 0, keyboardTop);
+          runway.addColorStop(0, `${color}${this.theme === "contrast" ? "18" : "08"}`);
+          runway.addColorStop(1, `${color}${this.theme === "contrast" ? "38" : "50"}`);
+          ctx.save();
+          ctx.globalAlpha = 1 - delta / 1.1;
+          ctx.fillStyle = runway;
+          ctx.fillRect(x + noteWidth * 0.18, bottom, noteWidth * 0.64, keyboardTop - bottom);
+          ctx.restore();
+          ctx.globalAlpha = this.hand === "both" || this.hand === note.hand ? 0.86 : 0.16;
+          ctx.fillStyle = fill;
+        }
         if (this.theme !== "contrast" && delta > -0.08 && delta < 0.32 && ctx.globalAlpha > 0.5) {
           const arrival = 1 - Math.min(1, Math.abs(delta) / 0.32);
           ctx.save();

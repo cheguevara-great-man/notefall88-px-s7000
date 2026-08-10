@@ -1144,6 +1144,9 @@ function updateViewMode(): void {
   waterfallCanvas.hidden = wantsSheet && showSheet;
   renderer.setVisible(!waterfallCanvas.hidden);
   sheetView.hidden = !showSheet;
+  // Reveal the sheet before OSMD measures and rerenders it. Rendering while
+  // `hidden` would collapse the container during waterfall -> sheet switches.
+  if (showSheet) sheetRenderer.setLayout(wantsSplit ? "split" : "sheet");
   visualizerCard.dataset.view = wantsSplit && showSheet ? "split" : showSheet ? "sheet" : "waterfall";
   scoreNavigator.hidden = !showSheet;
 }

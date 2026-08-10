@@ -18,6 +18,7 @@ interface OsmdInstance {
   cursor: OsmdCursor;
   Sheet: { Transpose: number };
   TransposeCalculator: unknown;
+  Zoom: number;
   load(content: string): Promise<unknown>;
   render(): void;
   updateGraphic(): void;
@@ -32,6 +33,7 @@ export class SheetRenderer {
   private renderedWidth = 0;
   private resizeTimer?: number;
   private cursorAvailable = true;
+  private layout: "sheet" | "split" = "sheet";
 
   constructor(private readonly container: HTMLElement) {
     const observer = new ResizeObserver(([entry]) => {
@@ -61,8 +63,12 @@ export class SheetRenderer {
       drawTitle: true,
       drawingParameters: "compacttight",
       followCursor: true,
+      // Practice screens benefit more from a readable full-width system than
+      // from print-layout ragged endings, especially on 3:2 tablets.
+      stretchLastSystemLine: true,
     }) as unknown as OsmdInstance;
     await this.osmd.load(xml);
+    this.osmd.Zoom = this.layout === "sheet" ? 1.12 : 0.94;
     this.osmd.TransposeCalculator = new TransposeCalculator();
     if (transpose !== 0) {
       this.osmd.Sheet.Transpose = transpose;
@@ -81,6 +87,17 @@ export class SheetRenderer {
     if (!this.osmd) return;
     this.osmd.Sheet.Transpose = semitones;
     this.osmd.updateGraphic();
+    this.osmd.render();
+    this.renderedWidth = Math.round(this.container.getBoundingClientRect().width);
+    this.currentMeasure = -1;
+    this.seek(this.currentSeconds);
+  }
+
+  setLayout(layout: "sheet" | "split"): void {
+    if (layout === this.layout) return;
+    this.layout = layout;
+    if (!this.osmd) return;
+    this.osmd.Zoom = layout === "sheet" ? 1.12 : 0.94;
     this.osmd.render();
     this.renderedWidth = Math.round(this.container.getBoundingClientRect().width);
     this.currentMeasure = -1;
