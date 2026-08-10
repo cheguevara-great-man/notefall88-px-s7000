@@ -186,6 +186,21 @@ try {
   assert(loadedMobile.sheetVisible && loadedMobile.notation, "sheet view is empty after MusicXML import");
   assert(loadedMobile.view === (EDITION === "studio" ? "split" : "sheet"), "MusicXML selected the wrong default view");
   assert(loadedMobile.waterfallVisible === (EDITION === "studio"), "split view did not expose the waterfall");
+  const measureSeek = evaluate(`() => {
+    const pills = [...document.querySelectorAll('#measure-rail button[data-occurrence]')];
+    const target = pills.at(-1);
+    target?.click();
+    const seek = document.querySelector('#measure-seek');
+    return JSON.stringify({
+      pills: pills.length,
+      label: seek?.textContent,
+      disabled: seek?.disabled,
+      hint: document.querySelector('#measure-nav-hint')?.textContent,
+    });
+  }`);
+  assert(measureSeek.pills > 0 && measureSeek.label === "从 A 开始" && !measureSeek.disabled, "measure seek did not become available after selecting A");
+  evaluate(`() => { document.querySelector('#measure-seek')?.click(); return JSON.stringify(document.querySelector('#measure-nav-hint')?.textContent); }`);
+  assert(evaluate(`() => document.querySelector('#measure-nav-hint')?.textContent?.includes('已定位到')`), "measure seek did not start a fresh practice position");
   const theme = evaluate(`() => {
     const select = document.querySelector('#visual-theme');
     select.value = 'contrast';

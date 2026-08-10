@@ -290,6 +290,14 @@ export class RealtimeMatcher {
     this.cursor = 0;
   }
 
+  /** Moves a newly-started practice pass without scoring every preceding note as missed. */
+  seek(scoreTime: number): void {
+    this.matched = this.chords.map(() => new Set<number>());
+    const earliestRelevant = Number.isFinite(scoreTime) ? scoreTime - this.lateMs / 1000 : 0;
+    this.cursor = this.chords.findIndex((chord) => chord.start >= earliestRelevant);
+    if (this.cursor < 0) this.cursor = this.chords.length;
+  }
+
   noteOn(note: number, scoreTime: number): {
     correct: boolean;
     newlyMatched: boolean;

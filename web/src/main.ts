@@ -139,6 +139,7 @@ const scoreResult = required("score-result");
 const scoreNavigator = required("score-navigator");
 const measureCurrent = required("measure-current");
 const measureRail = required("measure-rail");
+const measureSeek = required<HTMLButtonElement>("measure-seek");
 const measureNavHint = required("measure-nav-hint");
 const recordResult = required("record-result");
 const latencyStatus = required("latency-status");
@@ -246,6 +247,7 @@ let lastScoreSeconds = 0;
 let lastStatsSignature = "";
 let lastMeasureNavigationSignature = "";
 let measureLoopAnchor: number | undefined;
+let currentMeasureOccurrence: number | undefined;
 let lastRecording = recorder.snapshot();
 let lastRecordingControls = recorder.controlSnapshot();
 let pianoWasConnected = false;
@@ -1166,10 +1168,14 @@ function renderMeasureNavigation(seconds: number): void {
   const loop = selectedLoop();
   const items = measureNavigation(score, seconds, loop);
   const current = items.find((item) => item.current);
+  currentMeasureOccurrence = current?.occurrence;
   const signature = `${current?.occurrence ?? -1}:${loop?.start ?? ""}:${loop?.end ?? ""}:${measureLoopAnchor ?? ""}`;
   if (signature === lastMeasureNavigationSignature) return;
   lastMeasureNavigationSignature = signature;
   measureCurrent.textContent = current ? `M${current.writtenMeasure + 1} · 第 ${current.occurrence + 1} 次` : "--";
+  measureSeek.disabled = currentMeasureOccurrence === undefined || loopEnabled.checked;
+  measureSeek.textContent = measureLoopAnchor === undefined ? "从此小节开始" : "从 A 开始";
+  measureSeek.title = loopEnabled.checked ? "请先关闭 A–B 循环，再定位到任意小节" : "结束当前练习并从这里开始一轮新的练习";
   measureRail.replaceChildren(...items.map((item) => {
     const pill = document.createElement("button");
     pill.type = "button";
@@ -1211,6 +1217,40 @@ measureRail.addEventListener("click", (event) => {
   const pill = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-occurrence]");
   if (!pill) return;
   selectMeasureLoopOccurrence(Number(pill.dataset.occurrence));
+});
+
+function startAtMeasure(occurrence: number): void {
+  if (!score?.measureStarts?.length || loopEnabled.checked) return;
+  const safeOccurrence = Math.max(0, Math.min(score.measureStarts.length - 1, occurrence));
+  const start = score.measureStarts[safeOccurrence];
+  void finishPracticeSession();
+  cancelCountIn();
+  cancelFollowPlayback();
+  clock.reset(start);
+  const firstChord = chords.findIndex((chord) => chord.start >= start - 0.001);
+  waitIndex = firstChord < 0 ? chords.length : firstChord;
+  pressed = new Set();
+  wrong = new Set();
+  lastTargetSignature = "";
+  lastScoreSeconds = start;
+  needsCountIn = true;
+  metronome.reset(start);
+  practiceScore.reset();
+  realtimeMatcher.setChords(chords);
+  realtimeMatcher.seek(start);
+  setWaitChord(currentWaitChord());
+  updateTarget(start);
+  playButton.textContent = mode === "realtime" ? "播放" : "开始练习";
+  beginPracticeSession();
+  measureLoopAnchor = undefined;
+  lastMeasureNavigationSignature = "";
+  measureNavHint.textContent = `已定位到 ${formatTime(start)}；播放或开始练习即可从这里进入新一轮。`;
+  renderMeasureNavigation(start);
+}
+
+measureSeek.addEventListener("click", () => {
+  const occurrence = measureLoopAnchor ?? currentMeasureOccurrence;
+  if (occurrence !== undefined) startAtMeasure(occurrence);
 });
 
 viewMode.addEventListener("change", updateViewMode);

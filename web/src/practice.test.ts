@@ -126,6 +126,15 @@ describe("practice engine", () => {
     expect(result.accuracy).toBeCloseTo(100 / 3);
   });
 
+  it("seeks a fresh pass without counting earlier notes as misses", () => {
+    const score = new PracticeScore();
+    const matcher = new RealtimeMatcher(score);
+    matcher.setChords(groupChords(notes));
+    matcher.seek(1.9);
+    expect(matcher.advance(2.1)).toEqual([]);
+    expect(score.snapshot().missed).toBe(0);
+  });
+
   it("paces Follow Me from the player's hit time at the selected tempo", () => {
     expect(followWaitMs(1, 2, 1)).toBe(1000);
     expect(followWaitMs(1, 2, 0.5)).toBe(2000);
