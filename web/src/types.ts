@@ -8,6 +8,9 @@ export interface ScoreNote {
   end: number;
   velocity: number;
   hand: Hand;
+  /** Expanded playback position in quarter notes; available for MusicXML. */
+  scoreQuarterStart?: number;
+  scoreQuarterEnd?: number;
 }
 
 export interface BeatMarker {
@@ -23,6 +26,8 @@ export interface ParsedScore {
   notes: ScoreNote[];
   format?: "midi" | "musicxml";
   measureStarts?: number[];
+  /** Expanded playback measure boundaries in quarter notes, including the final end. */
+  measureQuarterStarts?: number[];
   measureMap?: number[];
   beatMap?: BeatMarker[];
 }

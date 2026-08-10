@@ -1,24 +1,29 @@
 import type { ParsedScore } from "./types";
 import { cursorScrollTarget } from "./score-follow";
+import { advanceSheetIterator, sheetCursorTarget } from "./sheet-position";
+import type { SheetCursorIterator } from "./sheet-position";
+import { timingCue } from "./timing-feedback";
+import { pianoNoteName } from "./calibration";
 
-interface OsmdCursorIterator {
-  EndReached: boolean;
-  CurrentMeasureIndex: number;
-  moveToNext(): void;
-}
+export type SheetFeedbackKind = "hit" | "wrong" | "missed";
 
 interface OsmdCursor {
-  Iterator: OsmdCursorIterator;
+  Iterator: SheetCursorIterator;
   cursorElement?: HTMLImageElement;
   hide?(): void;
   reset(): void;
   show(): void;
   update(): void;
+  CursorOptions: { type: number; color: string; alpha: number; follow: boolean };
 }
 
 interface OsmdInstance {
   cursor: OsmdCursor;
   Sheet: { Transpose: number };
+  EngravingRules: {
+    PageRightMargin: number;
+    SystemRightMargin: number;
+  };
   TransposeCalculator: unknown;
   Zoom: number;
   load(content: string): Promise<unknown>;
@@ -30,12 +35,13 @@ interface OsmdInstance {
 export class SheetRenderer {
   private osmd?: OsmdInstance;
   private score?: ParsedScore;
-  private currentMeasure = -1;
+  private currentCursorSignature = "";
   private currentSeconds = 0;
   private renderedWidth = 0;
   private resizeTimer?: number;
   private cursorAvailable = true;
   private layout: "sheet" | "split" = "sheet";
+  private feedbackTimer?: number;
 
   constructor(private readonly container: HTMLElement) {
     const observer = new ResizeObserver(([entry]) => {
@@ -46,7 +52,7 @@ export class SheetRenderer {
         if (!this.osmd) return;
         this.renderedWidth = Math.round(this.container.getBoundingClientRect().width);
         this.osmd.render();
-        this.currentMeasure = -1;
+        this.currentCursorSignature = "";
         this.seek(this.currentSeconds);
       }, 120);
     });
@@ -64,15 +70,29 @@ export class SheetRenderer {
       backend: "svg",
       drawTitle: true,
       drawingParameters: "compacttight",
-      followCursor: true,
+      // The application owns the stable reading band. OSMD's built-in follow
+      // scrolls on every reset; note-level seeking would otherwise repeatedly
+      // pull a fast passage back toward the top of the document.
+      followCursor: false,
       // Preserve intentional line breaks from edited scores. Responsive
       // reflow still applies when the source omits explicit system breaks.
       newSystemFromXML: true,
       // Practice screens benefit more from a readable full-width system than
       // from print-layout ragged endings, especially on 3:2 tablets.
       stretchLastSystemLine: true,
+      cursorsOptions: [{
+        type: 0,
+        color: "#556dff",
+        alpha: 0.5,
+        follow: false,
+      }],
     }) as unknown as OsmdInstance;
     await this.osmd.load(xml);
+    // Reserve a real cursor gutter. A stretched final system can otherwise
+    // place its last note exactly at the SVG edge, making OSMD's note-area
+    // cursor create horizontal overflow on 3:2 tablets.
+    this.osmd.EngravingRules.PageRightMargin = Math.max(this.osmd.EngravingRules.PageRightMargin, 4);
+    this.osmd.EngravingRules.SystemRightMargin = Math.max(this.osmd.EngravingRules.SystemRightMargin, 2.5);
     this.osmd.Zoom = this.layout === "sheet" ? 1.12 : 0.94;
     this.osmd.TransposeCalculator = new TransposeCalculator();
     if (transpose !== 0) {
@@ -82,7 +102,7 @@ export class SheetRenderer {
     this.osmd.render();
     this.renderedWidth = Math.round(this.container.getBoundingClientRect().width);
     this.score = score;
-    this.currentMeasure = -1;
+    this.currentCursorSignature = "";
     this.currentSeconds = 0;
     this.cursorAvailable = true;
     this.seek(0);
@@ -94,7 +114,7 @@ export class SheetRenderer {
     this.osmd.updateGraphic();
     this.osmd.render();
     this.renderedWidth = Math.round(this.container.getBoundingClientRect().width);
-    this.currentMeasure = -1;
+    this.currentCursorSignature = "";
     this.seek(this.currentSeconds);
   }
 
@@ -105,44 +125,74 @@ export class SheetRenderer {
     this.osmd.Zoom = layout === "sheet" ? 1.12 : 0.94;
     this.osmd.render();
     this.renderedWidth = Math.round(this.container.getBoundingClientRect().width);
-    this.currentMeasure = -1;
+    this.currentCursorSignature = "";
     this.seek(this.currentSeconds);
   }
 
   clear(): void {
     this.osmd = undefined;
     this.score = undefined;
-    this.currentMeasure = -1;
+    this.currentCursorSignature = "";
     this.currentSeconds = 0;
     this.cursorAvailable = true;
     window.clearTimeout(this.resizeTimer);
+    window.clearTimeout(this.feedbackTimer);
     this.container.replaceChildren();
+  }
+
+  /** Mirrors key-local judgment beside the notation cursor for sheet-only practice. */
+  pushFeedback(kind: SheetFeedbackKind, note: number, timingMs?: number): void {
+    if (this.container.hidden || !Number.isInteger(note) || note < 21 || note > 108) return;
+    const cursor = this.osmd?.cursor?.cursorElement;
+    if (!cursor?.isConnected) return;
+    const viewport = this.container.getBoundingClientRect();
+    const position = cursor.getBoundingClientRect();
+    if (position.width <= 0 || position.height <= 0) return;
+
+    const cue = kind === "hit" ? timingCue(timingMs) : undefined;
+    const tone = cue?.band ?? kind;
+    const label = cue ? cue.label
+      : kind === "hit" ? "✓"
+        : kind === "wrong" ? `× ${pianoNoteName(note)}` : `漏 ${pianoNoteName(note)}`;
+    this.container.querySelector(".sheet-feedback")?.remove();
+    const feedback = document.createElement("span");
+    feedback.className = "sheet-feedback";
+    feedback.dataset.tone = tone;
+    feedback.setAttribute("aria-hidden", "true");
+    feedback.textContent = label;
+    feedback.style.left = `${position.left - viewport.left + this.container.scrollLeft + position.width / 2}px`;
+    feedback.style.top = `${position.top - viewport.top + this.container.scrollTop}px`;
+    this.container.append(feedback);
+    window.clearTimeout(this.feedbackTimer);
+    this.feedbackTimer = window.setTimeout(() => feedback.remove(), 900);
   }
 
   seek(seconds: number): void {
     this.currentSeconds = seconds;
     if (!this.osmd?.cursor || !this.score?.measureStarts?.length) return;
-    let occurrence = 0;
-    for (let index = 0; index < this.score.measureStarts.length; index += 1) {
-      if (this.score.measureStarts[index] <= seconds + 1e-6) occurrence = index;
-      else break;
-    }
-    const target = this.score.measureMap?.[occurrence] ?? occurrence;
-    if (target === this.currentMeasure) return;
+    const target = sheetCursorTarget(this.score, seconds);
+    if (!target || target.signature === this.currentCursorSignature) return;
     const cursor = this.osmd.cursor;
     if (!this.cursorAvailable) {
-      this.currentMeasure = target;
+      this.currentCursorSignature = target.signature;
       return;
     }
     try {
       cursor.reset();
-      let safety = 0;
-      while (!cursor.Iterator.EndReached && cursor.Iterator.CurrentMeasureIndex < target && safety < 100_000) {
-        cursor.Iterator.moveToNext();
-        safety += 1;
-      }
+      const steps = advanceSheetIterator(cursor.Iterator, target);
+      const hand = target.hands.length > 1 ? "both" : target.hands[0] ?? "none";
+      const cursorColor = hand === "left" ? "#14bfe5" : hand === "right" ? "#df3aa9" : "#596dff";
+      cursor.CursorOptions = { type: 0, color: cursorColor, alpha: 0.52, follow: false };
       cursor.show();
       cursor.update();
+      this.container.dataset.cursorOccurrence = String(target.occurrence);
+      this.container.dataset.cursorQuarter = String(target.localQuarter);
+      this.container.dataset.cursorSteps = String(steps);
+      this.container.dataset.cursorHand = hand;
+      this.container.dataset.cursorActualMeasure = String(cursor.Iterator.CurrentMeasureIndex);
+      this.container.dataset.cursorActualQuarter = String(
+        (cursor.Iterator.CurrentRelativeInMeasureTimestamp?.RealValue ?? 0) * 4,
+      );
       window.requestAnimationFrame(() => this.followCursor(cursor.cursorElement));
     } catch (error) {
       // A readable MusicXML document can still omit staff/voice information
@@ -151,7 +201,7 @@ export class SheetRenderer {
       this.cursorAvailable = false;
       try { cursor.hide?.(); } catch { /* Rendering remains usable without a cursor. */ }
     }
-    this.currentMeasure = target;
+    this.currentCursorSignature = target.signature;
   }
 
   private followCursor(element: HTMLElement | undefined): void {

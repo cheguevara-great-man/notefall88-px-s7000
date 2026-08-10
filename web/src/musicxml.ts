@@ -794,6 +794,8 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
     end: Math.max(toSeconds(note.start) + 0.03, toSeconds(note.end)),
     velocity: note.velocity,
     hand: note.hand,
+    scoreQuarterStart: note.start,
+    scoreQuarterEnd: note.end,
   })).sort((a, b) => a.start - b.start || a.note - b.note);
   const measureStarts = measureQuarterStarts.slice(0, -1).map(toSeconds);
   const beatMap = measureOrder.flatMap((writtenMeasureIndex, playbackMeasureIndex) => {
@@ -834,6 +836,7 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
     notes,
     format: "musicxml",
     measureStarts,
+    measureQuarterStarts,
     measureMap: measureOrder,
     beatMap,
   };

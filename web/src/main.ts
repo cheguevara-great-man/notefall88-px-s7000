@@ -248,6 +248,7 @@ let hand: HandSelection = initialPreferences.hand;
 let leadMs = initialPreferences.leadMs;
 let previewSeconds = initialPreferences.previewSeconds;
 let lastScoreSeconds = 0;
+let testScoreSeekSeconds: number | undefined;
 let lastStatsSignature = "";
 let lastMeasureNavigationSignature = "";
 let measureLoopAnchor: number | undefined;
@@ -579,6 +580,7 @@ function recordPracticeEvent(event: PracticeEvent): void {
   if (!analytics && score && chords.length > 0) analytics = new PracticeAnalytics(sessionContext());
   analytics?.record(event);
   renderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
+  sheetRenderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
   reviewRevision += 1;
 }
 
@@ -591,6 +593,18 @@ if (import.meta.env.DEV) {
     }>).detail;
     if (!detail || !Number.isInteger(detail.note)) return;
     renderer.pushFeedback(detail.kind ?? "hit", detail.note!, detail.timingMs);
+    sheetRenderer.pushFeedback(detail.kind ?? "hit", detail.note!, detail.timingMs);
+  });
+  window.addEventListener("notefall:test-score-seek", (rawEvent) => {
+    const detail = (rawEvent as CustomEvent<{ seconds?: number; clear?: boolean }>).detail;
+    if (detail?.clear) {
+      testScoreSeekSeconds = undefined;
+      return;
+    }
+    const seconds = Number(detail?.seconds);
+    if (Number.isFinite(seconds)) {
+      testScoreSeekSeconds = seconds;
+    }
   });
 }
 
@@ -1956,6 +1970,7 @@ function frame(now: number): void {
       needsCountIn = true;
       void finishPracticeSession();
     }
+    if (import.meta.env.DEV && testScoreSeekSeconds !== undefined) scoreSeconds = testScoreSeekSeconds;
     if (mode === "realtime" && clock.isRunning()) {
       recordMissedNotes(realtimeMatcher.advance(scoreSeconds));
       metronome.schedule(score.beatMap ?? [], scoreSeconds, clock.speed);

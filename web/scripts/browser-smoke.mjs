@@ -16,6 +16,8 @@ const playwrightCli = join(WEB, "node_modules", "@playwright", "cli", "playwrigh
 mkdirSync(ARTIFACTS, { recursive: true });
 const longScorePath = join(ARTIFACTS, "long-follow-study.musicxml");
 const dynamicsScorePath = join(ARTIFACTS, "dynamics-visual-probe.musicxml");
+const repeatCursorScorePath = join(ARTIFACTS, "repeat-cursor-probe.musicxml");
+writeFileSync(repeatCursorScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Repeat Cursor Probe</work-title></work><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><direction><sound tempo="60"/></direction><barline location="left"><repeat direction="forward"/></barline>${["C", "D", "E", "F"].map((step) => `<note><pitch><step>${step}</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("")}</measure><measure number="2">${["G", "A", "B", "C"].map((step, index) => `<note><pitch><step>${step}</step><octave>${index === 3 ? 5 : 4}</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("")}<barline location="right"><repeat direction="backward" times="2"/></barline></measure></part></score-partwise>`);
 writeFileSync(dynamicsScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Dynamics Visual Probe</work-title></work><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><staves>2</staves><time><beats>4</beats><beat-type>4</beat-type></time><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes><direction><sound tempo="60"/></direction><forward><duration>2</duration></forward><direction><direction-type><dynamics><p/></dynamics></direction-type><staff>1</staff></direction><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note><backup><duration>1</duration></backup><direction><direction-type><dynamics><fff/></dynamics></direction-type><staff>2</staff></direction><note><pitch><step>C</step><octave>6</octave></pitch><duration>1</duration><voice>2</voice><type>quarter</type><staff>2</staff></note></measure></part></score-partwise>`);
 const longMeasures = Array.from({ length: 48 }, (_, index) => {
   const number = index + 1;
@@ -277,6 +279,7 @@ try {
 
   command(["resize", "1600", "1068"]);
   evaluate(`() => JSON.stringify(Boolean(window.scrollTo(0, 0) ?? true))`);
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, 350));
   let tabletSingleSheet = null;
   if (EDITION === "studio") {
     tabletSingleSheet = evaluate(`() => {
@@ -314,10 +317,15 @@ try {
     cardBottom: document.querySelector('#visualizer-card')?.getBoundingClientRect().bottom ?? 99999,
     waterfallHeight: document.querySelector('#waterfall')?.getBoundingClientRect().height ?? 0,
     sheetHorizontalOverflow: document.querySelector('#sheet-view') ? document.querySelector('#sheet-view').scrollWidth > document.querySelector('#sheet-view').clientWidth + 1 : true,
+    sheetScrollWidth: document.querySelector('#sheet-view')?.scrollWidth ?? 0,
+    sheetClientWidth: document.querySelector('#sheet-view')?.clientWidth ?? 0,
+    notationWidth: document.querySelector('#sheet-view svg')?.getBoundingClientRect().width ?? 0,
+    cursorLeft: document.querySelector('#sheet-view img[id*="cursor"]')?.getBoundingClientRect().left ?? -1,
+    cursorWidth: document.querySelector('#sheet-view img[id*="cursor"]')?.getBoundingClientRect().width ?? -1,
     view: document.querySelector('#view-mode')?.value
   })`);
   assert(tablet.width === 1600 && tablet.height === 1068 && tablet.threeByTwoLayout, "3:2 tablet viewport was not applied");
-  assert(!tablet.overflow && !tablet.sheetHorizontalOverflow, "3:2 tablet layout overflows horizontally");
+  assert(!tablet.overflow && !tablet.sheetHorizontalOverflow, `3:2 tablet layout overflows horizontally: ${JSON.stringify(tablet)}`);
   assert(tablet.cardHeight >= 460 && tablet.cardBottom <= tablet.height + 1, `3:2 practice surface does not keep the keyboard in the first viewport: ${JSON.stringify(tablet)}`);
   if (EDITION === "studio") {
     assert(tablet.view === "split" && tablet.waterfallHeight >= 280, "3:2 Studio split does not reserve enough space for the waterfall keyboard");
@@ -355,6 +363,54 @@ try {
   assert(tabletFocus.cardHeight >= 2122 && tabletFocus.cardTop <= 7, `3200x2136 focus surface does not fill the panel: ${JSON.stringify(tabletFocus)}`);
   command(["screenshot"]);
   evaluate(`() => { document.querySelector('#focus-exit')?.click(); return JSON.stringify(true); }`);
+
+  command(["click", importRef]);
+  command(["upload", repeatCursorScorePath]);
+  await waitForCondition(
+    `() => JSON.stringify(document.querySelector('#score-name')?.textContent?.startsWith('Repeat Cursor Probe'))`,
+    "repeat-aware cursor score did not render",
+  );
+  const repeatCursor = evaluate(`async () => {
+    const sample = async (seconds) => {
+      window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { seconds } }));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const sheet = document.querySelector('#sheet-view');
+      const cursor = sheet?.querySelector('img[id*="cursor"]');
+      return {
+        occurrence: sheet?.dataset.cursorOccurrence,
+        quarter: sheet?.dataset.cursorQuarter,
+        steps: Number(sheet?.dataset.cursorSteps ?? -1),
+        actualMeasure: sheet?.dataset.cursorActualMeasure,
+        actualQuarter: sheet?.dataset.cursorActualQuarter,
+        left: cursor?.getBoundingClientRect().left ?? -1,
+      };
+    };
+    const first = await sample(.01);
+    const repeated = await sample(8.01);
+    window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { clear: true } }));
+    return JSON.stringify({ first, repeated });
+  }`);
+  assert(repeatCursor.first.occurrence === '0' && repeatCursor.repeated.occurrence === '2'
+    && repeatCursor.first.actualMeasure === '1' && repeatCursor.repeated.actualMeasure === '1',
+    `score cursor did not traverse the repeated playback occurrence: ${JSON.stringify(repeatCursor)}`);
+  assert(Math.abs(repeatCursor.first.left - repeatCursor.repeated.left) < 2,
+    `repeated written measure did not return to the same notation position: ${JSON.stringify(repeatCursor)}`);
+  const sheetFeedback = evaluate(`async () => {
+    window.dispatchEvent(new CustomEvent('notefall:test-feedback', { detail: { kind: 'hit', note: 60, timingMs: -90 } }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const sheet = document.querySelector('#sheet-view');
+    const feedback = sheet?.querySelector('.sheet-feedback');
+    const box = feedback?.getBoundingClientRect();
+    const viewport = sheet?.getBoundingClientRect();
+    return JSON.stringify({
+      text: feedback?.textContent,
+      tone: feedback?.dataset.tone,
+      visible: Boolean(box && viewport && box.width > 0 && box.left >= viewport.left && box.right <= viewport.right),
+    });
+  }`);
+  assert(sheetFeedback.tone === 'early' && sheetFeedback.text?.startsWith('早') && sheetFeedback.visible,
+    `sheet-only timing feedback is missing or outside the notation viewport: ${JSON.stringify(sheetFeedback)}`);
+  command(["screenshot"]);
 
   command(["click", importRef]);
   command(["upload", dynamicsScorePath]);
@@ -429,6 +485,33 @@ try {
     `() => JSON.stringify(document.querySelector('#score-name')?.textContent === 'Long Follow Study · 240 音符')`,
     "synthetic long score did not render",
   );
+  const noteCursor = evaluate(`async () => {
+    const sample = async (seconds) => {
+      window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { seconds } }));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const sheet = document.querySelector('#sheet-view');
+      const cursor = sheet?.querySelector('img[id*="cursor"]');
+      return {
+        occurrence: sheet?.dataset.cursorOccurrence,
+        quarter: sheet?.dataset.cursorQuarter,
+        hand: sheet?.dataset.cursorHand,
+        sourceHash: [...(cursor?.getAttribute('src') ?? '')].reduce((hash, character) => (hash * 33 + character.charCodeAt(0)) >>> 0, 5381),
+        left: cursor?.getBoundingClientRect().left ?? -1,
+      };
+    };
+    const first = await sample(.005);
+    const second = await sample(.03);
+    window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { clear: true } }));
+    return JSON.stringify({ first, second });
+  }`);
+  assert(noteCursor.first.occurrence === '0' && noteCursor.second.occurrence === '0',
+    `score cursor escaped its measure during the note-level probe: ${JSON.stringify(noteCursor)}`);
+  assert(noteCursor.first.quarter === '0' && noteCursor.second.quarter === '1'
+    && noteCursor.second.left > noteCursor.first.left + 2,
+    `score cursor did not advance between notes in one measure: ${JSON.stringify(noteCursor)}`);
+  assert(noteCursor.first.hand === 'both' && noteCursor.second.hand === 'right'
+    && noteCursor.first.sourceHash !== noteCursor.second.sourceHash,
+    `score cursor did not encode the active hand color: ${JSON.stringify(noteCursor)}`);
   const followBefore = evaluate(`() => JSON.stringify({
     scrollTop: document.querySelector('#sheet-view')?.scrollTop ?? -1,
     scrollHeight: document.querySelector('#sheet-view')?.scrollHeight ?? 0,
@@ -469,7 +552,7 @@ try {
     scrollTop: document.querySelector('#sheet-view')?.scrollTop ?? -1,
     currentMeasure: document.querySelector('#measure-current')?.textContent,
   })`);
-  assert(followAfter.scrollTop > followBefore.scrollTop, `long-score following did not move forward: ${JSON.stringify({ followBefore, followAfter })}`);
+  assert(followAfter.scrollTop > followBefore.scrollTop + 150, `long-score following did not keep pace with a later system: ${JSON.stringify({ followBefore, followAfter })}`);
   let phraseMapSamples = null;
   if (EDITION === "studio") {
     phraseMapSamples = evaluate(`() => {
@@ -510,6 +593,9 @@ try {
     score: "Long Follow Study",
     notes: 240,
     longScoreFollow: { before: followBefore, after: followAfter },
+    noteCursor,
+    repeatCursor,
+    sheetFeedback,
     phraseMapSamples,
     artifacts: ARTIFACTS,
   }, null, 2));
