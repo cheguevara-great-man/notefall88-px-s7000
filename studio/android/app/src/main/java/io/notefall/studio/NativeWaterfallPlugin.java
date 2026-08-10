@@ -83,6 +83,13 @@ public class NativeWaterfallPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setTheme(PluginCall call) {
+        String theme = call.getString("theme", "neon");
+        onUi(() -> ensureView().setTheme(theme));
+        call.resolve();
+    }
+
+    @PluginMethod
     public void show(PluginCall call) {
         double left = call.getDouble("left", 0.0);
         double top = call.getDouble("top", 0.0);
@@ -165,6 +172,7 @@ public class NativeWaterfallPlugin extends Plugin {
         private final boolean[] expected = new boolean[128];
         private final boolean[] wrong = new boolean[128];
         private String selectedHand = "both";
+        private String theme = "neon";
         private Double loopStart;
         private Double loopEnd;
         private double baseScoreTime;
@@ -259,6 +267,15 @@ public class NativeWaterfallPlugin extends Plugin {
             invalidate();
         }
 
+        void setTheme(String value) {
+            theme = "aurora".equals(value) || "contrast".equals(value) ? value : "neon";
+            invalidate();
+        }
+
+        private int themeColor(int neon, int aurora, int contrast) {
+            return "aurora".equals(theme) ? aurora : "contrast".equals(theme) ? contrast : neon;
+        }
+
         private double scoreTime() {
             if (!running) return baseScoreTime;
             return baseScoreTime + (SystemClock.elapsedRealtime() - baseRealtimeMs) / 1000.0;
@@ -273,7 +290,8 @@ public class NativeWaterfallPlugin extends Plugin {
             float keyboardHeight = height * 0.22f;
             float keyboardTop = height - keyboardHeight;
             paint.setShader(new LinearGradient(0, 0, 0, keyboardTop,
-                Color.rgb(9, 11, 18), Color.rgb(17, 24, 39), Shader.TileMode.CLAMP));
+                themeColor(Color.rgb(9, 11, 18), Color.rgb(7, 21, 19), Color.rgb(10, 10, 10)),
+                themeColor(Color.rgb(17, 24, 39), Color.rgb(20, 36, 58), Color.rgb(32, 32, 32)), Shader.TileMode.CLAMP));
             canvas.drawRect(0, 0, width, keyboardTop, paint);
             paint.setShader(null);
             double now = scoreTime();
@@ -321,7 +339,7 @@ public class NativeWaterfallPlugin extends Plugin {
                 Color.argb(0, 104, 229, 255), Color.argb(36, 104, 229, 255), Shader.TileMode.CLAMP));
             canvas.drawRect(0, keyboardTop - zone, width, keyboardTop, paint);
             paint.setShader(null);
-            paint.setColor(Color.rgb(190, 244, 255));
+            paint.setColor(themeColor(Color.rgb(190, 244, 255), Color.rgb(221, 255, 232), Color.WHITE));
             paint.setAlpha(230);
             canvas.drawRect(0, keyboardTop - 2, width, keyboardTop, paint);
             paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
@@ -343,9 +361,13 @@ public class NativeWaterfallPlugin extends Plugin {
                 float noteWidth = Math.max(3, key.width * width - 2);
                 float bottom = keyboardTop - (float) (delta / VISIBLE_SECONDS) * keyboardTop;
                 float noteHeight = Math.max(5, (float) ((note.end - note.start) / VISIBLE_SECONDS) * keyboardTop);
-                int color = note.left ? LEFT : RIGHT;
+                int color = note.left
+                    ? themeColor(LEFT, Color.rgb(78, 230, 190), Color.rgb(68, 215, 255))
+                    : themeColor(RIGHT, Color.rgb(184, 156, 255), Color.rgb(255, 207, 63));
                 paint.setShader(new LinearGradient(0, bottom - noteHeight, 0, bottom, color,
-                    note.left ? Color.rgb(17, 124, 163) : Color.rgb(182, 36, 138), Shader.TileMode.CLAMP));
+                    note.left
+                        ? themeColor(Color.rgb(17, 124, 163), Color.rgb(22, 135, 118), Color.rgb(20, 125, 163))
+                        : themeColor(Color.rgb(182, 36, 138), Color.rgb(112, 80, 186), Color.rgb(181, 122, 8)), Shader.TileMode.CLAMP));
                 boolean selected = "both".equals(selectedHand) || (note.left ? "left" : "right").equals(selectedHand);
                 paint.setAlpha(selected ? 220 : 41);
                 float radius = Math.min(8, noteWidth / 3);
@@ -391,8 +413,10 @@ public class NativeWaterfallPlugin extends Plugin {
                 KeyGeometry key = keys[note];
                 if (key == null || key.black) continue;
                 int color = Color.rgb(236, 236, 240);
-                if (expected[note]) color = Color.rgb(168, 232, 255);
-                if (pressed[note]) color = wrong[note] ? WRONG : CORRECT;
+                if (expected[note]) color = themeColor(Color.rgb(168, 232, 255), Color.rgb(208, 245, 222), Color.WHITE);
+                if (pressed[note]) color = wrong[note]
+                    ? themeColor(WRONG, Color.rgb(255, 154, 95), Color.rgb(255, 89, 77))
+                    : themeColor(CORRECT, Color.rgb(184, 244, 109), Color.rgb(125, 255, 90));
                 paint.setColor(color);
                 float left = key.x * width;
                 float right = left + key.width * width + 0.5f;
@@ -412,8 +436,10 @@ public class NativeWaterfallPlugin extends Plugin {
                 KeyGeometry key = keys[note];
                 if (key == null || !key.black) continue;
                 int color = Color.rgb(21, 24, 33);
-                if (expected[note]) color = Color.rgb(30, 155, 189);
-                if (pressed[note]) color = wrong[note] ? WRONG : Color.rgb(44, 173, 103);
+                if (expected[note]) color = themeColor(Color.rgb(30, 155, 189), Color.rgb(55, 158, 133), Color.WHITE);
+                if (pressed[note]) color = wrong[note]
+                    ? themeColor(WRONG, Color.rgb(255, 154, 95), Color.rgb(255, 89, 77))
+                    : themeColor(Color.rgb(44, 173, 103), Color.rgb(130, 197, 74), Color.rgb(125, 255, 90));
                 paint.setColor(color);
                 float left = key.x * width;
                 canvas.drawRect(left, top, left + key.width * width, top + height * 0.62f, paint);

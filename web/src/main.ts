@@ -77,6 +77,8 @@ import type {
 import { createWaterfallSurface } from "./native-waterfall";
 import { SheetRenderer } from "./sheet";
 import { transposeLabel, transposeScore } from "./transpose";
+import { normalizeVisualTheme } from "./visual-theme";
+import type { VisualTheme } from "./visual-theme";
 import {
   changeAccessPointPassword,
   fetchUpdateInfo,
@@ -119,6 +121,7 @@ const viewMode = required<HTMLSelectElement>("view-mode");
 const handSelect = required<HTMLSelectElement>("hand-selection");
 const leadTime = required<HTMLInputElement>("lead-time");
 const transposeInput = required<HTMLInputElement>("transpose");
+const visualThemeSelect = required<HTMLSelectElement>("visual-theme");
 const metronomeEnabled = required<HTMLInputElement>("metronome-enabled");
 const countInEnabled = required<HTMLInputElement>("count-in-enabled");
 const loopEnabled = required<HTMLInputElement>("loop-enabled");
@@ -182,6 +185,7 @@ const library = new ScoreLibrary();
 const sessionStore = new PracticeSessionStore();
 const metronome = new MetronomePlayer();
 const initialPreferences = loadPreferences();
+const VISUAL_THEME_STORAGE_KEY = "notefall88.visual-theme.v1";
 
 if (studioEdition) {
   const toolbar = required("studio-toolbar");
@@ -243,6 +247,7 @@ let pianoWasConnected = false;
 let scoreXml: string | undefined;
 let scoreFingerprint: string | undefined;
 let transposeSemitones = 0;
+let visualTheme: VisualTheme = normalizeVisualTheme(window.localStorage.getItem(VISUAL_THEME_STORAGE_KEY));
 let libraryFolders: LibraryFolder[] = [];
 let libraryScores: LibraryScore[] = [];
 
@@ -281,6 +286,8 @@ metronomeEnabled.checked = initialPreferences.metronome;
 countInEnabled.checked = initialPreferences.countIn;
 clock.speed = initialPreferences.tempo;
 metronome.setEnabled(initialPreferences.metronome);
+visualThemeSelect.value = visualTheme;
+renderer.setTheme(visualTheme);
 required("lead-value").textContent = `${(leadMs / 1000).toFixed(1)} 秒`;
 required("metronome-status").textContent = initialPreferences.metronome
   ? "已开启 · 按乐谱拍号与速度"
@@ -1393,6 +1400,12 @@ transposeInput.addEventListener("input", () => {
   renderer.setScore(score);
   if (scoreXml) sheetRenderer.setTranspose(transposeSemitones);
   rebuildPractice();
+});
+visualThemeSelect.addEventListener("change", () => {
+  visualTheme = normalizeVisualTheme(visualThemeSelect.value);
+  visualThemeSelect.value = visualTheme;
+  renderer.setTheme(visualTheme);
+  try { window.localStorage.setItem(VISUAL_THEME_STORAGE_KEY, visualTheme); } catch { /* visual preference is optional */ }
 });
 loopEnabled.addEventListener("change", () => {
   loopStart.disabled = !loopEnabled.checked;

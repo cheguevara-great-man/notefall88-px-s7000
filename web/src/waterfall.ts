@@ -1,11 +1,8 @@
 import { pianoKeys } from "./layout";
 import type { LoopRange } from "./practice";
 import type { HandSelection, ParsedScore } from "./types";
-
-const LEFT = "#28d7ff";
-const RIGHT = "#ff4fc8";
-const CORRECT = "#65f59a";
-const WRONG = "#ff654f";
+import { visualPalette } from "./visual-theme";
+import type { VisualTheme } from "./visual-theme";
 
 export class WaterfallRenderer {
   private context: CanvasRenderingContext2D;
@@ -15,6 +12,7 @@ export class WaterfallRenderer {
   private wrong = new Set<number>();
   private hand: HandSelection = "both";
   private loop?: LoopRange;
+  private theme: VisualTheme = "neon";
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext("2d");
@@ -35,6 +33,10 @@ export class WaterfallRenderer {
   setPracticeView(hand: HandSelection, loop: LoopRange | undefined): void {
     this.hand = hand;
     this.loop = loop;
+  }
+
+  setTheme(theme: VisualTheme): void {
+    this.theme = theme;
   }
 
   setVisible(_visible: boolean): void {
@@ -60,11 +62,12 @@ export class WaterfallRenderer {
     const rollHeight = keyboardTop;
     const visibleSeconds = 4.2;
     const ctx = this.context;
+    const palette = visualPalette(this.theme);
 
     ctx.clearRect(0, 0, width, height);
     const gradient = ctx.createLinearGradient(0, 0, 0, keyboardTop);
-    gradient.addColorStop(0, "#090b12");
-    gradient.addColorStop(1, "#111827");
+    gradient.addColorStop(0, palette.top);
+    gradient.addColorStop(1, palette.bottom);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, keyboardTop);
 
@@ -82,10 +85,10 @@ export class WaterfallRenderer {
         const bottom = keyboardTop - (delta / visibleSeconds) * rollHeight;
         const noteHeight = Math.max(5, (duration / visibleSeconds) * rollHeight);
         const y = bottom - noteHeight;
-        const color = note.hand === "left" ? LEFT : RIGHT;
+        const color = note.hand === "left" ? palette.left : palette.right;
         const fill = ctx.createLinearGradient(0, y, 0, bottom);
         fill.addColorStop(0, color);
-        fill.addColorStop(1, note.hand === "left" ? "#117ca3" : "#b6248a");
+        fill.addColorStop(1, note.hand === "left" ? palette.leftShade : palette.rightShade);
         ctx.fillStyle = fill;
         ctx.globalAlpha = this.hand === "both" || this.hand === note.hand ? 0.86 : 0.16;
         ctx.beginPath();
@@ -105,8 +108,8 @@ export class WaterfallRenderer {
       this.drawLoopBoundary(this.loop.end, scoreTime, keyboardTop, rollHeight, visibleSeconds, width, "B");
     }
 
-    this.drawStrikeZone(keyboardTop, width);
-    this.drawKeyboard(keyboardTop, keyboardHeight, width);
+    this.drawStrikeZone(keyboardTop, width, palette.strike);
+    this.drawKeyboard(keyboardTop, keyboardHeight, width, palette);
   }
 
   private drawTimeline(scoreTime: number, keyboardTop: number, rollHeight: number, visibleSeconds: number, width: number): void {
@@ -136,15 +139,15 @@ export class WaterfallRenderer {
     }
   }
 
-  private drawStrikeZone(keyboardTop: number, width: number): void {
+  private drawStrikeZone(keyboardTop: number, width: number, strike: string): void {
     const ctx = this.context;
     const zone = Math.max(22, keyboardTop * 0.065);
     const wash = ctx.createLinearGradient(0, keyboardTop - zone, 0, keyboardTop);
     wash.addColorStop(0, "rgba(104, 229, 255, 0)");
-    wash.addColorStop(1, "rgba(104, 229, 255, .14)");
+    wash.addColorStop(1, `${strike}24`);
     ctx.fillStyle = wash;
     ctx.fillRect(0, keyboardTop - zone, width, zone);
-    ctx.fillStyle = "rgba(190,244,255,.9)";
+    ctx.fillStyle = strike;
     ctx.fillRect(0, keyboardTop - 2, width, 2);
     ctx.font = "700 10px system-ui";
     ctx.fillText("NOW", 10, keyboardTop - 8);
@@ -177,13 +180,13 @@ export class WaterfallRenderer {
     this.context.restore();
   }
 
-  private drawKeyboard(top: number, height: number, width: number): void {
+  private drawKeyboard(top: number, height: number, width: number, palette: ReturnType<typeof visualPalette>): void {
     const ctx = this.context;
     const keys = pianoKeys();
     for (const key of keys.filter((item) => !item.black)) {
       let color = "#ececf0";
-      if (this.expected.has(key.note)) color = "#a8e8ff";
-      if (this.pressed.has(key.note)) color = this.wrong.has(key.note) ? WRONG : CORRECT;
+      if (this.expected.has(key.note)) color = palette.expected;
+      if (this.pressed.has(key.note)) color = this.wrong.has(key.note) ? palette.wrong : palette.correct;
       ctx.fillStyle = color;
       ctx.strokeStyle = "#252933";
       ctx.lineWidth = 1;
@@ -198,7 +201,7 @@ export class WaterfallRenderer {
     for (const key of keys.filter((item) => item.black)) {
       let color = "#151821";
       if (this.expected.has(key.note)) color = "#1e9bbd";
-      if (this.pressed.has(key.note)) color = this.wrong.has(key.note) ? WRONG : "#2cad67";
+      if (this.pressed.has(key.note)) color = this.wrong.has(key.note) ? palette.wrong : palette.correct;
       ctx.fillStyle = color;
       ctx.fillRect(key.x * width, top, key.width * width, height * 0.62);
     }
