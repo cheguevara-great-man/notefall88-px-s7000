@@ -604,11 +604,14 @@ function renderPracticeReview(): void {
     ? "导入乐谱后，按时间与琴键定位本次问题。"
     : `${eventCount} 个判定事件 · 绿=命中 · 黄=多余键 · 红=漏音或集中错误`;
   reviewTimeline.replaceChildren(...review.buckets.map((bucket) => {
-    const segment = document.createElement("div");
+    const segment = document.createElement("button");
+    segment.type = "button";
     const errors = bucket.wrong + bucket.missed;
     segment.className = "review-segment";
     segment.dataset.tone = reviewBucketTone(bucket);
     segment.dataset.marker = errors > 0 ? `−${errors}` : bucket.hits > 0 ? `+${bucket.hits}` : "";
+    segment.dataset.start = String(bucket.start);
+    segment.dataset.end = String(bucket.end);
     const timing = bucket.timingBiasMs === undefined ? "" : ` · ${Math.abs(bucket.timingBiasMs)}ms${bucket.timingBiasMs < 0 ? "早" : "晚"}`;
     segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}`;
     return segment;
@@ -623,6 +626,25 @@ function renderPracticeReview(): void {
     return marker;
   }));
 }
+
+function loopReviewSegment(start: number, end: number): void {
+  if (!score || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+  loopEnabled.checked = true;
+  loopStart.value = String(start);
+  loopEnd.value = String(end);
+  updateLoopLabels();
+  rebuildPractice();
+  resetPractice(false);
+  measureLoopAnchor = undefined;
+  lastMeasureNavigationSignature = "";
+  measureNavHint.textContent = `已从复盘定位到 ${formatTime(start)}–${formatTime(end)}；可在小节轨改为整小节循环。`;
+}
+
+reviewTimeline.addEventListener("click", (event) => {
+  const segment = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-start][data-end]");
+  if (!segment) return;
+  loopReviewSegment(Number(segment.dataset.start), Number(segment.dataset.end));
+});
 
 function renderPracticeHistory(): void {
   sessionHistory.replaceChildren();

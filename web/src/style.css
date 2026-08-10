@@ -144,7 +144,7 @@ html[data-edition="studio"] h1::after { content: "STUDIO"; margin-left: 10px; pa
 .review-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 12px; font-weight: 700; }
 .review-head small { color: #8e9aae; font-weight: 400; text-align: right; }
 .review-timeline { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 3px; height: 42px; align-items: stretch; }
-.review-segment { position: relative; min-width: 0; border: 1px solid rgba(145,157,182,.16); border-radius: 4px; background: #161b25; }
+.review-segment { position: relative; min-width: 0; min-height: 0; padding: 0; border: 1px solid rgba(145,157,182,.16); border-radius: 4px; background: #161b25; }
 .review-segment[data-tone="clean"] { background: linear-gradient(#48c788, #216f61); border-color: rgba(101,245,154,.45); }
 .review-segment[data-tone="warning"] { background: linear-gradient(#f7b955, #9b6026); border-color: rgba(255,197,103,.52); }
 .review-segment[data-tone="error"] { background: linear-gradient(#fa745e, #a33349); border-color: rgba(255,101,79,.68); }
