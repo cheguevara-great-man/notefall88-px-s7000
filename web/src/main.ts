@@ -56,6 +56,7 @@ import {
   recordingToMidi,
 } from "./performance";
 import { loadPreferences, savePreferences } from "./preferences";
+import { timingWindowRange, timingWindowsForChords } from "./judgement";
 import { clampTempo, normalizeTempo, tempoPercent } from "./tempo";
 import {
   chordsInRange,
@@ -82,6 +83,8 @@ import type {
   ParsedScore,
   PracticeMode,
   TargetNote,
+  TimingProfile,
+  TimingWindow,
 } from "./types";
 import { createWaterfallSurface } from "./native-waterfall";
 import { requestImmersiveMode } from "./immersive";
@@ -129,6 +132,8 @@ const modeSelect = required<HTMLSelectElement>("practice-mode");
 const tempoInput = required<HTMLInputElement>("tempo");
 const viewMode = required<HTMLSelectElement>("view-mode");
 const handSelect = required<HTMLSelectElement>("hand-selection");
+const timingProfileSelect = required<HTMLSelectElement>("timing-profile");
+const timingProfileStatus = required("timing-profile-status");
 const leadTime = required<HTMLInputElement>("lead-time");
 const transposeInput = required<HTMLInputElement>("transpose");
 const visualThemeSelect = required<HTMLSelectElement>("visual-theme");
@@ -262,6 +267,8 @@ let pressed = new Set<number>();
 let wrong = new Set<number>();
 let mode: PracticeMode = initialPreferences.mode;
 let hand: HandSelection = initialPreferences.hand;
+let timingProfile: TimingProfile = initialPreferences.timingProfile;
+let currentTimingWindows: TimingWindow[] = [];
 let leadMs = initialPreferences.leadMs;
 let previewSeconds = initialPreferences.previewSeconds;
 let lastScoreSeconds = 0;
@@ -313,6 +320,7 @@ let backgroundPlayLabel = "播放";
 
 modeSelect.value = mode;
 handSelect.value = hand;
+timingProfileSelect.value = timingProfile;
 tempoInput.value = String(tempoPercent(initialPreferences.tempo));
 leadTime.value = String(leadMs);
 metronomeEnabled.checked = initialPreferences.metronome;
@@ -334,6 +342,7 @@ function persistPreferences(): void {
     version: 1,
     mode,
     hand,
+    timingProfile,
     tempo: selectedTempo(),
     leadMs,
     previewSeconds,
@@ -352,6 +361,25 @@ function setSelectedTempo(tempo: number): void {
   tempoInput.value = String(tempoPercent(normalized));
   clock.setSpeed(normalized, performance.now());
 }
+
+function renderTimingProfileStatus(): void {
+  const labels: Record<TimingProfile, string> = {
+    adaptive: "自适应",
+    relaxed: "宽容",
+    strict: "严格",
+  };
+  const range = timingWindowRange(currentTimingWindows, selectedTempo());
+  if (!range) {
+    timingProfileStatus.textContent = `${labels[timingProfile]} · 导入乐谱后按局部节拍自动计算。`;
+    return;
+  }
+  const describe = ([minimum, maximum]: [number, number]) => (
+    minimum === maximum ? `${minimum}` : `${minimum}–${maximum}`
+  );
+  timingProfileStatus.textContent = `${labels[timingProfile]} · 实际提前 ${describe(range.early)} ms / 延后 ${describe(range.late)} ms · 随局部节拍变化`;
+}
+
+renderTimingProfileStatus();
 
 function formatEndpoint(value: number | undefined): string {
   return value ? `0x${value.toString(16).toUpperCase().padStart(2, "0")}` : "--";
@@ -565,6 +593,7 @@ function sessionContext() {
     scoreFingerprint,
     mode,
     hand,
+    timingProfile,
     tempo: selectedTempo(),
     transpose: transposeSemitones,
     loop: loop ? { ...loop } : undefined,
@@ -968,7 +997,7 @@ function resetPractice(resetStats = true): void {
   needsCountIn = true;
   metronome.reset(start);
   if (resetStats) practiceScore.reset();
-  realtimeMatcher.setChords(chords);
+  realtimeMatcher.restartPass();
   setWaitChord(currentWaitChord());
   updateTarget(start);
   playButton.textContent = mode === "realtime" ? "播放" : "开始练习";
@@ -980,6 +1009,9 @@ function rebuildPractice(): void {
   if (!score) return;
   const filtered = filterNotesByHand(score.notes, hand);
   chords = chordsInRange(groupChords(filtered), selectedLoop());
+  currentTimingWindows = timingWindowsForChords(chords, score.beatMap ?? [], timingProfile);
+  realtimeMatcher.setChords(chords, currentTimingWindows);
+  renderTimingProfileStatus();
   renderer.setPracticeView(hand, selectedLoop());
   playButton.disabled = chords.length === 0;
   resetButton.disabled = chords.length === 0;
@@ -1415,7 +1447,7 @@ function startAtMeasure(occurrence: number): void {
   needsCountIn = true;
   metronome.reset(start);
   practiceScore.reset();
-  realtimeMatcher.setChords(chords);
+  realtimeMatcher.restartPass();
   realtimeMatcher.seek(start);
   setWaitChord(currentWaitChord());
   updateTarget(start);
@@ -1661,6 +1693,7 @@ modeSelect.addEventListener("change", () => {
 });
 tempoInput.addEventListener("change", () => {
   setSelectedTempo(selectedTempo());
+  renderTimingProfileStatus();
   if (mode === "follow") resetPractice(true);
   persistPreferences();
 });
@@ -1683,6 +1716,12 @@ handSelect.addEventListener("change", () => {
     handSelect.value = hand;
   }
   rebuildPractice();
+  persistPreferences();
+});
+timingProfileSelect.addEventListener("change", () => {
+  timingProfile = timingProfileSelect.value as TimingProfile;
+  if (score) rebuildPractice();
+  else renderTimingProfileStatus();
   persistPreferences();
 });
 leadTime.addEventListener("input", () => {
@@ -2133,7 +2172,7 @@ function frame(now: number): void {
     if (mode !== "realtime") {
       scoreSeconds = currentWaitChord()?.start ?? rangeEnd();
     } else if (clock.isRunning() && loop && scoreSeconds >= loop.end) {
-      recordMissedNotes(realtimeMatcher.advance(loop.end + 0.251));
+      recordMissedNotes(realtimeMatcher.advance(loop.end + realtimeMatcher.maximumLateSeconds() + 0.001));
       const span = loop.end - loop.start;
       scoreSeconds = loop.start + ((scoreSeconds - loop.start) % span);
       clock.seek(scoreSeconds, now);
@@ -2141,7 +2180,7 @@ function frame(now: number): void {
       metronome.reset(scoreSeconds);
       lastTargetSignature = "";
     } else if (scoreSeconds >= score.duration) {
-      recordMissedNotes(realtimeMatcher.advance(score.duration + 0.251));
+      recordMissedNotes(realtimeMatcher.advance(score.duration + realtimeMatcher.maximumLateSeconds() + 0.001));
       clock.pause(now);
       scoreSeconds = score.duration;
       playButton.textContent = "重播";

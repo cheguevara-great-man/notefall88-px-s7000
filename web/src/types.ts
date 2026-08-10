@@ -1,6 +1,12 @@
 export type Hand = "left" | "right";
 export type HandSelection = "both" | Hand;
 export type PracticeMode = "realtime" | "wait" | "follow";
+export type TimingProfile = "adaptive" | "relaxed" | "strict";
+
+export interface TimingWindow {
+  earlyMs: number;
+  lateMs: number;
+}
 
 export interface ScoreNote {
   note: number;

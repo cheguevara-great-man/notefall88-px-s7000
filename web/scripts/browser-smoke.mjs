@@ -218,6 +218,27 @@ try {
   assert(loadedMobile.sheetVisible && loadedMobile.notation, "sheet view is empty after MusicXML import");
   assert(loadedMobile.view === (EDITION === "studio" ? "split" : "sheet"), "MusicXML selected the wrong default view");
   assert(loadedMobile.waterfallVisible === (EDITION === "studio"), "split view did not expose the waterfall");
+  const judgementProfile = evaluate(`() => {
+    const select = document.querySelector('#timing-profile');
+    const status = document.querySelector('#timing-profile-status');
+    if (!select || !status) return JSON.stringify({ missing: true });
+    select.value = 'strict';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const strict = {
+      selected: select.value,
+      stored: JSON.parse(localStorage.getItem('notefall88.preferences.v1') ?? '{}').timingProfile,
+      status: status.textContent,
+    };
+    select.value = 'adaptive';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return JSON.stringify({ strict, restored: select.value });
+  }`);
+  assert(!judgementProfile.missing
+    && judgementProfile.strict.selected === 'strict'
+    && judgementProfile.strict.stored === 'strict'
+    && judgementProfile.strict.status.includes('ms')
+    && judgementProfile.restored === 'adaptive',
+  `adaptive judgement profile did not apply or persist: ${JSON.stringify(judgementProfile)}`);
   const measureSeek = evaluate(`() => {
     const pills = [...document.querySelectorAll('#measure-rail button[data-occurrence]')];
     const target = pills.at(-1);

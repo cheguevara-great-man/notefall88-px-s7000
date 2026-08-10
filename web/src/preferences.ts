@@ -1,4 +1,4 @@
-import type { HandSelection, PracticeMode } from "./types";
+import type { HandSelection, PracticeMode, TimingProfile } from "./types";
 import { normalizeTempo } from "./tempo";
 
 const STORAGE_KEY = "notefall88.preferences.v1";
@@ -7,6 +7,7 @@ export interface AppPreferences {
   version: 1;
   mode: PracticeMode;
   hand: HandSelection;
+  timingProfile: TimingProfile;
   tempo: number;
   leadMs: number;
   previewSeconds: number;
@@ -19,6 +20,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   version: 1,
   mode: "wait",
   hand: "both",
+  timingProfile: "adaptive",
   tempo: 1,
   leadMs: 900,
   previewSeconds: 4.2,
@@ -40,12 +42,16 @@ function normalize(value: unknown): AppPreferences {
     ? candidate.hand as HandSelection
     : DEFAULT_PREFERENCES.hand;
   const tempo = normalizeTempo(Number(candidate.tempo), DEFAULT_PREFERENCES.tempo);
+  const timingProfile = ["adaptive", "relaxed", "strict"].includes(String(candidate.timingProfile))
+    ? candidate.timingProfile as TimingProfile
+    : DEFAULT_PREFERENCES.timingProfile;
   const leadMs = Math.round(Math.max(300, Math.min(2_000, Number(candidate.leadMs) || DEFAULT_PREFERENCES.leadMs)) / 100) * 100;
   const previewSeconds = normalizePreviewSeconds(candidate.previewSeconds);
   return {
     version: 1,
     mode,
     hand: mode === "follow" && hand === "both" ? "right" : hand,
+    timingProfile,
     tempo,
     leadMs,
     previewSeconds,

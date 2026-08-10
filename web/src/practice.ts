@@ -1,4 +1,4 @@
-import type { Hand, HandSelection, MidiOutEvent, PracticeStats, ScoreNote, TargetNote } from "./types";
+import type { Hand, HandSelection, MidiOutEvent, PracticeStats, ScoreNote, TargetNote, TimingWindow } from "./types";
 
 export interface Chord {
   start: number;
@@ -272,6 +272,7 @@ export class PracticeScore {
 export class RealtimeMatcher {
   private chords: Chord[] = [];
   private matched: Set<number>[] = [];
+  private timingWindows: TimingWindow[] = [];
   private cursor = 0;
 
   constructor(
@@ -280,9 +281,26 @@ export class RealtimeMatcher {
     private readonly lateMs = 250,
   ) {}
 
-  setChords(chords: Chord[]): void {
+  setChords(chords: Chord[], timingWindows?: TimingWindow[]): void {
     this.chords = chords;
+    this.timingWindows = chords.map((_, index) => {
+      const candidate = timingWindows?.[index];
+      return candidate && Number.isFinite(candidate.earlyMs) && Number.isFinite(candidate.lateMs)
+        && candidate.earlyMs >= 0 && candidate.lateMs >= 0
+        ? { earlyMs: candidate.earlyMs, lateMs: candidate.lateMs }
+        : { earlyMs: this.earlyMs, lateMs: this.lateMs };
+    });
     this.restartPass();
+  }
+
+  maximumLateSeconds(): number {
+    return (this.timingWindows.length > 0
+      ? Math.max(...this.timingWindows.map((window) => window.lateMs))
+      : this.lateMs) / 1000;
+  }
+
+  private windowAt(index: number): TimingWindow {
+    return this.timingWindows[index] ?? { earlyMs: this.earlyMs, lateMs: this.lateMs };
   }
 
   restartPass(): void {
@@ -293,7 +311,7 @@ export class RealtimeMatcher {
   /** Moves a newly-started practice pass without scoring every preceding note as missed. */
   seek(scoreTime: number): void {
     this.matched = this.chords.map(() => new Set<number>());
-    const earliestRelevant = Number.isFinite(scoreTime) ? scoreTime - this.lateMs / 1000 : 0;
+    const earliestRelevant = Number.isFinite(scoreTime) ? scoreTime - this.maximumLateSeconds() : 0;
     this.cursor = this.chords.findIndex((chord) => chord.start >= earliestRelevant);
     if (this.cursor < 0) this.cursor = this.chords.length;
   }
@@ -306,15 +324,18 @@ export class RealtimeMatcher {
     missed: ScoreNote[];
   } {
     const missed = this.advance(scoreTime);
-    const earlySeconds = this.earlyMs / 1000;
-    const lateSeconds = this.lateMs / 1000;
     let bestIndex = -1;
     let bestDistance = Number.POSITIVE_INFINITY;
+    const maximumEarlySeconds = (this.timingWindows.length > 0
+      ? Math.max(...this.timingWindows.map((window) => window.earlyMs))
+      : this.earlyMs) / 1000;
 
     for (let index = this.cursor; index < this.chords.length; index += 1) {
       const chord = this.chords[index];
-      if (chord.start > scoreTime + earlySeconds) break;
-      if (chord.start < scoreTime - lateSeconds) continue;
+      if (chord.start > scoreTime + maximumEarlySeconds) break;
+      const window = this.windowAt(index);
+      if (chord.start > scoreTime + window.earlyMs / 1000) continue;
+      if (chord.start < scoreTime - window.lateMs / 1000) continue;
       if (!chord.notes.some((candidate) => candidate.note === note)) continue;
       const distance = Math.abs(chord.start - scoreTime);
       if (distance < bestDistance) {
@@ -342,9 +363,8 @@ export class RealtimeMatcher {
 
   advance(scoreTime: number): ScoreNote[] {
     const missedNotes: ScoreNote[] = [];
-    const lateSeconds = this.lateMs / 1000;
     while (this.cursor < this.chords.length &&
-           this.chords[this.cursor].start < scoreTime - lateSeconds) {
+           this.chords[this.cursor].start < scoreTime - this.windowAt(this.cursor).lateMs / 1000) {
       const expected = new Set(this.chords[this.cursor].notes.map((note) => note.note));
       let missed = 0;
       for (const note of expected) {

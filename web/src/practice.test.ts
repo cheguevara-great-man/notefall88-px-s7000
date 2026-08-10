@@ -135,6 +135,24 @@ describe("practice engine", () => {
     expect(score.snapshot().missed).toBe(0);
   });
 
+  it("enforces per-chord adaptive windows instead of a fixed global tolerance", () => {
+    const score = new PracticeScore();
+    const matcher = new RealtimeMatcher(score);
+    const adaptiveChords = groupChords([
+      { note: 60, start: 1, end: 1.1, velocity: 90, hand: "right" },
+      { note: 62, start: 2, end: 2.1, velocity: 90, hand: "right" },
+    ]);
+    matcher.setChords(adaptiveChords, [
+      { earlyMs: 50, lateMs: 60 },
+      { earlyMs: 180, lateMs: 250 },
+    ]);
+    expect(matcher.maximumLateSeconds()).toBe(0.25);
+    expect(matcher.noteOn(60, 0.93)).toMatchObject({ correct: false });
+    expect(matcher.noteOn(60, 0.96)).toMatchObject({ correct: true, timingMs: -40 });
+    expect(matcher.advance(2.2)).toEqual([]);
+    expect(matcher.advance(2.251)).toMatchObject([{ note: 62 }]);
+  });
+
   it("paces Follow Me from the player's hit time at the selected tempo", () => {
     expect(followWaitMs(1, 2, 1)).toBe(1000);
     expect(followWaitMs(1, 2, 0.5)).toBe(2000);

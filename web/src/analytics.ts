@@ -1,4 +1,4 @@
-import type { Hand, HandSelection, PracticeMode } from "./types";
+import type { Hand, HandSelection, PracticeMode, TimingProfile } from "./types";
 import { storageFailureMessage } from "./storage";
 
 const DB_VERSION = 1;
@@ -17,6 +17,8 @@ export interface PracticeSessionContext {
   scoreFingerprint?: string;
   mode: PracticeMode;
   hand: HandSelection;
+  /** Optional only for records created before adaptive judgement profiles. */
+  timingProfile?: TimingProfile;
   tempo: number;
   transpose: number;
   loop?: { start: number; end: number };

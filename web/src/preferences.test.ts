@@ -22,28 +22,28 @@ describe("app preferences", () => {
       version: 1, mode: "follow", hand: "both", tempo: 9, leadMs: 9_999, previewSeconds: 7, autoFullscreen: true, metronome: true, countIn: false,
     }));
     expect(loadPreferences(source)).toEqual({
-      version: 1, mode: "follow", hand: "right", tempo: 1, leadMs: 2_000, previewSeconds: 6.5, autoFullscreen: true, metronome: true, countIn: false,
+      version: 1, mode: "follow", hand: "right", timingProfile: "adaptive", tempo: 1, leadMs: 2_000, previewSeconds: 6.5, autoFullscreen: true, metronome: true, countIn: false,
     });
   });
 
   it("round-trips supported values", () => {
     const target = storage();
-    savePreferences({ version: 1, mode: "realtime", hand: "left", tempo: 0.75, leadMs: 1_200, previewSeconds: 2.8, autoFullscreen: true, metronome: true, countIn: true }, target);
-    expect(loadPreferences(target)).toMatchObject({ mode: "realtime", hand: "left", tempo: 0.75, leadMs: 1_200, previewSeconds: 2.8, autoFullscreen: true, metronome: true });
+    savePreferences({ version: 1, mode: "realtime", hand: "left", timingProfile: "strict", tempo: 0.75, leadMs: 1_200, previewSeconds: 2.8, autoFullscreen: true, metronome: true, countIn: true }, target);
+    expect(loadPreferences(target)).toMatchObject({ mode: "realtime", hand: "left", timingProfile: "strict", tempo: 0.75, leadMs: 1_200, previewSeconds: 2.8, autoFullscreen: true, metronome: true });
   });
 
   it("migrates existing v1 preferences to the standard visual horizon", () => {
     const source = storage(JSON.stringify({
       version: 1, mode: "wait", hand: "both", tempo: 1, leadMs: 900, metronome: false, countIn: true,
     }));
-    expect(loadPreferences(source)).toMatchObject({ previewSeconds: 4.2, autoFullscreen: false });
+    expect(loadPreferences(source)).toMatchObject({ timingProfile: "adaptive", previewSeconds: 4.2, autoFullscreen: false });
   });
 
   it("persists five-percent tempo steps across the full practice range", () => {
     const target = storage();
-    savePreferences({ version: 1, mode: "wait", hand: "both", tempo: 0.35, leadMs: 900, previewSeconds: 4.2, autoFullscreen: false, metronome: false, countIn: true }, target);
+    savePreferences({ version: 1, mode: "wait", hand: "both", timingProfile: "adaptive", tempo: 0.35, leadMs: 900, previewSeconds: 4.2, autoFullscreen: false, metronome: false, countIn: true }, target);
     expect(loadPreferences(target).tempo).toBeCloseTo(0.35);
-    savePreferences({ version: 1, mode: "wait", hand: "both", tempo: 2, leadMs: 900, previewSeconds: 4.2, autoFullscreen: false, metronome: false, countIn: true }, target);
+    savePreferences({ version: 1, mode: "wait", hand: "both", timingProfile: "adaptive", tempo: 2, leadMs: 900, previewSeconds: 4.2, autoFullscreen: false, metronome: false, countIn: true }, target);
     expect(loadPreferences(target).tempo).toBe(2);
   });
 });

@@ -126,6 +126,15 @@
           </select>
         </label>
         <label>
+          <span>实时判定精度</span>
+          <select id="timing-profile">
+            <option value="adaptive">自适应（推荐）</option>
+            <option value="relaxed">宽容</option>
+            <option value="strict">严格</option>
+          </select>
+          <small id="timing-profile-status">导入乐谱后按局部节拍自动计算。</small>
+        </label>
+        <label>
           <span>实体灯提前量：<strong id="lead-value">0.9 秒</strong></span>
           <input id="lead-time" type="range" min="300" max="2000" step="100" value="900" />
         </label>
