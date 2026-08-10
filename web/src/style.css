@@ -66,9 +66,12 @@ h1 span { color: #8ba7ff; }
 .measure-pill[data-selected="true"] { outline: 2px solid #ffd24c; outline-offset: 1px; }.score-navigator > small { color: #8995ab; font-size: 11px; white-space: nowrap; }
 .measure-seek { flex: 0 0 auto; min-height: 29px; padding: 0 9px; border-color: rgba(135,181,255,.4); color: #d1e2ff; font-size: 11px; white-space: nowrap; }.measure-seek:disabled { opacity: .45; }
 .visualizer-card { position: relative; min-height: 420px; height: min(67vh, 820px); overflow: hidden; border: 1px solid #242b39; border-radius: 16px; background: #0a0d14; box-shadow: 0 24px 80px rgba(0,0,0,.28); }
-.focus-enter, .focus-exit { position: absolute; z-index: 3; top: 12px; right: 12px; min-height: 34px; padding: 0 11px; border-color: rgba(208,220,255,.5); background: rgba(8,12,20,.78); backdrop-filter: blur(10px); font-size: 12px; }
-.focus-enter { opacity: .72; transition: opacity .15s ease, border-color .15s ease; }
+.focus-enter, .focus-exit { position: absolute; z-index: 3; top: 12px; right: 12px; min-height: 42px; padding: 0 13px; display: inline-flex; align-items: center; gap: 7px; border-color: rgba(208,220,255,.58); background: rgba(8,12,20,.82); backdrop-filter: blur(12px); box-shadow: 0 7px 22px rgba(0,0,0,.28); font-size: 12px; }
+.focus-exit[hidden] { display: none; }
+.focus-icon { font-size: 18px; line-height: 1; }
+.focus-enter { opacity: .82; transition: opacity .15s ease, border-color .15s ease, transform .15s ease; }
 .focus-enter:hover, .focus-enter:focus-visible { opacity: 1; }
+.focus-enter:active, .focus-exit:active { transform: scale(.97); }
 #waterfall { width: 100%; height: 100%; display: block; }
 #waterfall[hidden], #sheet-view[hidden] { display: none; }
   #sheet-view { width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; padding: 22px clamp(8px, 2vw, 24px) 120px; background: #f5f4ef; color: #111; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-behavior: smooth; }
@@ -208,6 +211,8 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   footer { padding-top: 8px; }
   .app-shell[data-focus="true"] .visualizer-card[data-view="split"] { grid-template-rows: minmax(260px, 40%) minmax(360px, 60%); }
   .app-shell[data-focus="true"] .visualizer-card[data-view="split"] .legend { top: calc(40% + 10px); }
+  .focus-enter, .focus-exit { min-height: 48px; padding-inline: 16px; font-size: 14px; }
+  .focus-icon { font-size: 21px; }
 }
 
 @media (min-width: 1400px) and (min-aspect-ratio: 7 / 5) and (max-aspect-ratio: 8 / 5) {

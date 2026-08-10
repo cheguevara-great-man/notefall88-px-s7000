@@ -392,6 +392,32 @@ try {
   }`);
   assert(dynamicsSamples.available && dynamicsSamples.forte >= dynamicsSamples.soft + 28,
     `target dynamics are not visibly encoded at the note head: ${JSON.stringify(dynamicsSamples)}`);
+  const timingPixels = evaluate(`async () => {
+    window.dispatchEvent(new CustomEvent('notefall:test-feedback', { detail: { kind: 'hit', note: 60, timingMs: -90 } }));
+    window.dispatchEvent(new CustomEvent('notefall:test-feedback', { detail: { kind: 'hit', note: 84, timingMs: 110 } }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const canvas = document.querySelector('#waterfall');
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return JSON.stringify({ available: false });
+    const keyboardTop = Math.floor(canvas.height * .78);
+    const countTone = (whiteIndex, tone) => {
+      const center = Math.round((whiteIndex + .5) / 52 * canvas.width);
+      const radius = Math.max(5, Math.floor(canvas.width / 52 * .38));
+      const top = Math.max(0, keyboardTop - Math.floor(canvas.height * .06));
+      const pixels = context.getImageData(center - radius, top, radius * 2 + 1, keyboardTop - top);
+      let count = 0;
+      for (let offset = 0; offset < pixels.data.length; offset += 4) {
+        const red = pixels.data[offset];
+        const green = pixels.data[offset + 1];
+        const blue = pixels.data[offset + 2];
+        if (tone === 'early' ? blue > red + 35 && green > red + 25 : red > blue + 55 && green > blue + 25) count += 1;
+      }
+      return count;
+    };
+    return JSON.stringify({ available: true, earlyBlue: countTone(23, 'early'), lateOrange: countTone(37, 'late') });
+  }`);
+  assert(timingPixels.available && timingPixels.earlyBlue >= 5 && timingPixels.lateOrange >= 5,
+    `early/late timing cues are not visible beside their keys: ${JSON.stringify(timingPixels)}`);
   command(["screenshot"]);
 
   command(["resize", "1600", "1068"]);
@@ -480,6 +506,7 @@ try {
     physicalPanelFallback,
     tabletFocus,
     dynamicsPixels: dynamicsSamples,
+    timingPixels,
     score: "Long Follow Study",
     notes: 240,
     longScoreFollow: { before: followBefore, after: followAfter },

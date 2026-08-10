@@ -89,8 +89,12 @@
       </nav>
 
       <section class="visualizer-card" id="visualizer-card" data-view="waterfall">
-        <button id="focus-button" class="focus-enter" type="button" aria-pressed="false">全屏演奏</button>
-        <button id="focus-exit" class="focus-exit" type="button" hidden>退出全屏</button>
+        <button id="focus-button" class="focus-enter" type="button" aria-pressed="false" title="隐藏工具区并铺满屏幕">
+          <span class="focus-icon" aria-hidden="true">⛶</span><span>全屏演奏</span>
+        </button>
+        <button id="focus-exit" class="focus-exit" type="button" title="返回完整工作台" hidden>
+          <span class="focus-icon" aria-hidden="true">⛶</span><span>退出全屏</span>
+        </button>
         <canvas id="waterfall" aria-label="钢琴瀑布流"></canvas>
         <div id="sheet-view" aria-label="五线谱" hidden></div>
         <div class="legend">

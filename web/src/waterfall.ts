@@ -5,6 +5,7 @@ import { buildPhraseMap, phraseMapProgress } from "./phrase-map";
 import type { PhraseMap } from "./phrase-map";
 import type { LoopRange } from "./practice";
 import type { HandSelection, ParsedScore } from "./types";
+import { timingCue } from "./timing-feedback";
 import { visualPalette } from "./visual-theme";
 import type { VisualTheme } from "./visual-theme";
 
@@ -13,6 +14,7 @@ export type WaterfallFeedbackKind = "hit" | "wrong" | "missed";
 interface WaterfallFeedback {
   kind: WaterfallFeedbackKind;
   note: number;
+  timingMs?: number;
   createdAt: number;
 }
 
@@ -63,11 +65,11 @@ export class WaterfallRenderer {
   }
 
   /** Shows a short, key-local confirmation without hiding the upcoming notes. */
-  pushFeedback(kind: WaterfallFeedbackKind, note: number): void {
+  pushFeedback(kind: WaterfallFeedbackKind, note: number, timingMs?: number): void {
     if (!Number.isInteger(note) || note < 21 || note > 108) return;
     const now = performance.now();
     this.feedback = this.feedback.filter((item) => now - item.createdAt < 900).slice(-23);
-    this.feedback.push({ kind, note, createdAt: now });
+    this.feedback.push({ kind, note, timingMs, createdAt: now });
   }
 
   setVisible(_visible: boolean): void {
@@ -246,13 +248,35 @@ export class WaterfallRenderer {
       const progress = Math.max(0, Math.min(1, (now - item.createdAt) / 900));
       const x = (key.x + key.width / 2) * width;
       const y = keyboardTop - 18 - progress * 44;
-      const color = item.kind === "hit" ? palette.correct : item.kind === "wrong" ? palette.wrong : "#ffd24c";
+      const cue = item.kind === "hit" ? timingCue(item.timingMs) : undefined;
+      const color = cue?.band === "early" ? "#72c7ff"
+        : cue?.band === "late" ? "#ffbd6b"
+          : item.kind === "hit" ? palette.correct : item.kind === "wrong" ? palette.wrong : "#ffd24c";
       ctx.save();
       ctx.globalAlpha = (1 - progress) * 0.95;
       ctx.fillStyle = color;
       ctx.font = "800 20px system-ui";
       ctx.textAlign = "center";
-      ctx.fillText(item.kind === "hit" ? "✓" : item.kind === "wrong" ? "×" : "!", x, y);
+      ctx.fillText(cue?.symbol ?? (item.kind === "hit" ? "✓" : item.kind === "wrong" ? "×" : "!"), x, y);
+      if (cue) {
+        const markerY = keyboardTop - 24 + cue.offset * 12;
+        ctx.globalAlpha = (1 - progress) * 0.72;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, keyboardTop - 38);
+        ctx.lineTo(x, keyboardTop - 10);
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, markerY, 2.8, 0, Math.PI * 2);
+        ctx.fill();
+        if (key.width * width >= 26) {
+          ctx.globalAlpha = (1 - progress) * 0.9;
+          ctx.font = "700 10px system-ui";
+          ctx.fillText(cue.label, x, y - 16);
+        }
+      }
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
       ctx.globalAlpha *= 0.55;

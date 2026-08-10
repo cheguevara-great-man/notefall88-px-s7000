@@ -100,7 +100,8 @@ public class NativeWaterfallPlugin extends Plugin {
     public void showFeedback(PluginCall call) {
         String kind = call.getString("kind", "hit");
         int note = call.getInt("note", -1);
-        onUi(() -> ensureView().addFeedback(kind, note));
+        Double timingMs = call.getDouble("timingMs");
+        onUi(() -> ensureView().addFeedback(kind, note, timingMs));
         call.resolve();
     }
 
@@ -177,11 +178,13 @@ public class NativeWaterfallPlugin extends Plugin {
     private static final class Feedback {
         final String kind;
         final int note;
+        final Double timingMs;
         final long createdMs;
 
-        Feedback(String kind, int note) {
+        Feedback(String kind, int note, Double timingMs) {
             this.kind = kind;
             this.note = note;
+            this.timingMs = timingMs;
             this.createdMs = SystemClock.elapsedRealtime();
         }
     }
@@ -364,15 +367,17 @@ public class NativeWaterfallPlugin extends Plugin {
             invalidate();
         }
 
-        void addFeedback(String kind, int note) {
+        void addFeedback(String kind, int note, Double timingMs) {
             if (note < 21 || note > 108) return;
             String safeKind = "wrong".equals(kind) || "missed".equals(kind) ? kind : "hit";
+            Double safeTiming = "hit".equals(safeKind) && timingMs != null && Double.isFinite(timingMs)
+                ? timingMs : null;
             long now = SystemClock.elapsedRealtime();
             for (int index = feedback.size() - 1; index >= 0; index -= 1) {
                 if (now - feedback.get(index).createdMs >= 900) feedback.remove(index);
             }
             while (feedback.size() >= 24) feedback.remove(0);
-            feedback.add(new Feedback(safeKind, note));
+            feedback.add(new Feedback(safeKind, note, safeTiming));
             invalidate();
         }
 
@@ -541,7 +546,12 @@ public class NativeWaterfallPlugin extends Plugin {
                 }
                 KeyGeometry key = keys[item.note];
                 if (key == null) continue;
-                int color = "hit".equals(item.kind)
+                boolean timed = "hit".equals(item.kind) && item.timingMs != null;
+                boolean early = timed && item.timingMs < -25;
+                boolean late = timed && item.timingMs > 25;
+                int color = early ? Color.rgb(114, 199, 255)
+                    : late ? Color.rgb(255, 189, 107)
+                    : "hit".equals(item.kind)
                     ? themeColor(CORRECT, Color.rgb(184, 244, 109), Color.rgb(125, 255, 90))
                     : "wrong".equals(item.kind)
                         ? themeColor(WRONG, Color.rgb(255, 154, 95), Color.rgb(255, 89, 77))
@@ -554,7 +564,28 @@ public class NativeWaterfallPlugin extends Plugin {
                 paint.setTextSize(20 * getResources().getDisplayMetrics().scaledDensity);
                 paint.setFakeBoldText(true);
                 paint.setTextAlign(Paint.Align.CENTER);
-                canvas.drawText("hit".equals(item.kind) ? "✓" : "wrong".equals(item.kind) ? "×" : "!", x, y, paint);
+                String symbol = early ? "↑" : late ? "↓" : timed ? "●"
+                    : "hit".equals(item.kind) ? "✓" : "wrong".equals(item.kind) ? "×" : "!";
+                canvas.drawText(symbol, x, y, paint);
+                if (timed) {
+                    float density = getResources().getDisplayMetrics().density;
+                    float offset = Math.max(-1, Math.min(1, item.timingMs.floatValue() / 250f));
+                    float markerY = keyboardTop - 24 * density + offset * 12 * density;
+                    stroke.setColor(color);
+                    stroke.setAlpha((int) ((1f - progress) * 184));
+                    stroke.setStrokeWidth(Math.max(1, density));
+                    canvas.drawLine(x, keyboardTop - 38 * density, x, keyboardTop - 10 * density, stroke);
+                    paint.setColor(color);
+                    paint.setAlpha((int) ((1f - progress) * 184));
+                    canvas.drawCircle(x, markerY, 2.8f * density, paint);
+                    if (key.width * width >= 26 * density) {
+                        String label = early ? "早 " + Math.min(999, Math.abs(Math.round(item.timingMs)))
+                            : late ? "晚 " + Math.min(999, Math.abs(Math.round(item.timingMs))) : "准";
+                        paint.setAlpha((int) ((1f - progress) * 230));
+                        paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
+                        canvas.drawText(label, x, y - 16 * density, paint);
+                    }
+                }
                 stroke.setColor(color);
                 stroke.setAlpha((int) ((1f - progress) * 140));
                 stroke.setStrokeWidth(1.5f * getResources().getDisplayMetrics().density);

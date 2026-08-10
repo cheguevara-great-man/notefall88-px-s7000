@@ -578,8 +578,20 @@ function recordPracticeEvent(event: PracticeEvent): void {
   selectedReviewSession = undefined;
   if (!analytics && score && chords.length > 0) analytics = new PracticeAnalytics(sessionContext());
   analytics?.record(event);
-  renderer.pushFeedback(event.kind, event.note);
+  renderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
   reviewRevision += 1;
+}
+
+if (import.meta.env.DEV) {
+  window.addEventListener("notefall:test-feedback", (rawEvent) => {
+    const detail = (rawEvent as CustomEvent<{
+      kind?: "hit" | "wrong" | "missed";
+      note?: number;
+      timingMs?: number;
+    }>).detail;
+    if (!detail || !Number.isInteger(detail.note)) return;
+    renderer.pushFeedback(detail.kind ?? "hit", detail.note!, detail.timingMs);
+  });
 }
 
 function recordMissedNotes(notes: ReturnType<RealtimeMatcher["advance"]>): void {
@@ -1163,9 +1175,7 @@ function updateViewMode(): void {
 function setFocusMode(enabled: boolean, manageSystemFullscreen = true): void {
   appShell?.setAttribute("data-focus", String(enabled));
   focusButton.setAttribute("aria-pressed", String(enabled));
-  focusButton.textContent = enabled ? "退出全屏" : "全屏演奏";
   focusExit.hidden = !enabled;
-  focusExit.textContent = "退出全屏";
   if (manageSystemFullscreen) void requestImmersiveMode(enabled);
   // OSMD uses a width observer; let layout settle once the controls disappear.
   window.setTimeout(() => sheetRenderer.seek(lastScoreSeconds), 0);

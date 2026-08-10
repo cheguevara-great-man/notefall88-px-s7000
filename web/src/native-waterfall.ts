@@ -11,7 +11,7 @@ export interface WaterfallSurface {
   setPracticeView(hand: HandSelection, loop: LoopRange | undefined): void;
   setTheme(theme: VisualTheme): void;
   setPreviewSeconds(seconds: number): void;
-  pushFeedback(kind: WaterfallFeedbackKind, note: number): void;
+  pushFeedback(kind: WaterfallFeedbackKind, note: number, timingMs?: number): void;
   setVisible(visible: boolean): void;
   render(scoreTime: number, running?: boolean): void;
 }
@@ -30,7 +30,7 @@ interface NativeWaterfallPlugin {
   setPlayback(options: { scoreTime: number; running: boolean }): Promise<void>;
   setTheme(options: { theme: VisualTheme }): Promise<void>;
   setPreview(options: { seconds: number }): Promise<void>;
-  showFeedback(options: { kind: WaterfallFeedbackKind; note: number }): Promise<void>;
+  showFeedback(options: { kind: WaterfallFeedbackKind; note: number; timingMs?: number }): Promise<void>;
   show(options: { left: number; top: number; width: number; height: number }): Promise<void>;
   hide(): Promise<void>;
 }
@@ -111,8 +111,8 @@ class NativeWaterfallSurface implements WaterfallSurface {
     void this.plugin.setPreview({ seconds });
   }
 
-  pushFeedback(kind: WaterfallFeedbackKind, note: number): void {
-    void this.plugin.showFeedback({ kind, note });
+  pushFeedback(kind: WaterfallFeedbackKind, note: number, timingMs?: number): void {
+    void this.plugin.showFeedback({ kind, note, timingMs });
   }
 
   setVisible(visible: boolean): void {
