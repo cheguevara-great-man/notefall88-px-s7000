@@ -23,6 +23,7 @@ import {
 } from "./calibration";
 import { DeviceLink } from "./device";
 import { parseMidiFile } from "./midi";
+import { measureNavigation } from "./measure-navigation";
 import { MetronomePlayer } from "./metronome";
 import { parseMusicXmlFile } from "./musicxml";
 import { ScoreLibrary, sha256Hex } from "./library";
@@ -129,6 +130,9 @@ const sustainStatus = required<HTMLSpanElement>("sustain-status");
 const scoreName = required("score-name");
 const scoreTime = required("score-time");
 const scoreResult = required("score-result");
+const scoreNavigator = required("score-navigator");
+const measureCurrent = required("measure-current");
+const measureRail = required("measure-rail");
 const recordResult = required("record-result");
 const latencyStatus = required("latency-status");
 const lifecycleStatus = required("lifecycle-status");
@@ -227,6 +231,7 @@ let hand: HandSelection = initialPreferences.hand;
 let leadMs = initialPreferences.leadMs;
 let lastScoreSeconds = 0;
 let lastStatsSignature = "";
+let lastMeasureNavigationSignature = "";
 let lastRecording = recorder.snapshot();
 let lastRecordingControls = recorder.controlSnapshot();
 let pianoWasConnected = false;
@@ -976,6 +981,7 @@ function parseScoreSource(buffer: ArrayBuffer, fileName: string): { parsed: Pars
 
 async function activateScore(parsed: ParsedScore, xml: string | undefined, fingerprint: string): Promise<void> {
   clearLifecycleStatus();
+  lastMeasureNavigationSignature = "";
   sourceScore = parsed;
   scoreFingerprint = fingerprint;
   score = transposeScore(parsed, transposeSemitones);
@@ -1045,6 +1051,27 @@ function updateViewMode(): void {
   renderer.setVisible(!waterfallCanvas.hidden);
   sheetView.hidden = !showSheet;
   visualizerCard.dataset.view = wantsSplit && showSheet ? "split" : showSheet ? "sheet" : "waterfall";
+  scoreNavigator.hidden = !showSheet;
+}
+
+function renderMeasureNavigation(seconds: number): void {
+  if (!scoreXml || !score) return;
+  const loop = selectedLoop();
+  const items = measureNavigation(score, seconds, loop);
+  const current = items.find((item) => item.current);
+  const signature = `${current?.occurrence ?? -1}:${loop?.start ?? ""}:${loop?.end ?? ""}`;
+  if (signature === lastMeasureNavigationSignature) return;
+  lastMeasureNavigationSignature = signature;
+  measureCurrent.textContent = current ? `M${current.writtenMeasure + 1} · 第 ${current.occurrence + 1} 次` : "--";
+  measureRail.replaceChildren(...items.map((item) => {
+    const pill = document.createElement("span");
+    pill.className = "measure-pill";
+    pill.dataset.current = String(item.current);
+    pill.dataset.loop = String(item.inLoop);
+    pill.textContent = `M${item.writtenMeasure + 1}`;
+    pill.title = `第 ${item.occurrence + 1} 个播放小节 · ${formatTime(item.start)}`;
+    return pill;
+  }));
 }
 
 viewMode.addEventListener("change", updateViewMode);
@@ -1718,6 +1745,7 @@ function frame(now: number): void {
   const expected = new Set(currentTarget.map((target) => target.note));
   if ((viewMode.value === "sheet" || viewMode.value === "split") && scoreXml) {
     sheetRenderer.seek(lastScoreSeconds);
+    renderMeasureNavigation(lastScoreSeconds);
   }
   if (viewMode.value !== "sheet" || !scoreXml) {
     renderer.setState(pressed, expected, wrong);
