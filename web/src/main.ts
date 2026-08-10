@@ -24,6 +24,7 @@ import {
 import { DeviceLink } from "./device";
 import { parseMidiFile } from "./midi";
 import { measureLoopRange, measureNavigation } from "./measure-navigation";
+import { practiceTrend } from "./trend";
 import { MetronomePlayer } from "./metronome";
 import { parseMusicXmlFile } from "./musicxml";
 import { ScoreLibrary, sha256Hex } from "./library";
@@ -150,6 +151,10 @@ const reviewKeys = required("review-keys");
 const reviewCaption = required("review-caption");
 const sessionHistory = required("session-history");
 const historySummary = required("history-summary");
+const practiceTrendPanel = required("practice-trend");
+const trendCaption = required("trend-caption");
+const trendChart = required("trend-chart");
+const trendDetail = required("trend-detail");
 const coachApply = required<HTMLButtonElement>("coach-apply");
 const settingsPanel = required("settings-panel");
 const commissioningPanel = required("commissioning-panel");
@@ -672,7 +677,40 @@ function renderPracticeHistory(): void {
   }
   const totalNotes = recentSessions.reduce((sum, session) => sum + session.summary.hits + session.summary.wrong + session.summary.missed, 0);
   historySummary.textContent = `${recentSessions.length} 次近期练习 · ${totalNotes} 个判定事件 · 数据只保存在本机`;
+  renderPracticeTrend();
   renderCoach();
+}
+
+function renderPracticeTrend(): void {
+  const activeScore = score;
+  const comparable = activeScore
+    ? recentSessions.filter((session) => scoreFingerprint
+      ? session.context.scoreFingerprint === scoreFingerprint
+      : session.context.scoreName === activeScore.name)
+    : [];
+  const trend = practiceTrend(comparable);
+  practiceTrendPanel.dataset.active = String(trend.points.length > 0);
+  trendChart.replaceChildren(...trend.points.map((point, index) => {
+    const bar = document.createElement("button");
+    bar.type = "button";
+    bar.className = "trend-point";
+    bar.style.setProperty("--accuracy", point.accuracy.toFixed(1));
+    bar.dataset.latest = String(index === trend.points.length - 1);
+    const timing = point.timingMs === undefined ? "无节奏判定" : `平均偏差 ${point.timingMs.toFixed(0)} ms`;
+    bar.title = `${new Date(point.endedAt).toLocaleString("zh-CN")}：${point.accuracy.toFixed(0)}% · ${timing} · ${point.events} 事件`;
+    bar.setAttribute("aria-label", bar.title);
+    return bar;
+  }));
+  if (trend.points.length === 0) {
+    trendCaption.textContent = score ? "完成本曲第一次有判定事件的练习后，这里保留本机趋势。" : "导入乐谱后按曲目显示趋势。";
+    trendDetail.textContent = "不会把不同曲目或无关练习混成一条进步曲线。";
+    return;
+  }
+  const latest = trend.points.at(-1)!;
+  const accuracyDelta = trend.accuracyDelta === undefined ? "还需至少两次可比练习" : `${trend.accuracyDelta >= 0 ? "+" : ""}${trend.accuracyDelta.toFixed(1)}%`;
+  const timingDelta = trend.timingDeltaMs === undefined ? "节奏样本不足" : `${trend.timingDeltaMs >= 0 ? "+" : ""}${trend.timingDeltaMs.toFixed(0)} ms`;
+  trendCaption.textContent = `${trend.points.length} 次 · 最新 ${latest.accuracy.toFixed(0)}% · 准确率趋势 ${accuracyDelta}`;
+  trendDetail.textContent = `前后窗口对比：准确率 ${accuracyDelta}；绝对节奏偏差改善 ${timingDelta}。共 ${trend.totalEvents} 个判定事件。`;
 }
 
 function renderCoach(): void {

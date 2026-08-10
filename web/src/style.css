@@ -152,6 +152,9 @@ html[data-edition="studio"] h1::after { content: "STUDIO"; margin-left: 10px; pa
 .review-keys { position: relative; height: 34px; border: 1px solid #303847; border-radius: 5px; overflow: hidden; background: repeating-linear-gradient(90deg, #eaebed 0 1.77%, #252b34 1.77% 1.98%, #eaebed 1.98% 3.54%); }
 .review-key { position: absolute; top: 0; bottom: 0; min-width: 2px; opacity: .9; }
 .review-key[data-tone="hit"] { background: rgba(101,245,154,.7); }.review-key[data-tone="error"] { background: rgba(255,101,79,.92); }
+.practice-trend { display: grid; gap: 9px; margin-top: 14px; padding: 12px; border: 1px solid #292f3b; border-radius: 11px; background: linear-gradient(145deg, rgba(48,112,102,.16), #0b0e14 58%); }
+.practice-trend[data-active="true"] { border-color: rgba(94,222,172,.36); }.trend-chart { display: flex; height: 60px; align-items: end; gap: 4px; padding: 3px 1px 0; border-bottom: 1px solid rgba(185,206,205,.2); }
+.trend-point { position: relative; flex: 1 1 0; min-width: 8px; height: max(5px, calc(var(--accuracy) * .54px)); padding: 0; border: 1px solid rgba(157,247,203,.5); border-radius: 4px 4px 0 0; background: linear-gradient(#73f0bb, #27816b); }.trend-point[data-latest="true"] { border-color: #edfff7; background: linear-gradient(#ddffed, #43bc87); box-shadow: 0 0 14px rgba(108,245,183,.4); }.practice-trend > small { color: #8e9aae; font-size: 11px; line-height: 1.4; }
 .diagnostic-grid .wide { grid-column: 1 / -1; }
 .history-list { display: grid; gap: 8px; }
 .history-item { display: grid; gap: 4px; padding: 11px; border: 1px solid #292f3b; border-radius: 10px; background: #0b0e14; }
