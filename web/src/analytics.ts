@@ -169,6 +169,10 @@ export class PracticeAnalytics {
     return summarizePractice(this.events);
   }
 
+  eventsSnapshot(): PracticeEvent[] {
+    return this.events.map((event) => ({ ...event }));
+  }
+
   finish(endedAt = Date.now()): PracticeSession | undefined {
     if (!this.hasEvents()) return undefined;
     const safeEnd = Math.max(this.startedAt, endedAt);

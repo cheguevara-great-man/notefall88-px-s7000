@@ -2,6 +2,7 @@ import "./style.css";
 
 import { PracticeAnalytics, PracticeSessionStore } from "./analytics";
 import type { PracticeEvent, PracticeSession } from "./analytics";
+import { buildPracticeReview, reviewBucketTone } from "./review";
 import { recommendPractice } from "./coach";
 import type { PracticeRecommendation } from "./coach";
 import {
@@ -133,6 +134,10 @@ const latencyStatus = required("latency-status");
 const lifecycleStatus = required("lifecycle-status");
 const practicePanel = required("practice-panel");
 const practiceInsights = required("practice-insights");
+const practiceReview = required("practice-review");
+const reviewTimeline = required("review-timeline");
+const reviewKeys = required("review-keys");
+const reviewCaption = required("review-caption");
 const sessionHistory = required("session-history");
 const historySummary = required("history-summary");
 const coachApply = required<HTMLButtonElement>("coach-apply");
@@ -245,6 +250,9 @@ let midiOutOwnedByThisPage = false;
 let midiOutBlocked = false;
 let followPlanner = new FollowAccompanimentPlanner([]);
 let analytics: PracticeAnalytics | undefined;
+let completedReviewEvents: PracticeEvent[] = [];
+let reviewRevision = 0;
+let lastReviewSignature = "";
 let recentSessions: PracticeSession[] = [];
 let currentRecommendation: PracticeRecommendation | undefined;
 let countInGeneration = 0;
@@ -510,6 +518,8 @@ function sessionContext() {
 
 function beginPracticeSession(): void {
   analytics = score && chords.length > 0 ? new PracticeAnalytics(sessionContext()) : undefined;
+  completedReviewEvents = [];
+  reviewRevision += 1;
   renderInsights();
 }
 
@@ -517,6 +527,9 @@ async function finishPracticeSession(): Promise<void> {
   const completed = analytics?.finish();
   analytics = undefined;
   if (!completed) return;
+  completedReviewEvents = completed.events;
+  reviewRevision += 1;
+  renderInsights();
   try {
     await sessionStore.save(completed);
     await refreshPracticeHistory();
@@ -528,6 +541,7 @@ async function finishPracticeSession(): Promise<void> {
 function recordPracticeEvent(event: PracticeEvent): void {
   if (!analytics && score && chords.length > 0) analytics = new PracticeAnalytics(sessionContext());
   analytics?.record(event);
+  reviewRevision += 1;
 }
 
 function recordMissedNotes(notes: ReturnType<RealtimeMatcher["advance"]>): void {
@@ -557,6 +571,40 @@ function renderInsights(): void {
     ? "暂无难点键"
     : problems.slice(0, 5).map((item) => `${pianoNoteName(item.note)} ${item.errors}次`).join(" · ");
   practiceInsights.dataset.active = String(Boolean(summary && (summary.hits + summary.wrong + summary.missed > 0)));
+  renderPracticeReview();
+}
+
+function renderPracticeReview(): void {
+  const events = analytics?.eventsSnapshot() ?? completedReviewEvents;
+  const duration = score?.duration ?? 1;
+  const signature = `${reviewRevision}:${duration}`;
+  if (signature === lastReviewSignature) return;
+  lastReviewSignature = signature;
+  const review = buildPracticeReview(events, duration);
+  const eventCount = events.length;
+  practiceReview.dataset.active = String(eventCount > 0);
+  reviewCaption.textContent = eventCount === 0
+    ? "导入乐谱后，按时间与琴键定位本次问题。"
+    : `${eventCount} 个判定事件 · 绿=命中 · 黄=多余键 · 红=漏音或集中错误`;
+  reviewTimeline.replaceChildren(...review.buckets.map((bucket) => {
+    const segment = document.createElement("div");
+    const errors = bucket.wrong + bucket.missed;
+    segment.className = "review-segment";
+    segment.dataset.tone = reviewBucketTone(bucket);
+    segment.dataset.marker = errors > 0 ? `−${errors}` : bucket.hits > 0 ? `+${bucket.hits}` : "";
+    const timing = bucket.timingBiasMs === undefined ? "" : ` · ${Math.abs(bucket.timingBiasMs)}ms${bucket.timingBiasMs < 0 ? "早" : "晚"}`;
+    segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}`;
+    return segment;
+  }));
+  reviewKeys.replaceChildren(...review.keys.map((key) => {
+    const marker = document.createElement("span");
+    marker.className = "review-key";
+    marker.dataset.tone = key.errors > 0 ? "error" : "hit";
+    marker.style.left = `${((key.note - FIRST_PIANO_NOTE) / 88) * 100}%`;
+    marker.style.width = `${Math.max(1.2, ((key.hits + key.errors) / Math.max(1, eventCount)) * 12)}%`;
+    marker.title = `${pianoNoteName(key.note)}：命中 ${key.hits}，错误 ${key.errors}`;
+    return marker;
+  }));
 }
 
 function renderPracticeHistory(): void {

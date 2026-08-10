@@ -8,8 +8,8 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-DYvLuTmr.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CaagbZSM.css">
+    <script type="module" crossorigin src="./assets/index-C14UHJv-.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-C6Z_jOV7.css">
   </head>
   <body>
     <main class="app-shell">
@@ -168,6 +168,11 @@
           <div><dt>最佳连续命中</dt><dd id="insight-streak">0</dd></div>
           <div class="wide"><dt>当前难点键</dt><dd id="insight-problems">暂无难点键</dd></div>
         </dl>
+        <section id="practice-review" class="practice-review" data-active="false" aria-label="本次练习可视化复盘">
+          <div class="review-head"><span>演奏轨迹</span><small id="review-caption">导入乐谱后，按时间与琴键定位本次问题。</small></div>
+          <div id="review-timeline" class="review-timeline" aria-label="按乐谱时间分段的命中与错误"></div>
+          <div id="review-keys" class="review-keys" aria-label="按琴键分布的命中与错误"></div>
+        </section>
         <hr />
         <div class="settings-head compact-head">
           <div>

@@ -131,6 +131,19 @@ html[data-edition="studio"] h1::after { content: "STUDIO"; margin-left: 10px; pa
 .diagnostic-grid dt { color: #7f899b; font-size: 11px; }
 .diagnostic-grid dd { margin: 5px 0 0; overflow-wrap: anywhere; font: 600 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .insight-grid[data-active="true"] div { border-color: rgba(120,147,255,.32); }
+.practice-review { display: grid; gap: 9px; margin-top: 14px; padding: 12px; border: 1px solid #292f3b; border-radius: 11px; background: linear-gradient(145deg, rgba(60,77,133,.15), #0b0e14 58%); }
+.practice-review[data-active="true"] { border-color: rgba(120,147,255,.38); }
+.review-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 12px; font-weight: 700; }
+.review-head small { color: #8e9aae; font-weight: 400; text-align: right; }
+.review-timeline { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 3px; height: 42px; align-items: stretch; }
+.review-segment { position: relative; min-width: 0; border: 1px solid rgba(145,157,182,.16); border-radius: 4px; background: #161b25; }
+.review-segment[data-tone="clean"] { background: linear-gradient(#48c788, #216f61); border-color: rgba(101,245,154,.45); }
+.review-segment[data-tone="warning"] { background: linear-gradient(#f7b955, #9b6026); border-color: rgba(255,197,103,.52); }
+.review-segment[data-tone="error"] { background: linear-gradient(#fa745e, #a33349); border-color: rgba(255,101,79,.68); }
+.review-segment::after { content: attr(data-marker); position: absolute; inset: auto 2px 2px; overflow: hidden; color: rgba(255,255,255,.84); font: 700 9px ui-monospace, monospace; text-align: center; white-space: nowrap; }
+.review-keys { position: relative; height: 34px; border: 1px solid #303847; border-radius: 5px; overflow: hidden; background: repeating-linear-gradient(90deg, #eaebed 0 1.77%, #252b34 1.77% 1.98%, #eaebed 1.98% 3.54%); }
+.review-key { position: absolute; top: 0; bottom: 0; min-width: 2px; opacity: .9; }
+.review-key[data-tone="hit"] { background: rgba(101,245,154,.7); }.review-key[data-tone="error"] { background: rgba(255,101,79,.92); }
 .diagnostic-grid .wide { grid-column: 1 / -1; }
 .history-list { display: grid; gap: 8px; }
 .history-item { display: grid; gap: 4px; padding: 11px; border: 1px solid #292f3b; border-radius: 10px; background: #0b0e14; }
