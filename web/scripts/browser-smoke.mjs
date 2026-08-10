@@ -94,10 +94,13 @@ try {
   command(["resize", "390", "844"]);
   const identity = evaluate(`() => JSON.stringify({
     edition: document.querySelector('meta[name="notefall-edition"]')?.content,
-    studioToolbar: !document.querySelector('#studio-toolbar')?.hasAttribute('hidden')
+    studioToolbar: !document.querySelector('#studio-toolbar')?.hasAttribute('hidden'),
+    studioSettingsNested: Boolean(document.querySelector('#settings-panel #studio-toolbar')),
+    topLevelStudioToolbar: Boolean(document.querySelector('.app-shell > #studio-toolbar'))
   })`);
   assert(identity.edition === EDITION, `wrong application edition: ${JSON.stringify(identity)}`);
   assert(identity.studioToolbar === (EDITION === "studio"), "Studio toolbar visibility does not match edition");
+  assert(identity.studioSettingsNested && !identity.topLevelStudioToolbar, "Studio connection controls escaped the device settings panel");
   let page = snapshot();
   assert(page.includes("NoteFall 88"), "mobile page did not render NoteFall 88");
   assert(page.includes("硬件尚未验收"), "offline commissioning state is not visible");
@@ -133,9 +136,10 @@ try {
   command(["click", closeRef]);
 
   page = snapshot();
-  const settingsRef = refFor(page, /button "灯带校准"[^\n]*\[ref=(e\d+)\]/, "settings button");
+  const settingsRef = refFor(page, /button "设备设置"[^\n]*\[ref=(e\d+)\]/, "settings button");
   command(["click", settingsRef]);
   page = snapshot();
+  if (EDITION === "studio") assert(page.includes('heading "连接 NoteFall Core"'), "Studio Core connection settings are missing");
   const currentPasswordRef = refFor(
     page,
     /textbox "当前热点密码"[^\n]*\[ref=(e\d+)\]/,
@@ -246,11 +250,32 @@ try {
   assert(desktop.score === "Parser Etude · 4 音符", "desktop score state was not preserved");
   command(["screenshot"]);
 
+  command(["resize", "1600", "1068"]);
+  evaluate(`() => JSON.stringify(Boolean(window.scrollTo(0, 0) ?? true))`);
+  const tablet = evaluate(`() => JSON.stringify({
+    width: innerWidth,
+    height: innerHeight,
+    threeByTwoLayout: matchMedia('(min-width: 1000px) and (min-aspect-ratio: 7 / 5) and (max-aspect-ratio: 8 / 5)').matches,
+    overflow: document.documentElement.scrollWidth > innerWidth,
+    cardHeight: document.querySelector('#visualizer-card')?.getBoundingClientRect().height ?? 0,
+    cardBottom: document.querySelector('#visualizer-card')?.getBoundingClientRect().bottom ?? 99999,
+    waterfallHeight: document.querySelector('#waterfall')?.getBoundingClientRect().height ?? 0,
+    sheetHorizontalOverflow: document.querySelector('#sheet-view') ? document.querySelector('#sheet-view').scrollWidth > document.querySelector('#sheet-view').clientWidth + 1 : true,
+    view: document.querySelector('#view-mode')?.value
+  })`);
+  assert(tablet.width === 1600 && tablet.height === 1068 && tablet.threeByTwoLayout, "3:2 tablet viewport was not applied");
+  assert(!tablet.overflow && !tablet.sheetHorizontalOverflow, "3:2 tablet layout overflows horizontally");
+  assert(tablet.cardHeight >= 460 && tablet.cardBottom <= tablet.height + 1, `3:2 practice surface does not keep the keyboard in the first viewport: ${JSON.stringify(tablet)}`);
+  if (EDITION === "studio") {
+    assert(tablet.view === "split" && tablet.waterfallHeight >= 280, "3:2 Studio split does not reserve enough space for the waterfall keyboard");
+  }
+  command(["screenshot"]);
+
   console.log(JSON.stringify({
     passed: true,
     edition: EDITION,
     browser: BROWSER,
-    viewports: [[390, 844], [1280, 900]],
+    viewports: [[390, 844], [1280, 900], [1600, 1068]],
     score: "Parser Etude",
     notes: 4,
     durationSeconds: 4,

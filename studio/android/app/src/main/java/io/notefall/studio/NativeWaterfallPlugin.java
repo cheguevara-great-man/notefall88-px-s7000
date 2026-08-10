@@ -328,6 +328,7 @@ public class NativeWaterfallPlugin extends Plugin {
             canvas.drawRect(0, 0, width, keyboardTop, paint);
             paint.setShader(null);
             double now = scoreTime();
+            drawOctaveGuides(canvas, width, keyboardTop);
             drawTimeline(canvas, width, keyboardTop, now);
             drawNotes(canvas, width, keyboardTop, now);
             drawLoop(canvas, width, keyboardTop, now, loopStart, "A");
@@ -365,6 +366,20 @@ public class NativeWaterfallPlugin extends Plugin {
                     paint.setAlpha(255);
                 }
             }
+        }
+
+        private void drawOctaveGuides(Canvas canvas, int width, float keyboardTop) {
+            int color = themeColor(Color.rgb(190, 244, 255), Color.rgb(221, 255, 232), Color.WHITE);
+            stroke.setColor(color);
+            stroke.setAlpha(20);
+            stroke.setStrokeWidth(getResources().getDisplayMetrics().density);
+            for (int note = 0; note < keys.length; note += 1) {
+                KeyGeometry key = keys[note];
+                if (key == null || note % 12 != 0) continue;
+                float x = (key.x + key.width / 2f) * width;
+                canvas.drawLine(x, 0, x, keyboardTop, stroke);
+            }
+            stroke.setAlpha(255);
         }
 
         private void drawStrikeZone(Canvas canvas, int width, float keyboardTop) {
@@ -413,6 +428,17 @@ public class NativeWaterfallPlugin extends Plugin {
                 stroke.setStrokeWidth(1.5f * getResources().getDisplayMetrics().density);
                 canvas.drawCircle(x, keyboardTop - 8 * getResources().getDisplayMetrics().density,
                     (5 + progress * 13) * getResources().getDisplayMetrics().density, stroke);
+                if (!"contrast".equals(theme)) {
+                    for (int spark = 0; spark < 6; spark += 1) {
+                        double angle = spark * Math.PI / 3 + item.note * .17;
+                        float distance = (7 + progress * (12 + (spark % 3) * 5)) * getResources().getDisplayMetrics().density;
+                        paint.setAlpha((int) ((1f - progress) * (140 - spark * 11)));
+                        float sx = x + (float) Math.cos(angle) * distance;
+                        float sy = keyboardTop - 8 * getResources().getDisplayMetrics().density
+                            + (float) Math.sin(angle) * distance * .65f;
+                        canvas.drawCircle(sx, sy, Math.max(1, 2.5f - progress * 1.5f) * getResources().getDisplayMetrics().density, paint);
+                    }
+                }
                 paint.setTextAlign(Paint.Align.LEFT);
                 paint.setFakeBoldText(false);
                 paint.setAlpha(255);
@@ -435,13 +461,20 @@ public class NativeWaterfallPlugin extends Plugin {
                 int color = note.left
                     ? themeColor(LEFT, Color.rgb(78, 230, 190), Color.rgb(68, 215, 255))
                     : themeColor(RIGHT, Color.rgb(184, 156, 255), Color.rgb(255, 207, 63));
+                boolean selected = "both".equals(selectedHand) || (note.left ? "left" : "right").equals(selectedHand);
+                float radius = Math.min(8, noteWidth / 3);
+                if (!"contrast".equals(theme) && selected && delta > -.08 && delta < .32) {
+                    float arrival = 1 - Math.min(1, (float) Math.abs(delta) / .32f);
+                    paint.setShader(null);
+                    paint.setColor(color);
+                    paint.setAlpha((int) (31 + arrival * 56));
+                    canvas.drawRoundRect(new RectF(x - 3, bottom - noteHeight - 3, x + noteWidth + 3, bottom + 3), radius + 3, radius + 3, paint);
+                }
                 paint.setShader(new LinearGradient(0, bottom - noteHeight, 0, bottom, color,
                     note.left
                         ? themeColor(Color.rgb(17, 124, 163), Color.rgb(22, 135, 118), Color.rgb(20, 125, 163))
                         : themeColor(Color.rgb(182, 36, 138), Color.rgb(112, 80, 186), Color.rgb(181, 122, 8)), Shader.TileMode.CLAMP));
-                boolean selected = "both".equals(selectedHand) || (note.left ? "left" : "right").equals(selectedHand);
                 paint.setAlpha(selected ? 220 : 41);
-                float radius = Math.min(8, noteWidth / 3);
                 canvas.drawRoundRect(new RectF(x, bottom - noteHeight, x + noteWidth, bottom), radius, radius, paint);
                 paint.setShader(null);
                 if (noteWidth >= 7) {

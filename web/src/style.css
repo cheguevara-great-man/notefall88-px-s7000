@@ -69,7 +69,8 @@ h1 span { color: #8ba7ff; }
 .focus-exit { position: absolute; z-index: 3; top: 12px; right: 12px; min-height: 34px; padding: 0 11px; border-color: rgba(208,220,255,.5); background: rgba(8,12,20,.78); backdrop-filter: blur(10px); font-size: 12px; }
 #waterfall { width: 100%; height: 100%; display: block; }
 #waterfall[hidden], #sheet-view[hidden] { display: none; }
-#sheet-view { width: 100%; height: 100%; overflow: auto; padding: 22px clamp(8px, 2vw, 24px) 120px; background: #f5f4ef; color: #111; }
+#sheet-view { width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; padding: 22px clamp(8px, 2vw, 24px) 120px; background: #f5f4ef; color: #111; overscroll-behavior: contain; scrollbar-gutter: stable; }
+#sheet-view svg { display: block; max-width: 100%; height: auto; }
 .visualizer-card[data-view="sheet"] .legend { display: none; }
 .visualizer-card[data-view="split"] {
   display: grid;
@@ -79,17 +80,11 @@ h1 span { color: #8ba7ff; }
 .visualizer-card[data-view="split"] #sheet-view { grid-row: 1; height: 100%; padding-bottom: 54px; }
 .visualizer-card[data-view="split"] #waterfall { grid-row: 2; height: 100%; }
 .visualizer-card[data-view="split"] .legend { top: calc(44% + 12px); }
-.studio-toolbar {
-  display: grid; grid-template-columns: minmax(190px, 1fr) minmax(240px, 1.2fr) auto auto;
-  align-items: end; gap: 10px; margin-top: 10px; padding: 14px;
-  border: 1px solid rgba(108,141,255,.34); border-radius: 14px;
-  background: linear-gradient(125deg, rgba(53,76,151,.24), rgba(21,25,37,.9));
-}
-.studio-toolbar[hidden] { display: none; }
-.studio-toolbar > div { display: grid; gap: 4px; }
-.studio-toolbar label { display: grid; gap: 5px; color: #9ca8bb; font-size: 11px; }
-.studio-toolbar input { min-width: 0; height: 42px; padding: 0 11px; border: 1px solid #38435a; border-radius: 9px; background: #090d15; color: #fff; }
-.studio-toolbar small { grid-column: 1 / -1; color: #8f9bb0; }
+.studio-connection-settings { display: grid; gap: 10px; margin: 16px 0 22px; padding: 14px; border: 1px solid rgba(108,141,255,.34); border-radius: 12px; background: linear-gradient(145deg, rgba(53,76,151,.24), rgba(21,25,37,.76)); }
+.studio-connection-settings[hidden] { display: none; }
+.studio-connection-settings label { display: grid; gap: 6px; color: #9ca8bb; font-size: 11px; }
+.studio-connection-settings input { width: 100%; height: 42px; padding: 0 11px; border: 1px solid #38435a; border-radius: 9px; background: #090d15; color: #fff; }
+.studio-connection-settings small { color: #8f9bb0; line-height: 1.5; }
 html[data-edition="studio"] body { background: radial-gradient(circle at 15% -10%, #263b78 0, transparent 38%), radial-gradient(circle at 90% 0, #3a1d58 0, transparent 30%), #070910; }
 html[data-edition="studio"] h1::after { content: "STUDIO"; margin-left: 10px; padding: 4px 7px; border: 1px solid #6e83bf; border-radius: 6px; color: #b9c8ff; font-size: 10px; letter-spacing: .14em; vertical-align: middle; }
 .legend { position: absolute; top: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 7px 10px; background: rgba(5,7,11,.72); backdrop-filter: blur(10px); border-radius: 9px; font-size: 11px; color: #abb4c5; }
@@ -189,6 +184,35 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 .app-shell[data-focus="true"] .visualizer-card { height: calc(100vh - 10px); min-height: 0; border-radius: 10px; }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] { height: calc(100vh - 10px); grid-template-rows: minmax(250px, 46%) minmax(320px, 54%); }
 .app-shell[data-focus="true"] .legend { top: 12px; left: 12px; }.app-shell[data-focus="true"] .focus-exit { display: block; }
 
+/* Large 3:2 tablets in landscape (including Xiaomi Pad-class displays).
+   Android may expose different CSS-pixel sizes at different display scales,
+   so this targets the shape and usable area instead of one model number. */
+@media (min-width: 1000px) and (min-aspect-ratio: 7 / 5) and (max-aspect-ratio: 8 / 5) {
+  .app-shell { width: min(1560px, 100%); padding: 10px clamp(14px, 1.5vw, 24px) 18px; }
+  .topbar { min-height: 42px; margin-bottom: 8px; }
+  h1 { font-size: clamp(28px, 2.5vw, 36px); }
+  .status-pill { padding: 6px 10px; font-size: 12px; }
+  .transport-card { gap: 8px; padding: 8px; }
+  .transport-card button, .transport-card .file-button { min-height: 38px; padding-inline: 12px; }
+  .compact-field select, .tempo-input input { height: 38px; }
+  .score-strip { padding: 8px 4px 7px; }
+  .score-navigator { gap: 10px; margin-bottom: 7px; padding: 6px 10px; }
+  .visualizer-card { height: clamp(460px, calc(100dvh - 306px), 760px); min-height: 0; }
+  .visualizer-card[data-view="split"] { height: clamp(460px, calc(100dvh - 306px), 760px); grid-template-rows: minmax(170px, 38%) minmax(280px, 62%); }
+  .visualizer-card[data-view="split"] #sheet-view { overflow-y: hidden; padding: 8px 12px 22px; }
+  .visualizer-card[data-view="split"] .legend { top: calc(38% + 10px); }
+  footer { padding-top: 8px; }
+  .app-shell[data-focus="true"] .visualizer-card[data-view="split"] { grid-template-rows: minmax(260px, 40%) minmax(360px, 60%); }
+  .app-shell[data-focus="true"] .visualizer-card[data-view="split"] .legend { top: calc(40% + 10px); }
+}
+
+@media (min-width: 1400px) and (min-aspect-ratio: 7 / 5) and (max-aspect-ratio: 8 / 5) {
+  .transport-card { flex-wrap: nowrap; font-size: 13px; }
+  .transport-card button, .transport-card .file-button { padding-inline: 10px; white-space: nowrap; }
+  .transport-card .compact-field { min-width: 96px; gap: 5px; padding-left: 3px; }
+  .transport-card .tempo-input input { width: 64px; }
+}
+
 @media (max-width: 700px) {
   .app-shell { padding: 14px 10px 20px; }
   .topbar { align-items: flex-start; }
@@ -203,8 +227,6 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .visualizer-card { height: 62vh; min-height: 380px; }
   .visualizer-card[data-view="split"] { height: 78vh; grid-template-rows: minmax(220px, 43%) minmax(300px, 57%); }
   .visualizer-card[data-view="split"] .legend { top: calc(43% + 8px); }
-  .studio-toolbar { grid-template-columns: 1fr 1fr; align-items: end; }
-  .studio-toolbar > div, .studio-toolbar label, .studio-toolbar small { grid-column: 1 / -1; }
   #sheet-view { padding: 10px 4px 100px; }
   .settings-panel { top: 8px; right: 8px; max-height: calc(100vh - 16px); }
   .practice-panel { left: 8px; right: auto; }

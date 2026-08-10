@@ -8,8 +8,8 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-DEE8OUZT.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CQFK_fX5.css">
+    <script type="module" crossorigin src="./assets/index-DrPaLR3h.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DB3495JN.css">
   </head>
   <body>
     <main class="app-shell">
@@ -58,23 +58,9 @@
         </label>
         <button id="practice-options-button" aria-controls="practice-panel">练习选项</button>
         <button id="library-button" aria-controls="library-panel">我的曲库</button>
-        <button id="settings-button" aria-controls="settings-panel">灯带校准</button>
+        <button id="settings-button" aria-controls="settings-panel">设备设置</button>
         <button id="commissioning-button" aria-controls="commissioning-panel">安装向导</button>
         <button id="focus-button" type="button" aria-pressed="false">专注演奏</button>
-      </section>
-
-      <section id="studio-toolbar" class="studio-toolbar" hidden>
-        <div>
-          <span class="eyebrow">NOTE­FALL STUDIO · TABLET EDITION</span>
-          <strong>独立平板工作台</strong>
-        </div>
-        <label>
-          <span>Core 地址</span>
-          <input id="studio-device-endpoint" inputmode="url" autocomplete="off" placeholder="192.168.4.1" />
-        </label>
-        <button id="studio-device-save" type="button">保存并重连</button>
-        <button id="studio-install" type="button" hidden>安装到设备</button>
-        <small id="studio-connection-note">乐谱、曲库和练习在本机运行；Core 只处理钢琴 USB 与灯带。</small>
       </section>
 
       <p id="lifecycle-status" class="lifecycle-status" role="status" hidden></p>
@@ -225,11 +211,27 @@
       <aside id="settings-panel" class="settings-panel" hidden>
         <div class="settings-head">
           <div>
-            <div class="eyebrow">STRIP CALIBRATION</div>
-            <h2>灯带校准</h2>
+            <div class="eyebrow">DEVICE & STRIP</div>
+            <h2>设备设置</h2>
           </div>
           <button id="settings-close" aria-label="关闭">关闭</button>
         </div>
+        <section id="studio-toolbar" class="studio-connection-settings" hidden>
+          <div class="settings-head compact-head">
+            <div>
+              <div class="eyebrow">STUDIO CONNECTION</div>
+              <h3>连接 NoteFall Core</h3>
+            </div>
+            <button id="studio-install" type="button" hidden>安装 Studio</button>
+          </div>
+          <label>
+            <span>Core WebSocket 地址</span>
+            <input id="studio-device-endpoint" inputmode="url" autocomplete="off" placeholder="192.168.4.1" />
+          </label>
+          <button id="studio-device-save" type="button">保存并重连</button>
+          <small id="studio-connection-note">乐谱、曲库和练习在本机运行；Core 只处理钢琴 USB 与灯带。</small>
+        </section>
+        <h3>灯带校准</h3>
         <p>先点击“测试中央 C”。如果亮点偏左或偏右，只调像素偏移；如果整条方向相反，打开反向。</p>
         <label>
           <span>亮度上限内档位：<strong id="brightness-value">2 / 4</strong></span>

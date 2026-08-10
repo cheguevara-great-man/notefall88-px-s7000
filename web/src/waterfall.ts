@@ -14,6 +14,7 @@ interface WaterfallFeedback {
 
 export class WaterfallRenderer {
   private context: CanvasRenderingContext2D;
+  private readonly keys = pianoKeys();
   private score?: ParsedScore;
   private pressed = new Set<number>();
   private expected = new Set<number>();
@@ -88,6 +89,7 @@ export class WaterfallRenderer {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, keyboardTop);
 
+    this.drawOctaveGuides(keyboardTop, width, palette.strike);
     this.drawTimeline(scoreTime, keyboardTop, rollHeight, visibleSeconds, width);
 
     if (this.score) {
@@ -95,7 +97,7 @@ export class WaterfallRenderer {
         const delta = note.start - scoreTime;
         if (delta < -0.35 || delta > visibleSeconds) continue;
         const duration = Math.max(0.06, note.end - note.start);
-        const key = pianoKeys().find((item) => item.note === note.note);
+        const key = this.keys.find((item) => item.note === note.note);
         if (!key) continue;
         const x = key.x * width + 1;
         const noteWidth = Math.max(3, key.width * width - 2);
@@ -108,6 +110,18 @@ export class WaterfallRenderer {
         fill.addColorStop(1, note.hand === "left" ? palette.leftShade : palette.rightShade);
         ctx.fillStyle = fill;
         ctx.globalAlpha = this.hand === "both" || this.hand === note.hand ? 0.86 : 0.16;
+        if (this.theme !== "contrast" && delta > -0.08 && delta < 0.32 && ctx.globalAlpha > 0.5) {
+          const arrival = 1 - Math.min(1, Math.abs(delta) / 0.32);
+          ctx.save();
+          ctx.globalAlpha = 0.12 + arrival * 0.22;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.roundRect(x - 3, y - 3, noteWidth + 6, noteHeight + 6, Math.min(8, noteWidth / 2));
+          ctx.fill();
+          ctx.restore();
+          ctx.globalAlpha = this.hand === "both" || this.hand === note.hand ? 0.86 : 0.16;
+          ctx.fillStyle = fill;
+        }
         ctx.beginPath();
         ctx.roundRect(x, y, noteWidth, noteHeight, Math.min(5, noteWidth / 3));
         ctx.fill();
@@ -135,7 +149,7 @@ export class WaterfallRenderer {
     const ctx = this.context;
     this.feedback = this.feedback.filter((item) => now - item.createdAt < 900);
     for (const item of this.feedback) {
-      const key = pianoKeys().find((candidate) => candidate.note === item.note);
+      const key = this.keys.find((candidate) => candidate.note === item.note);
       if (!key) continue;
       const progress = Math.max(0, Math.min(1, (now - item.createdAt) / 900));
       const x = (key.x + key.width / 2) * width;
@@ -153,8 +167,44 @@ export class WaterfallRenderer {
       ctx.beginPath();
       ctx.arc(x, keyboardTop - 8, 5 + progress * 13, 0, Math.PI * 2);
       ctx.stroke();
+      if (this.theme !== "contrast") {
+        for (let spark = 0; spark < 6; spark += 1) {
+          const angle = spark * Math.PI / 3 + item.note * 0.17;
+          const distance = 7 + progress * (12 + (spark % 3) * 5);
+          ctx.globalAlpha = (1 - progress) * (0.55 - spark * 0.045);
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(
+            x + Math.cos(angle) * distance,
+            keyboardTop - 8 + Math.sin(angle) * distance * 0.65,
+            Math.max(1, 2.5 - progress * 1.5),
+            0,
+            Math.PI * 2,
+          );
+          ctx.fill();
+        }
+      }
       ctx.restore();
     }
+  }
+
+  private drawOctaveGuides(keyboardTop: number, width: number, strike: string): void {
+    const ctx = this.context;
+    ctx.save();
+    for (const key of this.keys) {
+      if (key.note % 12 !== 0) continue;
+      const x = (key.x + key.width / 2) * width;
+      const guide = ctx.createLinearGradient(x, 0, x, keyboardTop);
+      guide.addColorStop(0, "rgba(255,255,255,0)");
+      guide.addColorStop(1, `${strike}14`);
+      ctx.strokeStyle = guide;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, keyboardTop);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawTimeline(scoreTime: number, keyboardTop: number, rollHeight: number, visibleSeconds: number, width: number): void {
@@ -227,7 +277,7 @@ export class WaterfallRenderer {
 
   private drawKeyboard(top: number, height: number, width: number, palette: ReturnType<typeof visualPalette>): void {
     const ctx = this.context;
-    const keys = pianoKeys();
+    const keys = this.keys;
     for (const key of keys.filter((item) => !item.black)) {
       let color = "#ececf0";
       if (this.expected.has(key.note)) color = palette.expected;

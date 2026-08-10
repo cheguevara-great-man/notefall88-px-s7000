@@ -36,7 +36,7 @@ MusicXML 目标时间线会按常见反复、多结尾和标准 D.C./D.S./Fine/C
 
 首次仍通过 UART 线刷；此后可在设备热点内用热点密码更新双槽固件或 LittleFS 网页。更新包由标签构建自动生成，包含两个镜像、版本/协议和 SHA-256 清单；维护入口不会从家庭 Wi-Fi 接口接受写入。家庭 Wi-Fi 上的普通页面也默认只读，需用当前热点密码解锁当前标签页后才接收演奏事件或控制灯光、校准和 MIDI OUT；密码不落盘，成功后只保存本次 ESP 启动有效的标签页控制令牌。公开默认密码未修改时安装向导不允许完成。详见 [安全更新说明](docs/update.md) 与 [WebSocket 协议](docs/protocol.md)。
 
-手机离线使用由 ESP32 自己托管完整网页保证，不虚假依赖在局域网 HTTP 上通常不可注册的 Service Worker。浏览器曲库提供配额/持久化诊断和可校验备份；安全上下文、origin 隔离及 iOS/Android 验收边界见 [手机离线与本地数据](docs/mobile-offline-and-storage.md)。
+手机离线使用由 ESP32 自己托管完整网页保证，不虚假依赖在局域网 HTTP 上通常不可注册的 Service Worker。浏览器曲库提供配额/持久化诊断和可校验备份；安全上下文、origin 隔离及 iOS/Android 验收边界见 [手机离线与本地数据](docs/mobile-offline-and-storage.md)。Studio 已把 3:2 横屏大平板作为正式目标，Xiaomi Pad 7 Ultra 的布局策略、首屏琴盘约束和自动化视口验收见 [Studio 平板布局](docs/studio-tablet-layout.md)。
 
 内置安装向导把断电接线/保险丝/无损材料/三点灯位/机械稳定等人工确认，与 ESP 连接、PX-S7000 USB 枚举、MIDI IN 端点和真实中央 C Note On 自动证据合并；未齐全时始终显示“硬件尚未验收”，并可导出不含密码的 JSON 报告。详见 [引导式验收说明](docs/commissioning.md)。
 
