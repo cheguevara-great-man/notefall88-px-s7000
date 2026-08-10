@@ -8,8 +8,8 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-DmAXb1SV.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BFpIg9kf.css">
+    <script type="module" crossorigin src="./assets/index-5DTEUXcG.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Cghve0KS.css">
   </head>
   <body>
     <main class="app-shell">
@@ -60,6 +60,7 @@
         <button id="library-button" aria-controls="library-panel">我的曲库</button>
         <button id="settings-button" aria-controls="settings-panel">灯带校准</button>
         <button id="commissioning-button" aria-controls="commissioning-panel">安装向导</button>
+        <button id="focus-button" type="button" aria-pressed="false">专注演奏</button>
       </section>
 
       <section id="studio-toolbar" class="studio-toolbar" hidden>
@@ -104,6 +105,7 @@
       </nav>
 
       <section class="visualizer-card" id="visualizer-card" data-view="waterfall">
+        <button id="focus-exit" class="focus-exit" type="button" hidden>退出专注</button>
         <canvas id="waterfall" aria-label="钢琴瀑布流"></canvas>
         <div id="sheet-view" aria-label="五线谱" hidden></div>
         <div class="legend">

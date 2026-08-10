@@ -186,6 +186,29 @@ try {
   assert(loadedMobile.sheetVisible && loadedMobile.notation, "sheet view is empty after MusicXML import");
   assert(loadedMobile.view === (EDITION === "studio" ? "split" : "sheet"), "MusicXML selected the wrong default view");
   assert(loadedMobile.waterfallVisible === (EDITION === "studio"), "split view did not expose the waterfall");
+  const focusRef = refFor(page, /button "专注演奏"[^\n]*\[ref=(e\d+)\]/, "focus mode button");
+  command(["click", focusRef]);
+  await waitForCondition(
+    `() => JSON.stringify({
+      focused: document.querySelector('.app-shell')?.dataset.focus === 'true',
+      exitVisible: !document.querySelector('#focus-exit')?.hasAttribute('hidden'),
+      transportHidden: getComputedStyle(document.querySelector('.transport-card')).display === 'none',
+      visualizerHeight: document.querySelector('#visualizer-card')?.getBoundingClientRect().height ?? 0
+    })`,
+    "focus mode did not transition",
+  );
+  const focusState = evaluate(`() => JSON.stringify({
+    focused: document.querySelector('.app-shell')?.dataset.focus === 'true',
+    exitVisible: !document.querySelector('#focus-exit')?.hasAttribute('hidden'),
+    transportHidden: getComputedStyle(document.querySelector('.transport-card')).display === 'none',
+    visualizerHeight: document.querySelector('#visualizer-card')?.getBoundingClientRect().height ?? 0
+  })`);
+  assert(focusState.focused && focusState.exitVisible && focusState.transportHidden, "focus mode does not hide controls safely");
+  assert(focusState.visualizerHeight >= mobile.height - 14, "focus mode does not expand the practice surface");
+  page = snapshot();
+  const focusExitRef = refFor(page, /button "退出专注"[^\n]*\[ref=(e\d+)\]/, "focus mode exit button");
+  command(["click", focusExitRef]);
+  assert(evaluate(`() => document.querySelector('.app-shell')?.dataset.focus !== 'true'`), "focus mode does not exit");
   command(["screenshot"]);
 
   command(["resize", "1280", "900"]);

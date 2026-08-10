@@ -65,6 +65,7 @@ h1 span { color: #8ba7ff; }
 .measure-pill[data-loop="true"] { border-color: rgba(255,210,76,.48); }.measure-pill[data-current="true"] { color: #fff; border-color: #9eafff; background: linear-gradient(135deg, #516bc5, #8250c4); box-shadow: 0 0 18px rgba(119,132,255,.35); }
 .measure-pill[data-selected="true"] { outline: 2px solid #ffd24c; outline-offset: 1px; }.score-navigator > small { color: #8995ab; font-size: 11px; white-space: nowrap; }
 .visualizer-card { position: relative; min-height: 420px; height: min(67vh, 820px); overflow: hidden; border: 1px solid #242b39; border-radius: 16px; background: #0a0d14; box-shadow: 0 24px 80px rgba(0,0,0,.28); }
+.focus-exit { position: absolute; z-index: 3; top: 12px; right: 12px; min-height: 34px; padding: 0 11px; border-color: rgba(208,220,255,.5); background: rgba(8,12,20,.78); backdrop-filter: blur(10px); font-size: 12px; }
 #waterfall { width: 100%; height: 100%; display: block; }
 #waterfall[hidden], #sheet-view[hidden] { display: none; }
 #sheet-view { width: 100%; height: 100%; overflow: auto; padding: 22px clamp(8px, 2vw, 24px) 120px; background: #f5f4ef; color: #111; }
@@ -178,6 +179,10 @@ html[data-edition="studio"] h1::after { content: "STUDIO"; margin-left: 10px; pa
 .library-item-actions button { min-height: 34px; padding: 0 10px; font-size: 12px; }
 .library-item select { width: 100%; height: 36px; padding: 0 8px; border: 1px solid #303746; border-radius: 8px; background: #11151d; color: #fff; }
 footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 11px; padding: 14px 4px 0; }
+.app-shell[data-focus="true"] { width: 100%; max-width: none; min-height: 100vh; padding: 5px; }
+.app-shell[data-focus="true"] > .topbar, .app-shell[data-focus="true"] > .transport-card, .app-shell[data-focus="true"] > .studio-toolbar, .app-shell[data-focus="true"] > .score-strip, .app-shell[data-focus="true"] > .score-navigator, .app-shell[data-focus="true"] > footer { display: none; }
+.app-shell[data-focus="true"] .visualizer-card { height: calc(100vh - 10px); min-height: 0; border-radius: 10px; }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] { height: calc(100vh - 10px); grid-template-rows: minmax(250px, 46%) minmax(320px, 54%); }
+.app-shell[data-focus="true"] .legend { top: 12px; left: 12px; }.app-shell[data-focus="true"] .focus-exit { display: block; }
 
 @media (max-width: 700px) {
   .app-shell { padding: 14px 10px 20px; }

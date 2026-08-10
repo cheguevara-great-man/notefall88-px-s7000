@@ -111,6 +111,8 @@ const playButton = required<HTMLButtonElement>("play-button");
 const resetButton = required<HTMLButtonElement>("reset-button");
 const recordButton = required<HTMLButtonElement>("record-button");
 const recordDownload = required<HTMLButtonElement>("record-download");
+const focusButton = required<HTMLButtonElement>("focus-button");
+const focusExit = required<HTMLButtonElement>("focus-exit");
 const modeSelect = required<HTMLSelectElement>("practice-mode");
 const tempoInput = required<HTMLInputElement>("tempo");
 const viewMode = required<HTMLSelectElement>("view-mode");
@@ -165,6 +167,7 @@ const keyNote = required<HTMLInputElement>("key-note");
 const keyOffset = required<HTMLInputElement>("key-offset");
 const waterfallCanvas = required<HTMLCanvasElement>("waterfall");
 const visualizerCard = required("visualizer-card");
+const appShell = document.querySelector<HTMLElement>(".app-shell");
 const sheetView = required("sheet-view");
 const renderer = createWaterfallSurface(waterfallCanvas, studioEdition);
 const sheetRenderer = new SheetRenderer(sheetView);
@@ -1056,6 +1059,21 @@ function updateViewMode(): void {
   visualizerCard.dataset.view = wantsSplit && showSheet ? "split" : showSheet ? "sheet" : "waterfall";
   scoreNavigator.hidden = !showSheet;
 }
+
+function setFocusMode(enabled: boolean): void {
+  appShell?.setAttribute("data-focus", String(enabled));
+  focusButton.setAttribute("aria-pressed", String(enabled));
+  focusButton.textContent = enabled ? "退出专注" : "专注演奏";
+  focusExit.hidden = !enabled;
+  // OSMD uses a width observer; let layout settle once the controls disappear.
+  window.setTimeout(() => sheetRenderer.seek(lastScoreSeconds), 0);
+}
+
+focusButton.addEventListener("click", () => setFocusMode(appShell?.dataset.focus !== "true"));
+focusExit.addEventListener("click", () => setFocusMode(false));
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && appShell?.dataset.focus === "true") setFocusMode(false);
+});
 
 function renderMeasureNavigation(seconds: number): void {
   if (!scoreXml || !score) return;
