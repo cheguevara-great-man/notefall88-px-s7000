@@ -161,6 +161,7 @@ html[data-edition="studio"] h1::after { content: "STUDIO"; margin-left: 10px; pa
 .history-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-item span { color: #dce4f4; font-size: 12px; }
 .history-item small { color: #7f899b; line-height: 1.45; }
+.history-review { justify-self: start; min-height: 30px; padding: 0 9px; border-color: rgba(123,167,255,.35); color: #c8d8ff; font-size: 11px; }
 .coach-card { display: grid; gap: 7px; margin-top: 10px; padding: 13px; border: 1px solid rgba(120,147,255,.35); border-radius: 11px; background: linear-gradient(145deg, rgba(68,92,170,.18), #0b0e14 58%); }
 .coach-card p { margin: 0; font-size: 12px; }
 .coach-card small { color: #7f899b; }

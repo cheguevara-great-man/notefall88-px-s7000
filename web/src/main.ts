@@ -271,6 +271,7 @@ let midiOutBlocked = false;
 let followPlanner = new FollowAccompanimentPlanner([]);
 let analytics: PracticeAnalytics | undefined;
 let completedReviewEvents: PracticeEvent[] = [];
+let selectedReviewSession: PracticeSession | undefined;
 let reviewRevision = 0;
 let lastReviewSignature = "";
 let recentSessions: PracticeSession[] = [];
@@ -541,6 +542,7 @@ function sessionContext() {
 function beginPracticeSession(): void {
   analytics = score && chords.length > 0 ? new PracticeAnalytics(sessionContext()) : undefined;
   completedReviewEvents = [];
+  selectedReviewSession = undefined;
   reviewRevision += 1;
   renderInsights();
 }
@@ -550,6 +552,7 @@ async function finishPracticeSession(): Promise<void> {
   analytics = undefined;
   if (!completed) return;
   completedReviewEvents = completed.events;
+  selectedReviewSession = undefined;
   reviewRevision += 1;
   renderInsights();
   try {
@@ -561,6 +564,7 @@ async function finishPracticeSession(): Promise<void> {
 }
 
 function recordPracticeEvent(event: PracticeEvent): void {
+  selectedReviewSession = undefined;
   if (!analytics && score && chords.length > 0) analytics = new PracticeAnalytics(sessionContext());
   analytics?.record(event);
   renderer.pushFeedback(event.kind, event.note);
@@ -598,9 +602,13 @@ function renderInsights(): void {
 }
 
 function renderPracticeReview(): void {
-  const events = analytics?.eventsSnapshot() ?? completedReviewEvents;
-  const duration = score?.duration ?? 1;
-  const signature = `${reviewRevision}:${duration}`;
+  const historic = analytics ? undefined : selectedReviewSession;
+  const events = analytics?.eventsSnapshot() ?? historic?.events ?? completedReviewEvents;
+  const duration = Math.max(score?.duration ?? 0, ...events.map((event) => event.scoreTime + 0.5), 1);
+  const compatibleHistoricReview = !historic || (score && (scoreFingerprint
+    ? historic.context.scoreFingerprint === scoreFingerprint
+    : historic.context.scoreName === score.name));
+  const signature = `${reviewRevision}:${duration}:${historic?.id ?? "current"}:${compatibleHistoricReview}`;
   if (signature === lastReviewSignature) return;
   lastReviewSignature = signature;
   const review = buildPracticeReview(events, duration);
@@ -608,7 +616,7 @@ function renderPracticeReview(): void {
   practiceReview.dataset.active = String(eventCount > 0);
   reviewCaption.textContent = eventCount === 0
     ? "导入乐谱后，按时间与琴键定位本次问题。"
-    : `${eventCount} 个判定事件 · 绿=命中 · 黄=多余键 · 红=漏音或集中错误`;
+    : `${historic ? `历史复盘 · ${new Date(historic.endedAt).toLocaleString("zh-CN")} · ` : ""}${eventCount} 个判定事件 · 绿=命中 · 黄=多余键 · 红=漏音或集中错误${compatibleHistoricReview ? "" : " · 导入同一乐谱后才能从此处循环"}`;
   reviewTimeline.replaceChildren(...review.buckets.map((bucket) => {
     const segment = document.createElement("button");
     segment.type = "button";
@@ -618,6 +626,7 @@ function renderPracticeReview(): void {
     segment.dataset.marker = errors > 0 ? `−${errors}` : bucket.hits > 0 ? `+${bucket.hits}` : "";
     segment.dataset.start = String(bucket.start);
     segment.dataset.end = String(bucket.end);
+    segment.disabled = !compatibleHistoricReview;
     const timing = bucket.timingBiasMs === undefined ? "" : ` · ${Math.abs(bucket.timingBiasMs)}ms${bucket.timingBiasMs < 0 ? "早" : "晚"}`;
     segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}`;
     return segment;
@@ -671,7 +680,16 @@ function renderPracticeHistory(): void {
       const modeLabel = session.context.mode === "realtime" ? "实时" : session.context.mode === "follow" ? "跟随我" : "等我弹";
       const timing = session.summary.meanAbsTimingMs === undefined ? "无节奏判定" : `平均偏差 ${session.summary.meanAbsTimingMs.toFixed(0)} ms`;
       detail.textContent = `${new Date(session.endedAt).toLocaleString("zh-CN")} · ${modeLabel} · ${Math.round(session.context.tempo * 100)}% · ${timing}`;
-      card.append(title, result, detail);
+      const review = document.createElement("button");
+      review.type = "button";
+      review.className = "history-review";
+      review.textContent = "查看复盘";
+      review.addEventListener("click", () => {
+        selectedReviewSession = session;
+        reviewRevision += 1;
+        renderInsights();
+      });
+      card.append(title, result, detail, review);
       sessionHistory.append(card);
     }
   }
