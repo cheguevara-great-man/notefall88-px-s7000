@@ -8,8 +8,8 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-xgfawLj6.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CdsXPF60.css">
+    <script type="module" crossorigin src="./assets/index-B03eYlVo.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-B-adn1-l.css">
   </head>
   <body>
     <main class="app-shell">
@@ -203,13 +203,30 @@
             <div class="eyebrow">ADAPTIVE COACH</div>
             <h3>下一轮建议</h3>
           </div>
-          <button id="coach-apply" class="primary" disabled>一键应用</button>
+          <div class="coach-actions">
+            <button id="coach-apply" class="primary" disabled>一键应用</button>
+            <button id="circuit-start" disabled>生成弱点巡回</button>
+          </div>
         </div>
         <article class="coach-card">
           <strong id="coach-title">先导入一首乐谱</strong>
           <p id="coach-reason">建议只使用当前乐谱的本机历史，不会把不同曲目混在一起。</p>
           <small id="coach-evidence">尚无可用证据</small>
         </article>
+        <section id="practice-circuit" class="practice-circuit" data-active="false" data-complete="false" aria-label="弱点巡回训练">
+          <div class="circuit-head">
+            <div>
+              <strong id="circuit-title">先导入一首乐谱</strong>
+              <small>弱点巡回 · <span id="circuit-progress">0 / 0</span></small>
+            </div>
+            <div class="coach-actions">
+              <button id="circuit-assess" class="primary" disabled>评估本轮</button>
+              <button id="circuit-stop" hidden>结束</button>
+            </div>
+          </div>
+          <div id="circuit-steps" class="circuit-steps"></div>
+          <p id="circuit-status">根据历史错漏、拍点和左右手差异，自动安排最多三处弱点。</p>
+        </section>
         <hr />
         <section id="practice-trend" class="practice-trend" data-active="false">
           <div class="review-head"><span>进步轨迹</span><small id="trend-caption">同一首曲目练习两次后显示趋势。</small></div>

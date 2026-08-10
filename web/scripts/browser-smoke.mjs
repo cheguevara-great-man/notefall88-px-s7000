@@ -422,6 +422,59 @@ try {
   assert(measureHeat.currentOccurrence === '1' && measureHeat.currentTone === 'weak'
     && measureHeat.currentHeight > measureHeat.overviewHeight,
     `measure heat ribbon did not emphasize the current weak measure: ${JSON.stringify(measureHeat)}`);
+  evaluate(`() => { document.querySelector('#reset-button')?.click(); return JSON.stringify(true); }`);
+  await waitForCondition(
+    `() => JSON.stringify(!document.querySelector('#circuit-start')?.disabled)`,
+    "practice history did not unlock the evidence-backed weak-passage circuit",
+  );
+  const circuit = evaluate(`() => {
+    document.querySelector('#practice-options-button')?.click();
+    document.querySelector('#circuit-start')?.click();
+    document.querySelector('#practice-options-button')?.click();
+    const stored = JSON.parse(localStorage.getItem('notefall88.practice-circuit.v1') ?? 'null');
+    const active = document.querySelector('#practice-circuit .circuit-step[data-state="active"]');
+    return JSON.stringify({
+      storedMissions: stored?.missions?.length ?? 0,
+      activeIndex: stored?.activeIndex,
+      visible: getComputedStyle(document.querySelector('#practice-circuit')).display,
+      activeLabel: active?.querySelector('strong')?.textContent,
+      activeTarget: active?.querySelector('small')?.textContent,
+      loop: document.querySelector('#loop-enabled')?.checked,
+      loopStart: Number(document.querySelector('#loop-start')?.value),
+      loopEnd: Number(document.querySelector('#loop-end')?.value),
+      hand: document.querySelector('#hand-selection')?.value,
+      mode: document.querySelector('#practice-mode')?.value,
+      assessmentEnabled: !document.querySelector('#circuit-assess')?.disabled,
+    });
+  }`);
+  assert(circuit.storedMissions >= 1 && circuit.activeIndex === 0 && circuit.visible === 'grid',
+    `weak-passage circuit was not generated and persisted: ${JSON.stringify(circuit)}`);
+  assert(circuit.loop && circuit.loopStart === 0 && circuit.loopEnd === 8
+    && circuit.hand === 'right' && circuit.mode === 'wait' && circuit.assessmentEnabled,
+    `weak-passage circuit did not apply its first evidence-backed mission: ${JSON.stringify(circuit)}`);
+  assert(circuit.activeLabel?.includes('M1–M2') && circuit.activeTarget?.includes('连续 2 次'),
+    `weak-passage circuit does not expose a readable mastery contract: ${JSON.stringify(circuit)}`);
+  evaluate(`() => {
+    const emit = (detail) => window.dispatchEvent(new CustomEvent('notefall:test-practice-event', { detail }));
+    for (let index = 0; index < 8; index += 1) {
+      emit({ kind: 'hit', note: 60 + index % 8, hand: 'right', velocity: 90, scoreTime: index + .2 });
+    }
+    document.querySelector('#circuit-assess')?.click();
+    return JSON.stringify(true);
+  }`);
+  await waitForCondition(
+    `() => JSON.stringify(JSON.parse(localStorage.getItem('notefall88.practice-circuit.v1') ?? 'null')?.missions?.[0]?.consecutivePasses === 1)`,
+    "a complete clean circuit pass did not advance the consecutive mastery counter",
+  );
+  const circuitPass = evaluate(`() => JSON.stringify({
+    status: document.querySelector('#circuit-status')?.textContent,
+    target: document.querySelector('#practice-circuit .circuit-step[data-state="active"] small')?.textContent,
+    progress: document.querySelector('#circuit-progress')?.textContent,
+  })`);
+  assert(circuitPass.status?.includes('再连续通过 1 次') && circuitPass.target?.includes('已 1 次') && circuitPass.progress === '0 / 1',
+    `weak-passage circuit did not expose its consecutive mastery progress: ${JSON.stringify(circuitPass)}`);
+  command(["screenshot"]);
+  evaluate(`() => { document.querySelector('#practice-close')?.click(); return JSON.stringify(true); }`);
   const sheetFeedback = evaluate(`async () => {
     window.dispatchEvent(new CustomEvent('notefall:test-feedback', { detail: { kind: 'hit', note: 60, timingMs: -90 } }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -449,9 +502,16 @@ try {
     const select = document.querySelector('#view-mode');
     select.value = 'waterfall';
     select.dispatchEvent(new Event('change', { bubbles: true }));
-    return JSON.stringify({ selected: select.value });
+    const hand = document.querySelector('#hand-selection');
+    hand.value = 'both';
+    hand.dispatchEvent(new Event('change', { bubbles: true }));
+    const loop = document.querySelector('#loop-enabled');
+    loop.checked = false;
+    loop.dispatchEvent(new Event('change', { bubbles: true }));
+    return JSON.stringify({ selected: select.value, hand: hand.value, loop: loop.checked });
   }`);
-  assert(dynamicsPixels.selected === 'waterfall', "dynamics visual probe did not select the waterfall");
+  assert(dynamicsPixels.selected === 'waterfall' && dynamicsPixels.hand === 'both' && !dynamicsPixels.loop,
+    "dynamics visual probe did not select the full-score waterfall");
   evaluate(`async () => {
     window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { seconds: .5 } }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));

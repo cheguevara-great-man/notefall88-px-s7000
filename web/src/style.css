@@ -176,6 +176,22 @@ html[data-edition="studio"] h1::after { content: "STUDIO"; margin-left: 10px; pa
 .coach-card { display: grid; gap: 7px; margin-top: 10px; padding: 13px; border: 1px solid rgba(120,147,255,.35); border-radius: 11px; background: linear-gradient(145deg, rgba(68,92,170,.18), #0b0e14 58%); }
 .coach-card p { margin: 0; font-size: 12px; }
 .coach-card small { color: #7f899b; }
+.coach-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.practice-circuit { display: none; gap: 10px; margin-top: 10px; padding: 13px; border: 1px solid rgba(116,196,255,.28); border-radius: 11px; background: linear-gradient(145deg, rgba(37,108,145,.18), #0b0e14 62%); }
+.practice-circuit[data-active="true"] { display: grid; }
+.practice-circuit[data-complete="true"] { border-color: rgba(94,222,172,.48); background: linear-gradient(145deg, rgba(48,140,100,.2), #0b0e14 62%); }
+.circuit-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.circuit-head > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.circuit-head strong { color: #edf7ff; }
+.circuit-head small, .circuit-step small { color: #8ba0b5; }
+.circuit-steps { display: grid; gap: 7px; }
+.circuit-step { display: grid; grid-template-columns: 25px minmax(0, 1fr); gap: 8px; padding: 9px; border: 1px solid #29343e; border-radius: 9px; background: rgba(8,12,18,.68); opacity: .62; }
+.circuit-step[data-state="active"] { border-color: rgba(109,207,255,.58); background: rgba(29,92,124,.2); box-shadow: 0 0 18px rgba(56,162,219,.13); opacity: 1; }
+.circuit-step[data-state="done"] { border-color: rgba(94,222,172,.3); opacity: .78; }
+.circuit-step-marker { display: grid; place-items: center; width: 23px; height: 23px; border: 1px solid #496171; border-radius: 50%; color: #bcecff; font-size: 11px; }
+.circuit-step[data-state="done"] .circuit-step-marker { border-color: #3f9d75; color: #77efb7; }
+.circuit-step > div { display: grid; gap: 3px; min-width: 0; }
+.circuit-step p, .practice-circuit > p { margin: 0; color: #a9b6c6; font-size: 11px; line-height: 1.45; }
 .library-filters { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin: 12px 0; }
 .library-filters input, .library-filters select {
   min-width: 0; height: 42px; padding: 0 11px; border: 1px solid #303746;

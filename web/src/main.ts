@@ -6,6 +6,14 @@ import { buildPracticeReview, reviewBucketTone } from "./review";
 import { recommendPractice } from "./coach";
 import type { PracticeRecommendation } from "./coach";
 import {
+  assessPracticeMission,
+  buildPracticeCircuit,
+  clearPracticeCircuit,
+  loadPracticeCircuit,
+  savePracticeCircuit,
+} from "./practice-circuit";
+import type { PracticeCircuit, PracticeMission } from "./practice-circuit";
+import {
   commissioningReport,
   completeCommissioning,
   loadCommissioning,
@@ -161,6 +169,14 @@ const trendCaption = required("trend-caption");
 const trendChart = required("trend-chart");
 const trendDetail = required("trend-detail");
 const coachApply = required<HTMLButtonElement>("coach-apply");
+const circuitStart = required<HTMLButtonElement>("circuit-start");
+const circuitAssess = required<HTMLButtonElement>("circuit-assess");
+const circuitStop = required<HTMLButtonElement>("circuit-stop");
+const circuitPanel = required("practice-circuit");
+const circuitSteps = required("circuit-steps");
+const circuitTitle = required("circuit-title");
+const circuitProgress = required("circuit-progress");
+const circuitStatus = required("circuit-status");
 const settingsPanel = required("settings-panel");
 const commissioningPanel = required("commissioning-panel");
 const commissioningStatus = required<HTMLSpanElement>("commissioning-status");
@@ -285,6 +301,8 @@ let reviewRevision = 0;
 let lastReviewSignature = "";
 let recentSessions: PracticeSession[] = [];
 let currentRecommendation: PracticeRecommendation | undefined;
+let currentCircuit: PracticeCircuit | undefined;
+let circuitMessage = "根据历史错漏、拍点和左右手差异，自动安排最多三处弱点。";
 let countInGeneration = 0;
 let countInTimer: number | undefined;
 let needsCountIn = true;
@@ -562,10 +580,10 @@ function beginPracticeSession(): void {
   renderInsights();
 }
 
-async function finishPracticeSession(): Promise<void> {
+async function finishPracticeSession(): Promise<PracticeSession | undefined> {
   const completed = analytics?.finish();
   analytics = undefined;
-  if (!completed) return;
+  if (!completed) return undefined;
   completedReviewEvents = completed.events;
   completedReviewFingerprint = completed.context.scoreFingerprint;
   selectedReviewSession = undefined;
@@ -577,6 +595,7 @@ async function finishPracticeSession(): Promise<void> {
   } catch (error) {
     historySummary.textContent = error instanceof Error ? error.message : "无法保存练习记录";
   }
+  return completed;
 }
 
 function recordPracticeEvent(event: PracticeEvent): void {
@@ -787,6 +806,7 @@ function renderCoach(): void {
     required("coach-title").textContent = score ? "完成一次练习后生成建议" : "先导入一首乐谱";
     required("coach-reason").textContent = "建议只使用当前乐谱的本机历史，不会把不同曲目混在一起。";
     required("coach-evidence").textContent = "尚无可用证据";
+    renderPracticeCircuit();
     return;
   }
   const modeLabel = recommendation.mode === "wait" ? "等我弹" : "实时";
@@ -798,6 +818,75 @@ function renderCoach(): void {
   required("coach-reason").textContent = recommendation.reason;
   const confidence = recommendation.confidence === "high" ? "高" : recommendation.confidence === "medium" ? "中" : "初步";
   required("coach-evidence").textContent = `${recommendation.evidence.sessions} 次 / ${recommendation.evidence.events} 事件 · 历史准确率 ${recommendation.evidence.accuracy.toFixed(1)}% · 置信度 ${confidence}`;
+  renderPracticeCircuit();
+}
+
+function missionLabel(mission: PracticeMission): string {
+  const measures = mission.writtenMeasures.length === 1
+    ? `M${mission.writtenMeasures[0]}`
+    : `M${mission.writtenMeasures[0]}–M${mission.writtenMeasures.at(-1)}`;
+  const handLabel = mission.hand === "both" ? "双手" : mission.hand === "left" ? "左手" : "右手";
+  const modeLabel = mission.mode === "wait" ? "等我弹" : "实时";
+  return `${measures} · ${handLabel} · ${modeLabel} · ${Math.round(mission.tempo * 100)}%`;
+}
+
+function renderPracticeCircuit(): void {
+  const circuit = currentCircuit;
+  const active = circuit?.missions[circuit.activeIndex];
+  circuitStart.disabled = !score || !currentRecommendation;
+  circuitStart.textContent = circuit && !circuit.completed ? "继续巡回" : "生成弱点巡回";
+  circuitAssess.disabled = !active || circuit?.completed === true;
+  circuitStop.hidden = !circuit;
+  circuitPanel.dataset.active = String(Boolean(circuit));
+  circuitPanel.dataset.complete = String(circuit?.completed === true);
+  circuitSteps.replaceChildren();
+  if (!circuit) {
+    circuitTitle.textContent = score ? "尚未生成训练路线" : "先导入一首乐谱";
+    circuitProgress.textContent = "0 / 0";
+    circuitStatus.textContent = circuitMessage;
+    return;
+  }
+  const mastered = circuit.missions.filter((_, index) => index < circuit.activeIndex).length;
+  circuitTitle.textContent = circuit.completed ? "本轮弱点巡回已完成" : `当前：${missionLabel(active!)}`;
+  circuitProgress.textContent = `${mastered} / ${circuit.missions.length}`;
+  circuitStatus.textContent = circuitMessage;
+  circuit.missions.forEach((mission, index) => {
+    const card = document.createElement("article");
+    card.className = "circuit-step";
+    card.dataset.state = index < circuit.activeIndex ? "done" : index === circuit.activeIndex && !circuit.completed ? "active" : "queued";
+    const marker = document.createElement("span");
+    marker.className = "circuit-step-marker";
+    marker.textContent = index < circuit.activeIndex ? "✓" : String(index + 1);
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = missionLabel(mission);
+    const target = document.createElement("small");
+    const timing = mission.targetTimingMs === undefined ? "" : ` · 平均拍点 ≤ ${mission.targetTimingMs} ms`;
+    target.textContent = `目标 ${mission.targetAccuracy}%${timing} · 连续 ${mission.requiredPasses} 次 · 已 ${mission.consecutivePasses} 次`;
+    const reason = document.createElement("p");
+    reason.textContent = mission.reason;
+    copy.append(title, target, reason);
+    card.append(marker, copy);
+    circuitSteps.append(card);
+  });
+}
+
+function applyCircuitMission(mission: PracticeMission): void {
+  mode = mission.mode;
+  modeSelect.value = mode;
+  hand = mission.hand;
+  handSelect.value = hand;
+  setSelectedTempo(mission.tempo);
+  loopEnabled.checked = true;
+  loopStart.disabled = false;
+  loopEnd.disabled = false;
+  loopControls.setAttribute("aria-disabled", "false");
+  loopStart.value = String(mission.start);
+  loopEnd.value = String(mission.end);
+  updateLoopLabels();
+  rebuildPractice();
+  persistPreferences();
+  practicePanel.hidden = true;
 }
 
 async function refreshPracticeHistory(): Promise<void> {
@@ -1122,6 +1211,10 @@ async function activateScore(parsed: ParsedScore, xml: string | undefined, finge
   measureLoopAnchor = undefined;
   sourceScore = parsed;
   scoreFingerprint = fingerprint;
+  currentCircuit = loadPracticeCircuit(parsed.name, fingerprint);
+  circuitMessage = currentCircuit
+    ? (currentCircuit.completed ? "已恢复完成记录；可以基于最新历史生成新一轮。" : "已恢复上次未完成的弱点巡回。")
+    : "根据历史错漏、拍点和左右手差异，自动安排最多三处弱点。";
   score = transposeScore(parsed, transposeSemitones);
   followPlanner = new FollowAccompanimentPlanner(score.notes);
   scoreXml = xml;
@@ -1674,6 +1767,50 @@ coachApply.addEventListener("click", () => {
   persistPreferences();
   coachApply.textContent = "已应用";
   window.setTimeout(() => { coachApply.textContent = "一键应用"; }, 1_200);
+});
+circuitStart.addEventListener("click", () => {
+  if (!score) return;
+  if (!currentCircuit || currentCircuit.completed) {
+    currentCircuit = buildPracticeCircuit(recentSessions, score, scoreFingerprint);
+    if (!currentCircuit) {
+      circuitMessage = "还没有足够的本曲练习证据；先完整练习一次，再生成弱点巡回。";
+      renderPracticeCircuit();
+      return;
+    }
+    savePracticeCircuit(currentCircuit);
+    circuitMessage = `已生成 ${currentCircuit.missions.length} 个循证关卡；每关必须连续达标，偶然弹对不会直接放行。`;
+  }
+  const mission = currentCircuit.missions[currentCircuit.activeIndex];
+  if (mission) applyCircuitMission(mission);
+  renderPracticeCircuit();
+});
+circuitAssess.addEventListener("click", async () => {
+  if (!currentCircuit || currentCircuit.completed) return;
+  circuitAssess.disabled = true;
+  const completed = await finishPracticeSession();
+  if (!completed) {
+    circuitMessage = "本轮还没有判定事件，请完整练完当前片段后再评估。";
+    beginPracticeSession();
+    renderPracticeCircuit();
+    return;
+  }
+  const assessment = assessPracticeMission(currentCircuit, completed);
+  currentCircuit = assessment.circuit;
+  circuitMessage = assessment.message;
+  savePracticeCircuit(currentCircuit);
+  const next = currentCircuit.missions[currentCircuit.activeIndex];
+  if (assessment.outcome === "advanced" && next) applyCircuitMission(next);
+  else {
+    resetPractice(true);
+    if (assessment.outcome === "completed") playButton.textContent = "巡回完成";
+  }
+  renderPracticeCircuit();
+});
+circuitStop.addEventListener("click", () => {
+  currentCircuit = undefined;
+  clearPracticeCircuit();
+  circuitMessage = "弱点巡回已结束；普通练习设置保持不变。";
+  renderPracticeCircuit();
 });
 required("settings-button").addEventListener("click", () => {
   practicePanel.hidden = true;
