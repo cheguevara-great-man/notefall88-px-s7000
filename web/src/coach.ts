@@ -20,6 +20,8 @@ export interface PracticeRecommendation {
     dynamicsScore?: number;
     durationCoverageScore?: number;
     releasePrecisionScore?: number;
+    coordinationScore?: number;
+    handAlignmentScore?: number;
   };
 }
 
@@ -30,6 +32,7 @@ function recommendedTempo(
   dynamicsScore?: number,
   durationCoverageScore?: number,
   releasePrecisionScore?: number,
+  coordinationScore?: number,
 ): number {
   const normalized = normalizeTempo(current);
   const delta = accuracy < 70
@@ -38,12 +41,14 @@ function recommendedTempo(
       ? -0.1
       : ((dynamicsScore !== undefined && dynamicsScore < 60)
           || (durationCoverageScore !== undefined && durationCoverageScore < 75)
-          || (releasePrecisionScore !== undefined && releasePrecisionScore < 60))
+          || (releasePrecisionScore !== undefined && releasePrecisionScore < 60)
+          || (coordinationScore !== undefined && coordinationScore < 65))
         ? -0.05
         : (accuracy >= 96 && (timingMs === undefined || timingMs < 65)
           && (dynamicsScore === undefined || dynamicsScore >= 80)
           && (durationCoverageScore === undefined || durationCoverageScore >= 90)
-          && (releasePrecisionScore === undefined || releasePrecisionScore >= 75)) ? 0.05 : 0;
+          && (releasePrecisionScore === undefined || releasePrecisionScore >= 75)
+          && (coordinationScore === undefined || coordinationScore >= 85)) ? 0.05 : 0;
   return normalizeTempo(Math.max(MIN_TEMPO, Math.min(MAX_TEMPO, normalized + delta)));
 }
 
@@ -152,6 +157,18 @@ export function recommendPractice(
   const releasePrecision = releaseValues.length > 0
     ? releaseValues.reduce((sum, value) => sum + value, 0) / releaseValues.length
     : undefined;
+  const coordinationValues = sessions
+    .map((session) => session.summary.coordinationScore)
+    .filter((value): value is number => value !== undefined);
+  const coordination = coordinationValues.length > 0
+    ? coordinationValues.reduce((sum, value) => sum + value, 0) / coordinationValues.length
+    : undefined;
+  const handAlignmentValues = sessions
+    .map((session) => session.summary.handAlignmentScore)
+    .filter((value): value is number => value !== undefined);
+  const handAlignment = handAlignmentValues.length > 0
+    ? handAlignmentValues.reduce((sum, value) => sum + value, 0) / handAlignmentValues.length
+    : undefined;
   const tempo = recommendedTempo(
     latest.context.tempo,
     accuracy,
@@ -159,6 +176,7 @@ export function recommendPractice(
     dynamics,
     durationCoverage,
     releasePrecision,
+    coordination,
   );
   const hand = chooseHand(sessions);
   const loop = hardestWindow(sessions, scoreDuration);
@@ -172,6 +190,8 @@ export function recommendPractice(
       : ((durationCoverage !== undefined && durationCoverage < 75)
           || (releasePrecision !== undefined && releasePrecision < 60))
         ? `先降到 ${Math.round(tempo * 100)}% 修正提前收音与指尖释放`
+        : coordination !== undefined && coordination < 65
+          ? `先降到 ${Math.round(tempo * 100)}% 收紧和弦与双手落键`
       : `先降到 ${Math.round(tempo * 100)}% 稳定准确度`,
   );
   else if (tempo > latest.context.tempo) reasonParts.push(`表现稳定，可提升到 ${Math.round(tempo * 100)}%`);
@@ -183,6 +203,12 @@ export function recommendPractice(
   }
   if (releasePrecision !== undefined && releasePrecision < 60) {
     reasonParts.push(`无踏板释放 ${Math.round(releasePrecision)}%，单独练习整齐松键`);
+  }
+  if (coordination !== undefined && coordination < 65) {
+    reasonParts.push(`和弦整齐度 ${Math.round(coordination)}%，慢速对齐各音起点后再恢复速度`);
+  }
+  if (handAlignment !== undefined && handAlignment < 65) {
+    reasonParts.push(`双手同步 ${Math.round(handAlignment)}%，先用落键重音确认两手共同脉冲`);
   }
   if (reasonParts.length === 0) reasonParts.push("保持当前设置，继续巩固一致性");
 
@@ -202,6 +228,8 @@ export function recommendPractice(
       dynamicsScore: dynamics,
       durationCoverageScore: durationCoverage,
       releasePrecisionScore: releasePrecision,
+      coordinationScore: coordination,
+      handAlignmentScore: handAlignment,
     },
   };
 }

@@ -73,6 +73,30 @@ describe("practice analytics", () => {
     });
   });
 
+  it("distinguishes global timing from within-chord and cross-hand synchronization", () => {
+    const coordinated: PracticeEvent[] = [0, 1, 2, 3].flatMap((scoreTime, index) => ([
+      {
+        kind: "hit", note: 48 + index, hand: "left", velocity: 80,
+        scoreTime, timingMs: 80 + index * 5,
+      },
+      {
+        kind: "hit", note: 72 + index, hand: "right", velocity: 80,
+        scoreTime, timingMs: 100 + index * 5,
+      },
+    ] as PracticeEvent[]));
+    expect(summarizePractice(coordinated)).toMatchObject({
+      timingBiasMs: 97.5,
+      coordinationSamples: 4,
+      crossHandCoordinationSamples: 4,
+      meanChordSpreadMs: 20,
+      p95ChordSpreadMs: 20,
+      coordinationScore: 100,
+      meanHandOffsetMs: 20,
+      handAlignmentScore: 100,
+      looseChordSamples: 0,
+    });
+  });
+
   it("enriches a hit after key and pedal release without adding a fake attempt", () => {
     const analytics = new PracticeAnalytics({ scoreName: "Release", mode: "realtime", hand: "both", tempo: 1, transpose: 0 });
     const tokens = [60, 62, 64, 65].map((note, index) => analytics.record({

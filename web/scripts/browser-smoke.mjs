@@ -427,6 +427,10 @@ try {
       targetVelocity, scoreTime: .6 + index, timingMs: 12,
       targetDurationMs: 500, keyDurationMs: 500, soundingDurationMs: 500, sustained: false,
     }));
+    [2.15, 2.55, 2.95, 3.35].forEach((scoreTime, index) => {
+      emit({ kind: 'hit', note: 48 + index, hand: 'left', velocity: 82, scoreTime, timingMs: 0 });
+      emit({ kind: 'hit', note: 72 + index, hand: 'right', velocity: 84, scoreTime, timingMs: 20 });
+    });
     window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { seconds: 4.3 } }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const overview = [...document.querySelectorAll('#measure-overview .measure-heat')];
@@ -442,6 +446,8 @@ try {
       expression: document.querySelector('#insight-velocity')?.textContent,
       articulation: document.querySelector('#insight-articulation')?.textContent,
       pedal: document.querySelector('#insight-pedal')?.textContent,
+      coordination: document.querySelector('#insight-coordination')?.textContent,
+      handAlignment: document.querySelector('#insight-hand-alignment')?.textContent,
     };
     window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { clear: true } }));
     return JSON.stringify(result);
@@ -456,6 +462,9 @@ try {
   assert(measureHeat.articulation?.includes('覆盖 100%') && measureHeat.articulation?.includes('释放 100%')
       && measureHeat.pedal?.includes('未检测到踏板延音'),
     `pedal-aware articulation insight did not render: ${JSON.stringify(measureHeat)}`);
+  assert(measureHeat.coordination?.includes('100%') && measureHeat.coordination?.includes('平均 20')
+      && measureHeat.handAlignment?.includes('100%') && measureHeat.handAlignment?.includes('右手晚 20 ms'),
+    `chord and cross-hand synchronization insight did not render: ${JSON.stringify(measureHeat)}`);
   evaluate(`() => { document.querySelector('#reset-button')?.click(); return JSON.stringify(true); }`);
   await waitForCondition(
     `() => JSON.stringify(!document.querySelector('#circuit-start')?.disabled)`,
@@ -484,14 +493,14 @@ try {
   assert(circuit.storedMissions >= 1 && circuit.activeIndex === 0 && circuit.visible === 'grid',
     `weak-passage circuit was not generated and persisted: ${JSON.stringify(circuit)}`);
   assert(circuit.loop && circuit.loopStart === 0 && circuit.loopEnd === 8
-    && circuit.hand === 'right' && circuit.mode === 'wait' && circuit.assessmentEnabled,
+    && circuit.hand === 'right' && circuit.mode === 'realtime' && circuit.assessmentEnabled,
     `weak-passage circuit did not apply its first evidence-backed mission: ${JSON.stringify(circuit)}`);
   assert(circuit.activeLabel?.includes('M1–M2') && circuit.activeTarget?.includes('连续 2 次'),
     `weak-passage circuit does not expose a readable mastery contract: ${JSON.stringify(circuit)}`);
   evaluate(`() => {
     const emit = (detail) => window.dispatchEvent(new CustomEvent('notefall:test-practice-event', { detail }));
     for (let index = 0; index < 8; index += 1) {
-      emit({ kind: 'hit', note: 60 + index % 8, hand: 'right', velocity: 90, scoreTime: index + .2 });
+      emit({ kind: 'hit', note: 60 + index % 8, hand: 'right', velocity: 90, scoreTime: index + .2, timingMs: 20 });
     }
     document.querySelector('#circuit-assess')?.click();
     return JSON.stringify(true);

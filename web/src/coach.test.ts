@@ -118,6 +118,28 @@ describe("practice coach", () => {
     expect(recommendation.reason).toContain("无踏板释放 42%");
   });
 
+  it("holds tempo and explains loose chord and cross-hand synchronization", () => {
+    const events = Array.from({ length: 12 }, (_, index) => ({
+      kind: "hit" as const,
+      note: 48 + index,
+      hand: index % 2 ? "right" as const : "left" as const,
+      velocity: 80,
+      scoreTime: Math.floor(index / 2),
+      timingMs: index % 2 ? 90 : 0,
+    }));
+    const loose = session("Chords", 2_000, events, 1);
+    loose.summary.meanAbsTimingMs = 45;
+    loose.summary.coordinationScore = 33;
+    loose.summary.handAlignmentScore = 33;
+    const recommendation = recommendPractice([loose], "Chords", 10)!;
+    expect(recommendation).toMatchObject({
+      tempo: 0.95,
+      evidence: { coordinationScore: 33, handAlignmentScore: 33 },
+    });
+    expect(recommendation.reason).toContain("和弦整齐度 33%");
+    expect(recommendation.reason).toContain("双手同步 33%");
+  });
+
   it("does not infer a recommendation from another score", () => {
     expect(recommendPractice([session("Other", 1, [{ kind: "wrong", note: 60, velocity: 90, scoreTime: 0 }])], "Current", 10))
       .toBeUndefined();

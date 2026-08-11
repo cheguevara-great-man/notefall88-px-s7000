@@ -162,6 +162,36 @@ describe("adaptive weak-passage circuit", () => {
     expect(circuit.missions[0].reason).toContain("强弱轮廓");
   });
 
+  it("turns loose cross-hand chords into a realtime synchronization mission", () => {
+    const looseChords = [4.2, 4.8, 5.4, 6].flatMap((scoreTime, index): PracticeEvent[] => ([
+      hit(48 + index, scoreTime, "left", -10),
+      hit(72 + index, scoreTime, "right", 90),
+    ]));
+    const circuit = buildPracticeCircuit([makeSession(looseChords)], score, fingerprint)!;
+    const mission = circuit.missions[0];
+    expect(mission).toMatchObject({
+      hand: "both",
+      mode: "realtime",
+      targetCoordinationScore: 80,
+    });
+    expect(mission.reason).toContain("双手和弦落键");
+
+    const context = {
+      mode: mission.mode,
+      hand: mission.hand,
+      tempo: mission.tempo,
+      loop: { start: mission.start, end: mission.end },
+    };
+    const sampleCount = Math.max(4, Math.ceil(mission.minimumEvents / 2));
+    const attempt = Array.from({ length: sampleCount }, (_, index) => index).flatMap((index): PracticeEvent[] => ([
+      hit(48 + index % 12, mission.start + 0.25 + index * 0.4, "left", 0),
+      hit(72 + index % 12, mission.start + 0.25 + index * 0.4, "right", 100),
+    ]));
+    const assessment = assessPracticeMission(circuit, makeSession(attempt, context));
+    expect(assessment).toMatchObject({ outcome: "retry", coordinationScore: 22.2 });
+    expect(assessment.message).toContain("和弦整齐度需达到 80%");
+  });
+
   it("requires compatible settings, enough evidence and consecutive passes before advancing", () => {
     const weak = [
       { kind: "missed" as const, note: 48, hand: "left" as const, scoreTime: 4.5 },

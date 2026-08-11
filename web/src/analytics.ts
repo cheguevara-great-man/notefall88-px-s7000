@@ -1,6 +1,7 @@
 import type { Hand, HandSelection, PracticeMode, TimingProfile } from "./types";
 import { evaluateArticulation } from "./articulation";
 import type { ArticulationCompletion } from "./articulation";
+import { evaluateCoordination } from "./coordination";
 import { evaluateDynamics } from "./expression";
 import { storageFailureMessage } from "./storage";
 
@@ -71,6 +72,15 @@ export interface SessionSummary {
   meanKeyDurationRatio?: number;
   meanSoundingDurationRatio?: number;
   meanPedalExtensionMs?: number;
+  coordinationSamples?: number;
+  crossHandCoordinationSamples?: number;
+  looseChordSamples?: number;
+  meanChordSpreadMs?: number;
+  p95ChordSpreadMs?: number;
+  coordinationScore?: number;
+  /** Positive means the right hand tends to land after the left hand. */
+  meanHandOffsetMs?: number;
+  handAlignmentScore?: number;
   bestStreak: number;
   problemNotes: ProblemNote[];
 }
@@ -135,6 +145,7 @@ export function summarizePractice(events: PracticeEvent[]): SessionSummary {
           sustained: event.sustained,
         }]
   )));
+  const coordination = evaluateCoordination(events);
 
   let streak = 0;
   let bestStreak = 0;
@@ -196,6 +207,16 @@ export function summarizePractice(events: PracticeEvent[]): SessionSummary {
       meanSoundingDurationRatio: round(articulation.meanSoundingDurationRatio * 100),
       meanPedalExtensionMs: articulation.meanPedalExtensionMs === undefined
         ? undefined : round(articulation.meanPedalExtensionMs),
+    } : {}),
+    ...(coordination ? {
+      coordinationSamples: coordination.samples,
+      crossHandCoordinationSamples: coordination.crossHandSamples,
+      looseChordSamples: coordination.looseChordSamples,
+      meanChordSpreadMs: coordination.meanChordSpreadMs,
+      p95ChordSpreadMs: coordination.p95ChordSpreadMs,
+      coordinationScore: coordination.coordinationScore,
+      meanHandOffsetMs: coordination.meanHandOffsetMs,
+      handAlignmentScore: coordination.handAlignmentScore,
     } : {}),
     bestStreak,
     problemNotes,

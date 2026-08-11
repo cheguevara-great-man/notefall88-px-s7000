@@ -1,4 +1,5 @@
 import type { PracticeEvent } from "./analytics";
+import { coordinationSamples } from "./coordination";
 import { evaluateDynamics } from "./expression";
 
 export interface ReviewBucket {
@@ -12,6 +13,11 @@ export interface ReviewBucket {
   durationSamples: number;
   earlyReleaseSamples: number;
   meanDurationCoverage?: number;
+  coordinationSamples: number;
+  looseChordSamples: number;
+  meanChordSpreadMs?: number;
+  /** Positive means the right hand landed after the left hand. */
+  meanHandOffsetMs?: number;
 }
 
 export interface KeyReview {
@@ -41,6 +47,8 @@ export function buildPracticeReview(events: PracticeEvent[], duration: number, b
     missed: 0,
     durationSamples: 0,
     earlyReleaseSamples: 0,
+    coordinationSamples: 0,
+    looseChordSamples: 0,
   }));
   const timingTotals = Array.from({ length: count }, () => ({ total: 0, count: 0 }));
   const dynamics = evaluateDynamics(events.flatMap((event) => (
@@ -50,6 +58,12 @@ export function buildPracticeReview(events: PracticeEvent[], duration: number, b
   )));
   const dynamicsTotals = Array.from({ length: count }, () => ({ total: 0, count: 0 }));
   const durationTotals = Array.from({ length: count }, () => ({ total: 0, count: 0 }));
+  const coordinationTotals = Array.from({ length: count }, () => ({
+    spreadTotal: 0,
+    count: 0,
+    handOffsetTotal: 0,
+    handOffsetCount: 0,
+  }));
   const byKey = new Map<number, KeyReview>();
   for (const event of events) {
     const index = Math.max(0, Math.min(count - 1, Math.floor(event.scoreTime / span)));
@@ -83,6 +97,18 @@ export function buildPracticeReview(events: PracticeEvent[], duration: number, b
     }
     byKey.set(event.note, key);
   }
+  for (const sample of coordinationSamples(events)) {
+    const index = Math.max(0, Math.min(count - 1, Math.floor(sample.scoreTime / span)));
+    const total = coordinationTotals[index];
+    total.spreadTotal += sample.spreadMs;
+    total.count += 1;
+    buckets[index].coordinationSamples += 1;
+    if (sample.spreadMs > 70) buckets[index].looseChordSamples += 1;
+    if (sample.handOffsetMs !== undefined) {
+      total.handOffsetTotal += sample.handOffsetMs;
+      total.handOffsetCount += 1;
+    }
+  }
   buckets.forEach((bucket, index) => {
     const timing = timingTotals[index];
     if (timing.count > 0) bucket.timingBiasMs = Math.round(timing.total / timing.count);
@@ -90,6 +116,11 @@ export function buildPracticeReview(events: PracticeEvent[], duration: number, b
     if (expression.count > 0) bucket.meanAbsDynamicsError = Math.round(expression.total / expression.count);
     const duration = durationTotals[index];
     if (duration.count > 0) bucket.meanDurationCoverage = Math.round(duration.total / duration.count * 100);
+    const coordination = coordinationTotals[index];
+    if (coordination.count > 0) bucket.meanChordSpreadMs = Math.round(coordination.spreadTotal / coordination.count);
+    if (coordination.handOffsetCount > 0) {
+      bucket.meanHandOffsetMs = Math.round(coordination.handOffsetTotal / coordination.handOffsetCount);
+    }
   });
   return {
     buckets,
@@ -100,6 +131,7 @@ export function buildPracticeReview(events: PracticeEvent[], duration: number, b
 export function reviewBucketTone(bucket: ReviewBucket): "clean" | "warning" | "error" | "empty" {
   const errors = bucket.wrong + bucket.missed;
   if (errors > 0) return errors >= 2 || bucket.missed > 0 ? "error" : "warning";
+  if (bucket.looseChordSamples > 0) return "warning";
   if (bucket.earlyReleaseSamples > 0) return "warning";
   if ((bucket.meanAbsDynamicsError ?? 0) >= 16) return "warning";
   return bucket.hits > 0 ? "clean" : "empty";

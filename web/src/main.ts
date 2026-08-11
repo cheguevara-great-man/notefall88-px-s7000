@@ -725,6 +725,18 @@ function renderInsights(): void {
       ? `${summary.pedalExtendedSamples}/${summary.articulationSamples} 音由踏板延长 · 平均 +${summary.meanPedalExtensionMs?.toFixed(0) ?? "0"} ms`
       : "未检测到踏板延音"
     : "--";
+  required("insight-coordination").textContent = summary?.coordinationScore !== undefined
+    ? `${summary.coordinationScore.toFixed(0)}% · 平均 ${summary.meanChordSpreadMs?.toFixed(0) ?? "--"} / P95 ${summary.p95ChordSpreadMs?.toFixed(0) ?? "--"} ms`
+    : summary?.coordinationSamples
+      ? `${summary.coordinationSamples} 个完整和弦样本 · 平均 ${summary.meanChordSpreadMs?.toFixed(0) ?? "--"} ms`
+      : "--";
+  required("insight-hand-alignment").textContent = summary?.handAlignmentScore !== undefined
+    ? `${summary.handAlignmentScore.toFixed(0)}% · ${summary.meanHandOffsetMs === undefined || Math.abs(summary.meanHandOffsetMs) < 4
+      ? "两手几乎同时"
+      : `${summary.meanHandOffsetMs > 0 ? "右手晚" : "左手晚"} ${Math.abs(summary.meanHandOffsetMs).toFixed(0)} ms`}`
+    : summary?.crossHandCoordinationSamples
+      ? `${summary.crossHandCoordinationSamples} 个双手样本 · 继续积累`
+      : "--";
   required("insight-streak").textContent = String(summary?.bestStreak ?? 0);
   const problems = summary?.problemNotes ?? [];
   required("insight-problems").textContent = problems.length === 0
@@ -749,7 +761,7 @@ function renderPracticeReview(): void {
   practiceReview.dataset.active = String(eventCount > 0);
   reviewCaption.textContent = eventCount === 0
     ? "导入乐谱后，按时间与琴键定位本次问题。"
-    : `${historic ? `历史复盘 · ${new Date(historic.endedAt).toLocaleString("zh-CN")} · ` : ""}${eventCount} 个判定事件 · 绿=命中 · 黄=多余键或力度偏差 · 红=漏音或集中错误${compatibleHistoricReview ? "" : " · 导入同一乐谱后才能从此处循环"}`;
+    : `${historic ? `历史复盘 · ${new Date(historic.endedAt).toLocaleString("zh-CN")} · ` : ""}${eventCount} 个判定事件 · 绿=稳定 · 黄=力度/时值/和弦注意 · 红=错漏集中${compatibleHistoricReview ? "" : " · 导入同一乐谱后才能从此处循环"}`;
   reviewTimeline.replaceChildren(...review.buckets.map((bucket) => {
     const segment = document.createElement("button");
     segment.type = "button";
@@ -759,6 +771,8 @@ function renderPracticeReview(): void {
     const dynamicsWarning = (bucket.meanAbsDynamicsError ?? 0) >= 16;
     segment.dataset.marker = errors > 0
       ? `−${errors}`
+      : bucket.looseChordSamples > 0
+        ? `⇆${bucket.looseChordSamples}`
       : bucket.earlyReleaseSamples > 0
         ? `↘${bucket.earlyReleaseSamples}`
         : dynamicsWarning ? "◇" : bucket.hits > 0 ? `+${bucket.hits}` : "";
@@ -770,7 +784,12 @@ function renderPracticeReview(): void {
     const articulation = bucket.meanDurationCoverage === undefined
       ? ""
       : ` · 时值覆盖 ${bucket.meanDurationCoverage}%${bucket.earlyReleaseSamples > 0 ? `，提前收音 ${bucket.earlyReleaseSamples}` : ""}`;
-    segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}${dynamics}${articulation}`;
+    const coordination = bucket.meanChordSpreadMs === undefined
+      ? ""
+      : ` · 和弦展开 ${bucket.meanChordSpreadMs} ms${bucket.meanHandOffsetMs === undefined || Math.abs(bucket.meanHandOffsetMs) < 4
+        ? ""
+        : `，${bucket.meanHandOffsetMs > 0 ? "右手晚" : "左手晚"} ${Math.abs(bucket.meanHandOffsetMs)} ms`}`;
+    segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}${dynamics}${articulation}${coordination}`;
     return segment;
   }));
   reviewKeys.replaceChildren(...review.keys.map((key) => {
@@ -821,7 +840,10 @@ function renderPracticeHistory(): void {
       const articulation = session.summary.durationCoverageScore === undefined
         ? ""
         : ` · 时值 ${session.summary.durationCoverageScore.toFixed(0)}%`;
-      result.textContent = `${session.summary.accuracy.toFixed(0)}% · 命中 ${session.summary.hits} · 错漏 ${session.summary.wrong + session.summary.missed}${dynamics}${articulation}`;
+      const coordination = session.summary.coordinationScore === undefined
+        ? ""
+        : ` · 和弦 ${session.summary.coordinationScore.toFixed(0)}%`;
+      result.textContent = `${session.summary.accuracy.toFixed(0)}% · 命中 ${session.summary.hits} · 错漏 ${session.summary.wrong + session.summary.missed}${dynamics}${articulation}${coordination}`;
       const detail = document.createElement("small");
       const modeLabel = session.context.mode === "realtime" ? "实时" : session.context.mode === "follow" ? "跟随我" : "等我弹";
       const timing = session.summary.meanAbsTimingMs === undefined ? "无节奏判定" : `平均偏差 ${session.summary.meanAbsTimingMs.toFixed(0)} ms`;
@@ -866,7 +888,10 @@ function renderPracticeTrend(): void {
       ? ""
       : ` · 时值覆盖 ${point.durationCoverageScore.toFixed(0)}%${point.releasePrecisionScore === undefined
         ? "" : ` / 释放 ${point.releasePrecisionScore.toFixed(0)}%`}`;
-    bar.title = `${new Date(point.endedAt).toLocaleString("zh-CN")}：${point.accuracy.toFixed(0)}% · ${timing}${dynamics}${articulation} · ${point.events} 事件`;
+    const coordination = point.coordinationScore === undefined
+      ? ""
+      : ` · 和弦 ${point.coordinationScore.toFixed(0)}%${point.handAlignmentScore === undefined ? "" : ` / 双手 ${point.handAlignmentScore.toFixed(0)}%`}`;
+    bar.title = `${new Date(point.endedAt).toLocaleString("zh-CN")}：${point.accuracy.toFixed(0)}% · ${timing}${dynamics}${articulation}${coordination} · ${point.events} 事件`;
     bar.setAttribute("aria-label", bar.title);
     return bar;
   }));
@@ -882,8 +907,11 @@ function renderPracticeTrend(): void {
   const articulationDelta = trend.durationCoverageDelta === undefined
     ? "时值样本不足"
     : `${trend.durationCoverageDelta >= 0 ? "+" : ""}${trend.durationCoverageDelta.toFixed(1)}%`;
+  const coordinationDelta = trend.coordinationDelta === undefined
+    ? "同步样本不足"
+    : `${trend.coordinationDelta >= 0 ? "+" : ""}${trend.coordinationDelta.toFixed(1)}%`;
   trendCaption.textContent = `${trend.points.length} 次 · 最新 ${latest.accuracy.toFixed(0)}% · 准确率趋势 ${accuracyDelta}`;
-  trendDetail.textContent = `前后窗口对比：准确率 ${accuracyDelta}；绝对节奏偏差改善 ${timingDelta}；力度轮廓 ${dynamicsDelta}；时值覆盖 ${articulationDelta}。共 ${trend.totalEvents} 个判定事件。`;
+  trendDetail.textContent = `前后窗口对比：准确率 ${accuracyDelta}；绝对节奏偏差改善 ${timingDelta}；力度轮廓 ${dynamicsDelta}；时值覆盖 ${articulationDelta}；和弦同步 ${coordinationDelta}。共 ${trend.totalEvents} 个判定事件。`;
 }
 
 function renderCoach(): void {
@@ -914,7 +942,11 @@ function renderCoach(): void {
     ? ""
     : ` · 时值覆盖 ${recommendation.evidence.durationCoverageScore.toFixed(0)}%${recommendation.evidence.releasePrecisionScore === undefined
       ? "" : ` / 释放 ${recommendation.evidence.releasePrecisionScore.toFixed(0)}%`}`;
-  required("coach-evidence").textContent = `${recommendation.evidence.sessions} 次 / ${recommendation.evidence.events} 事件 · 历史准确率 ${recommendation.evidence.accuracy.toFixed(1)}%${dynamics}${articulation} · 置信度 ${confidence}`;
+  const coordination = recommendation.evidence.coordinationScore === undefined
+    ? ""
+    : ` · 和弦 ${recommendation.evidence.coordinationScore.toFixed(0)}%${recommendation.evidence.handAlignmentScore === undefined
+      ? "" : ` / 双手 ${recommendation.evidence.handAlignmentScore.toFixed(0)}%`}`;
+  required("coach-evidence").textContent = `${recommendation.evidence.sessions} 次 / ${recommendation.evidence.events} 事件 · 历史准确率 ${recommendation.evidence.accuracy.toFixed(1)}%${dynamics}${articulation}${coordination} · 置信度 ${confidence}`;
   renderPracticeCircuit();
 }
 
@@ -961,7 +993,8 @@ function renderPracticeCircuit(): void {
     const timing = mission.targetTimingMs === undefined ? "" : ` · 平均拍点 ≤ ${mission.targetTimingMs} ms`;
     const dynamics = mission.targetDynamicsScore === undefined ? "" : ` · 力度轮廓 ≥ ${mission.targetDynamicsScore}%`;
     const articulation = mission.targetDurationCoverage === undefined ? "" : ` · 时值覆盖 ≥ ${mission.targetDurationCoverage}%`;
-    target.textContent = `目标 ${mission.targetAccuracy}%${timing}${dynamics}${articulation} · 连续 ${mission.requiredPasses} 次 · 已 ${mission.consecutivePasses} 次`;
+    const coordination = mission.targetCoordinationScore === undefined ? "" : ` · 和弦整齐度 ≥ ${mission.targetCoordinationScore}%`;
+    target.textContent = `目标 ${mission.targetAccuracy}%${timing}${dynamics}${articulation}${coordination} · 连续 ${mission.requiredPasses} 次 · 已 ${mission.consecutivePasses} 次`;
     const reason = document.createElement("p");
     reason.textContent = mission.reason;
     copy.append(title, target, reason);
