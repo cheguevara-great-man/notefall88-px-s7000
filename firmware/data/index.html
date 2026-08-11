@@ -8,8 +8,8 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-BiQ1eUH3.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-B-adn1-l.css">
+    <script type="module" crossorigin src="./assets/index-BiLa2UsM.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-D4eO5cbW.css">
   </head>
   <body>
     <main class="app-shell">
@@ -200,6 +200,7 @@
           <div><dt>力度轮廓 / 基准</dt><dd id="insight-velocity">--</dd></div>
           <div><dt>时值覆盖 / 释放</dt><dd id="insight-articulation">--</dd></div>
           <div><dt>踏板延音</dt><dd id="insight-pedal">--</dd></div>
+          <div><dt>谱面踏板</dt><dd id="insight-score-pedal">--</dd></div>
           <div><dt>和弦整齐度</dt><dd id="insight-coordination">--</dd></div>
           <div><dt>双手同步</dt><dd id="insight-hand-alignment">--</dd></div>
           <div><dt>最佳连续命中</dt><dd id="insight-streak">0</dd></div>
@@ -469,6 +470,10 @@
           </label>
         </div>
         <div id="storage-summary" class="library-summary">正在检查浏览器存储…</div>
+        <section class="practice-queue-section" aria-labelledby="practice-queue-title">
+          <div class="review-head"><span id="practice-queue-title">今日练习</span><small>只在本机按全曲掌握度与复习间隔计算</small></div>
+          <div id="practice-queue" class="practice-queue"></div>
+        </section>
         <div id="library-summary" class="library-summary">正在打开曲库…</div>
         <div id="library-list" class="library-list"></div>
       </aside>

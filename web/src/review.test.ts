@@ -23,6 +23,7 @@ describe("practice review model", () => {
     const base = {
       start: 0, end: 1, durationSamples: 0, earlyReleaseSamples: 0,
       coordinationSamples: 0, looseChordSamples: 0,
+      pedalTargets: 0, pedalHits: 0, pedalMissed: 0, pedalUnexpected: 0,
     };
     expect(reviewBucketTone({ ...base, hits: 0, wrong: 0, missed: 0 })).toBe("empty");
     expect(reviewBucketTone({ ...base, hits: 1, wrong: 0, missed: 0 })).toBe("clean");
@@ -81,5 +82,19 @@ describe("practice review model", () => {
       { samples: 1, loose: 0, spread: 15, handOffset: 15 },
     ]);
     expect(reviewBucketTone(review.buckets[0])).toBe("warning");
+  });
+
+  it("places missed and mistimed score pedal actions on the review timeline", () => {
+    const review = buildPracticeReview([], 4, 4, [
+      { pass: 0, scoreTime: 1.2, targetValue: 127, action: "down", status: "missed" },
+      {
+        pass: 0, scoreTime: 2.2, targetValue: 0, action: "up", status: "hit",
+        actualScoreTime: 2.42, actualValue: 0, timingMs: 220,
+      },
+    ]);
+    expect(review.buckets[1]).toMatchObject({ pedalTargets: 1, pedalMissed: 1 });
+    expect(reviewBucketTone(review.buckets[1])).toBe("error");
+    expect(review.buckets[2]).toMatchObject({ pedalHits: 1, meanAbsPedalTimingMs: 220 });
+    expect(reviewBucketTone(review.buckets[2])).toBe("warning");
   });
 });

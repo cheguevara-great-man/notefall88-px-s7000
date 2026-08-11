@@ -10,6 +10,7 @@ export interface PracticeTrendPoint {
   releasePrecisionScore?: number;
   coordinationScore?: number;
   handAlignmentScore?: number;
+  pedalScore?: number;
   events: number;
 }
 
@@ -21,6 +22,7 @@ export interface PracticeTrend {
   dynamicsDelta?: number;
   durationCoverageDelta?: number;
   coordinationDelta?: number;
+  pedalDelta?: number;
 }
 
 function mean(values: number[]): number | undefined {
@@ -44,6 +46,7 @@ export function practiceTrend(sessions: PracticeSession[], maximum = 12): Practi
     releasePrecisionScore: session.summary.releasePrecisionScore,
     coordinationScore: session.summary.coordinationScore,
     handAlignmentScore: session.summary.handAlignmentScore,
+    pedalScore: session.summary.pedalScore,
     events: session.summary.hits + session.summary.wrong + session.summary.missed,
   }));
   const window = Math.min(3, Math.floor(points.length / 2));
@@ -59,6 +62,8 @@ export function practiceTrend(sessions: PracticeSession[], maximum = 12): Practi
   const lateCoverage = mean(late.flatMap((point) => point.durationCoverageScore === undefined ? [] : [point.durationCoverageScore]));
   const earlyCoordination = mean(early.flatMap((point) => point.coordinationScore === undefined ? [] : [point.coordinationScore]));
   const lateCoordination = mean(late.flatMap((point) => point.coordinationScore === undefined ? [] : [point.coordinationScore]));
+  const earlyPedal = mean(early.flatMap((point) => point.pedalScore === undefined ? [] : [point.pedalScore]));
+  const latePedal = mean(late.flatMap((point) => point.pedalScore === undefined ? [] : [point.pedalScore]));
   return {
     points,
     totalEvents: points.reduce((sum, point) => sum + point.events, 0),
@@ -69,5 +74,6 @@ export function practiceTrend(sessions: PracticeSession[], maximum = 12): Practi
     durationCoverageDelta: earlyCoverage === undefined || lateCoverage === undefined ? undefined : lateCoverage - earlyCoverage,
     coordinationDelta: earlyCoordination === undefined || lateCoordination === undefined
       ? undefined : lateCoordination - earlyCoordination,
+    pedalDelta: earlyPedal === undefined || latePedal === undefined ? undefined : latePedal - earlyPedal,
   };
 }

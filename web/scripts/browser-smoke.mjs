@@ -18,7 +18,7 @@ mkdirSync(ARTIFACTS, { recursive: true });
 const longScorePath = join(ARTIFACTS, "long-follow-study.musicxml");
 const dynamicsScorePath = join(ARTIFACTS, "dynamics-visual-probe.musicxml");
 const repeatCursorScorePath = join(ARTIFACTS, "repeat-cursor-probe.musicxml");
-writeFileSync(repeatCursorScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Repeat Cursor Probe</work-title></work><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><direction><sound tempo="60"/></direction><barline location="left"><repeat direction="forward"/></barline>${["C", "D", "E", "F"].map((step) => `<note><pitch><step>${step}</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("")}</measure><measure number="2">${["G", "A", "B", "C"].map((step, index) => `<note><pitch><step>${step}</step><octave>${index === 3 ? 5 : 4}</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("")}<barline location="right"><repeat direction="backward" times="2"/></barline></measure></part></score-partwise>`);
+writeFileSync(repeatCursorScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Repeat Cursor Probe</work-title></work><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><direction><sound tempo="60"/></direction><direction><direction-type><pedal type="start" line="yes"/></direction-type></direction><direction><direction-type><pedal type="stop" line="yes"/></direction-type><offset>2</offset></direction><barline location="left"><repeat direction="forward"/></barline>${["C", "D", "E", "F"].map((step) => `<note><pitch><step>${step}</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("")}</measure><measure number="2">${["G", "A", "B", "C"].map((step, index) => `<note><pitch><step>${step}</step><octave>${index === 3 ? 5 : 4}</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("")}<barline location="right"><repeat direction="backward" times="2"/></barline></measure></part></score-partwise>`);
 writeFileSync(dynamicsScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Dynamics Visual Probe</work-title></work><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><staves>2</staves><time><beats>4</beats><beat-type>4</beat-type></time><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes><direction><sound tempo="60"/></direction><forward><duration>2</duration></forward><direction><direction-type><dynamics><p/></dynamics></direction-type><staff>1</staff></direction><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note><backup><duration>1</duration></backup><direction><direction-type><dynamics><fff/></dynamics></direction-type><staff>2</staff></direction><note><pitch><step>C</step><octave>6</octave></pitch><duration>1</duration><voice>2</voice><type>quarter</type><staff>2</staff></note></measure></part></score-partwise>`);
 const longMeasures = Array.from({ length: 48 }, (_, index) => {
   const number = index + 1;
@@ -409,16 +409,25 @@ try {
     };
     const first = await sample(.01);
     const repeated = await sample(8.01);
+    const pedalCueTotal = Number(document.querySelector('#waterfall')?.dataset.pedalCueTotal ?? -1);
     window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { clear: true } }));
-    return JSON.stringify({ first, repeated });
+    return JSON.stringify({ first, repeated, pedalCueTotal });
   }`);
   assert(repeatCursor.first.occurrence === '0' && repeatCursor.repeated.occurrence === '2'
     && repeatCursor.first.actualMeasure === '1' && repeatCursor.repeated.actualMeasure === '1',
     `score cursor did not traverse the repeated playback occurrence: ${JSON.stringify(repeatCursor)}`);
   assert(Math.abs(repeatCursor.first.left - repeatCursor.repeated.left) < 2,
     `repeated written measure did not return to the same notation position: ${JSON.stringify(repeatCursor)}`);
+  assert(repeatCursor.pedalCueTotal === 4,
+    `expanded MusicXML pedal cues were not delivered to the waterfall: ${JSON.stringify(repeatCursor)}`);
   const measureHeat = evaluate(`async () => {
+    const mode = document.querySelector('#practice-mode');
+    mode.value = 'realtime';
+    mode.dispatchEvent(new Event('change', { bubbles: true }));
     const emit = (detail) => window.dispatchEvent(new CustomEvent('notefall:test-practice-event', { detail }));
+    const pedal = (detail) => window.dispatchEvent(new CustomEvent('notefall:test-pedal-control', { detail }));
+    pedal({ value: 127, scoreTime: .02, pass: 0 });
+    pedal({ value: 0, scoreTime: 2.02, pass: 0 });
     emit({ kind: 'hit', note: 60, hand: 'right', velocity: 92, scoreTime: .2, timingMs: 10 });
     emit({ kind: 'hit', note: 67, hand: 'right', velocity: 86, scoreTime: 4.2, timingMs: 140 });
     emit({ kind: 'missed', note: 69, hand: 'right', scoreTime: 4.4 });
@@ -446,8 +455,11 @@ try {
       expression: document.querySelector('#insight-velocity')?.textContent,
       articulation: document.querySelector('#insight-articulation')?.textContent,
       pedal: document.querySelector('#insight-pedal')?.textContent,
+      scorePedal: document.querySelector('#insight-score-pedal')?.textContent,
       coordination: document.querySelector('#insight-coordination')?.textContent,
       handAlignment: document.querySelector('#insight-hand-alignment')?.textContent,
+      practiceQueueItems: document.querySelectorAll('#practice-queue [data-score-id]').length,
+      practiceQueueText: document.querySelector('#practice-queue [data-score-id]')?.textContent,
     };
     window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { clear: true } }));
     return JSON.stringify(result);
@@ -462,9 +474,14 @@ try {
   assert(measureHeat.articulation?.includes('覆盖 100%') && measureHeat.articulation?.includes('释放 100%')
       && measureHeat.pedal?.includes('未检测到踏板延音'),
     `pedal-aware articulation insight did not render: ${JSON.stringify(measureHeat)}`);
+  assert(measureHeat.scorePedal?.includes('100%') && measureHeat.scorePedal?.includes('命中 2/2')
+      && measureHeat.scorePedal?.includes('20 ms'),
+    `score-aware pedal insight did not render: ${JSON.stringify(measureHeat)}`);
   assert(measureHeat.coordination?.includes('100%') && measureHeat.coordination?.includes('平均 20')
       && measureHeat.handAlignment?.includes('100%') && measureHeat.handAlignment?.includes('右手晚 20 ms'),
     `chord and cross-hand synchronization insight did not render: ${JSON.stringify(measureHeat)}`);
+  assert(measureHeat.practiceQueueItems >= 1 && measureHeat.practiceQueueText?.includes('分钟'),
+    `cross-score practice queue was not rendered from local library/history evidence: ${JSON.stringify(measureHeat)}`);
   evaluate(`() => { document.querySelector('#reset-button')?.click(); return JSON.stringify(true); }`);
   await waitForCondition(
     `() => JSON.stringify(!document.querySelector('#circuit-start')?.disabled)`,

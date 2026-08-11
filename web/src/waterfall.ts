@@ -10,6 +10,8 @@ import { visualPalette } from "./visual-theme";
 import type { VisualTheme } from "./visual-theme";
 import { buildChordGuides } from "./chord-guide";
 import type { ChordGuide } from "./chord-guide";
+import { buildPedalCues } from "./pedal-cue";
+import type { PedalCue } from "./pedal-cue";
 
 export type WaterfallFeedbackKind = "hit" | "wrong" | "missed" | "release-good" | "release-early";
 
@@ -35,6 +37,7 @@ export class WaterfallRenderer {
   private previewSeconds = 4.2;
   private feedback: WaterfallFeedback[] = [];
   private chordGuides: ChordGuide[] = [];
+  private pedalCues: PedalCue[] = [];
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext("2d");
@@ -47,6 +50,8 @@ export class WaterfallRenderer {
     this.phraseMap = buildPhraseMap(score?.notes ?? [], score?.duration ?? 0);
     this.dynamicsProfile = buildDynamicsProfile(score?.notes ?? []);
     this.chordGuides = buildChordGuides(score?.notes ?? []);
+    this.pedalCues = buildPedalCues(score?.pedalEvents);
+    this.canvas.dataset.pedalCueTotal = String(this.pedalCues.length);
   }
 
   setState(pressed: Set<number>, expected: Set<number>, wrong: Set<number>): void {
@@ -172,6 +177,8 @@ export class WaterfallRenderer {
       this.drawChordGuides(scoreTime, visibleSeconds, keyboardTop, rollHeight, width, palette);
     }
 
+    this.drawPedalCues(scoreTime, visibleSeconds, keyboardTop, rollHeight, width);
+
     this.drawPhraseMap(scoreTime, visibleSeconds, keyboardTop, width, palette);
 
     if (this.loop) {
@@ -182,6 +189,60 @@ export class WaterfallRenderer {
     this.drawStrikeZone(keyboardTop, width, palette.strike);
     this.drawFeedback(keyboardTop, width, palette);
     this.drawKeyboard(keyboardTop, keyboardHeight, width, palette);
+  }
+
+  private drawPedalCues(
+    scoreTime: number,
+    visibleSeconds: number,
+    keyboardTop: number,
+    rollHeight: number,
+    width: number,
+  ): void {
+    const visible = this.pedalCues.filter((cue) => {
+      const delta = cue.time - scoreTime;
+      return delta >= -0.12 && delta <= visibleSeconds;
+    });
+    this.canvas.dataset.pedalCues = String(visible.length);
+    if (visible.length === 0) return;
+    const ctx = this.context;
+    const density = Math.max(1, Math.min(2, width / 1200));
+    const laneX = 8 * density;
+    const laneWidth = Math.max(58 * density, Math.min(104 * density, width * 0.078));
+    const labelSize = Math.max(10 * density, Math.min(15 * density, width * 0.009));
+    ctx.save();
+    for (const cue of visible) {
+      const delta = cue.time - scoreTime;
+      const y = keyboardTop - (delta / visibleSeconds) * rollHeight;
+      const imminent = 1 - Math.min(1, Math.max(0, delta) / Math.min(1.25, visibleSeconds));
+      const color = cue.kind === "up" ? "#79d8ff"
+        : cue.kind === "change" ? "#f5a9ff"
+          : cue.kind === "level" ? "#a8edb8" : "#ffd24c";
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.12 + imminent * 0.28;
+      ctx.lineWidth = Math.max(1, density);
+      ctx.setLineDash([5 * density, 7 * density]);
+      ctx.beginPath();
+      ctx.moveTo(laneX + laneWidth, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.88 + imminent * 0.12;
+      ctx.fillStyle = "rgba(3, 6, 12, .9)";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1.2, 1.4 * density);
+      const boxHeight = labelSize * 1.75;
+      const top = Math.max(1, Math.min(keyboardTop - boxHeight - 1, y - boxHeight / 2));
+      ctx.beginPath();
+      ctx.roundRect(laneX, top, laneWidth, boxHeight, boxHeight / 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.font = `800 ${labelSize}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(cue.label, laneX + laneWidth / 2, top + boxHeight / 2, laneWidth - 10 * density);
+    }
+    ctx.restore();
   }
 
   private drawChordGuides(

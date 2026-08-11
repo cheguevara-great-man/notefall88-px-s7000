@@ -5,7 +5,7 @@ import {
 } from "@xmldom/xmldom";
 import { unzipSync } from "fflate";
 
-import type { Hand, ParsedScore, ScoreNote } from "./types";
+import type { Hand, ParsedScore, ScoreNote, ScorePedalAction, ScorePedalEvent } from "./types";
 
 const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
 const ZIP_CENTRAL_SIGNATURE = 0x02014B50;
@@ -116,6 +116,7 @@ interface PartMeasure {
   beatGroups: BeatGroup[];
   notes: (Omit<QuarterNote, "start" | "end"> & { start: number; end: number })[];
   tempos: { offset: number; bpm?: number; ratio?: number }[];
+  pedals: { offset: number; value: number; action: ScorePedalAction }[];
 }
 
 interface MeasureControl {
@@ -551,6 +552,41 @@ function parseTempo(direction: XmlElement): { bpm?: number; ratio?: number } | u
   return undefined;
 }
 
+function pedalValue(raw: string | null): number | undefined {
+  if (raw === null) return undefined;
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "yes") return 127;
+  if (normalized === "no") return 0;
+  const numeric = Number(normalized);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return undefined;
+  return Math.round(numeric * 1.27);
+}
+
+function pedalEvents(element: XmlElement): Array<{ value: number; action: ScorePedalAction }> {
+  const sound = element.tagName === "sound" ? element : descendants(element, "sound")[0];
+  const fromSound = pedalValue(sound?.getAttribute("damper-pedal") ?? null);
+  // MusicXML recommends playback-oriented sound data when both encodings exist.
+  if (fromSound !== undefined) {
+    return [{
+      value: fromSound,
+      action: fromSound === 0 ? "up" : fromSound === 127 ? "down" : "level",
+    }];
+  }
+  if (element.tagName === "sound") return [];
+  const result: Array<{ value: number; action: ScorePedalAction }> = [];
+  for (const pedal of descendants(element, "pedal")) {
+    const type = pedal.getAttribute("type")?.toLowerCase();
+    if (type === "start" || type === "resume") result.push({ value: 127, action: "down" });
+    else if (type === "stop" || type === "discontinue") result.push({ value: 0, action: "up" });
+    else if (type === "change") result.push(
+      { value: 0, action: "change-up" },
+      { value: 127, action: "change-down" },
+    );
+    // continue has no state transition; sostenuto belongs to CC66, not CC64.
+  }
+  return result;
+}
+
 function parsePart(part: XmlElement, partName: string): PartMeasure[] {
   let divisions = 1;
   let activeBeatGroups: BeatGroup[] = [{ beats: 4, beatType: 4 }];
@@ -566,6 +602,7 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
     let lastNoteStart = 0;
     const notes: PartMeasure["notes"] = [];
     const tempos: PartMeasure["tempos"] = [];
+    const pedals: PartMeasure["pedals"] = [];
 
     for (const event of children(measure)) {
       if (event.tagName === "attributes") {
@@ -593,6 +630,8 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
       }
 
       if (event.tagName === "direction") {
+        const directionOffset = Math.max(0, cursor + directNumber(event, "offset", 0) / divisions);
+        for (const pedal of pedalEvents(event)) pedals.push({ offset: directionOffset, ...pedal });
         const tempo = parseTempo(event);
         if (tempo) {
           const sound = descendants(event, "sound")[0];
@@ -615,6 +654,8 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
       }
 
       if (event.tagName === "sound") {
+        const soundOffset = Math.max(0, cursor + directNumber(event, "offset", 0) / divisions);
+        for (const pedal of pedalEvents(event)) pedals.push({ offset: soundOffset, ...pedal });
         const bpm = Number(event.getAttribute("tempo"));
         if (Number.isFinite(bpm) && bpm > 0) {
           tempos.push({
@@ -669,6 +710,7 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
       beatGroups: activeBeatGroups.map((group) => ({ ...group })),
       notes,
       tempos,
+      pedals,
     });
   }
   return result;
@@ -779,6 +821,7 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
 
   const quarterNotes: QuarterNote[] = [];
   const tempos: TempoEvent[] = [];
+  const quarterPedals: Array<{ quarter: number; value: number; action: ScorePedalAction }> = [];
   for (const part of parts) {
     measureOrder.forEach((writtenMeasureIndex, playbackMeasureIndex) => {
       const measure = part.measures[writtenMeasureIndex];
@@ -793,6 +836,11 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
         quarter: measureStart + tempo.offset,
         bpm: tempo.bpm,
         ratio: tempo.ratio,
+      }));
+      measure.pedals.forEach((pedal) => quarterPedals.push({
+        quarter: measureStart + pedal.offset,
+        value: pedal.value,
+        action: pedal.action,
       }));
     });
   }
@@ -809,6 +857,25 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
     scoreQuarterEnd: note.end,
   })).sort((a, b) => a.start - b.start || a.note - b.note);
   const measureStarts = measureQuarterStarts.slice(0, -1).map(toSeconds);
+  const pedalRank: Record<ScorePedalAction, number> = {
+    "change-up": 0,
+    up: 1,
+    level: 2,
+    down: 3,
+    "change-down": 4,
+  };
+  const pedalEventsByIdentity = new Map<string, ScorePedalEvent>();
+  for (const pedal of quarterPedals) {
+    const identity = `${pedal.quarter.toFixed(8)}:${pedal.action}:${pedal.value}`;
+    pedalEventsByIdentity.set(identity, {
+      time: toSeconds(pedal.quarter),
+      value: pedal.value,
+      action: pedal.action,
+      scoreQuarter: pedal.quarter,
+    });
+  }
+  const scorePedalEvents = [...pedalEventsByIdentity.values()]
+    .sort((first, second) => first.time - second.time || pedalRank[first.action] - pedalRank[second.action]);
   const beatMap = measureOrder.flatMap((writtenMeasureIndex, playbackMeasureIndex) => {
     const measure = parts.find((part) => part.measures[writtenMeasureIndex])?.measures[writtenMeasureIndex];
     if (!measure || measure.beatGroups.length === 0) return [];
@@ -850,6 +917,7 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
     measureQuarterStarts,
     measureMap: measureOrder,
     beatMap,
+    pedalEvents: scorePedalEvents.length > 0 ? scorePedalEvents : undefined,
   };
 }
 

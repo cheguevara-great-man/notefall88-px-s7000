@@ -88,6 +88,38 @@ describe("MusicXML parser", () => {
     expect(score.notes.map((note) => note.end - note.start)).toEqual([0.5, 0.5, 0.5, 0.5]);
   });
 
+  it("expands damper pedal symbols, changes and playback levels through repeats", () => {
+    const score = parseMusicXml(`<?xml version="1.0"?><score-partwise version="4.0">
+      <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+      <part id="P1">
+        <measure number="1">
+          <attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+          <direction><direction-type><pedal type="start"/></direction-type></direction>
+          <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration></note>
+          <direction><offset>1</offset><direction-type><pedal type="change"/></direction-type></direction>
+          <note><rest/><duration>6</duration></note>
+          <barline location="right"><repeat direction="backward" times="2"/></barline>
+        </measure>
+        <measure number="2">
+          <direction><direction-type><pedal type="stop"/></direction-type><sound damper-pedal="50"/></direction>
+          <note><pitch><step>D</step><octave>4</octave></pitch><duration>8</duration></note>
+          <sound damper-pedal="no"/>
+        </measure>
+      </part>
+    </score-partwise>`, "pedal.musicxml");
+    expect(score.pedalEvents).toEqual([
+      { time: 0, value: 127, action: "down", scoreQuarter: 0 },
+      { time: 0.75, value: 0, action: "change-up", scoreQuarter: 1.5 },
+      { time: 0.75, value: 127, action: "change-down", scoreQuarter: 1.5 },
+      { time: 2, value: 127, action: "down", scoreQuarter: 4 },
+      { time: 2.75, value: 0, action: "change-up", scoreQuarter: 5.5 },
+      { time: 2.75, value: 127, action: "change-down", scoreQuarter: 5.5 },
+      // sound damper-pedal overrides the visual stop at the same direction.
+      { time: 4, value: 64, action: "level", scoreQuarter: 8 },
+      { time: 6, value: 0, action: "up", scoreQuarter: 12 },
+    ]);
+  });
+
   it("honors metronome units, additive/composite meters, dynamics and silent cues", () => {
     const score = parseMusicXml(fixture("meter-tempo-dynamics.musicxml"), "fixture.xml");
     expect(score.notes.map((note) => [note.note, note.velocity, note.hand])).toEqual([

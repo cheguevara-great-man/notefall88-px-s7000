@@ -3,6 +3,9 @@ import { evaluateArticulation } from "./articulation";
 import type { ArticulationCompletion } from "./articulation";
 import { evaluateCoordination } from "./coordination";
 import { evaluateDynamics } from "./expression";
+import { evaluatePedal, summarizePedalAssessments } from "./pedal";
+import type { PedalAssessment, PedalControlSample, PedalEvaluation } from "./pedal";
+import type { ScorePedalEvent } from "./types";
 import { storageFailureMessage } from "./storage";
 
 const DB_VERSION = 1;
@@ -81,6 +84,16 @@ export interface SessionSummary {
   /** Positive means the right hand tends to land after the left hand. */
   meanHandOffsetMs?: number;
   handAlignmentScore?: number;
+  pedalTargets?: number;
+  pedalMatched?: number;
+  pedalMissed?: number;
+  pedalUnexpected?: number;
+  pedalAccuracy?: number;
+  pedalTimingMs?: number;
+  pedalTimingBiasMs?: number;
+  pedalValueError?: number;
+  pedalTimingScore?: number;
+  pedalScore?: number;
   bestStreak: number;
   problemNotes: ProblemNote[];
 }
@@ -93,6 +106,8 @@ export interface PracticeSession {
   context: PracticeSessionContext;
   summary: SessionSummary;
   events: PracticeEvent[];
+  pedalControls?: PedalControlSample[];
+  pedalAssessments?: PedalAssessment[];
   droppedEvents: number;
 }
 
@@ -115,7 +130,7 @@ function percentile(values: number[], proportion: number): number | undefined {
   return sorted[Math.max(0, Math.min(sorted.length - 1, index))];
 }
 
-export function summarizePractice(events: PracticeEvent[]): SessionSummary {
+export function summarizePractice(events: PracticeEvent[], pedal?: PedalEvaluation): SessionSummary {
   const hits = events.filter((event) => event.kind === "hit");
   const wrong = events.filter((event) => event.kind === "wrong");
   const missed = events.filter((event) => event.kind === "missed");
@@ -218,6 +233,18 @@ export function summarizePractice(events: PracticeEvent[]): SessionSummary {
       meanHandOffsetMs: coordination.meanHandOffsetMs,
       handAlignmentScore: coordination.handAlignmentScore,
     } : {}),
+    ...(pedal ? {
+      pedalTargets: pedal.targets,
+      pedalMatched: pedal.matched,
+      pedalMissed: pedal.missed,
+      pedalUnexpected: pedal.unexpected,
+      pedalAccuracy: pedal.accuracy,
+      pedalTimingMs: pedal.meanAbsTimingMs,
+      pedalTimingBiasMs: pedal.timingBiasMs,
+      pedalValueError: pedal.meanAbsValueError,
+      pedalTimingScore: pedal.timingScore,
+      pedalScore: pedal.pedalScore,
+    } : {}),
     bestStreak,
     problemNotes,
   };
@@ -230,6 +257,9 @@ function uniqueId(): string {
 
 export class PracticeAnalytics {
   private readonly events: PracticeEvent[] = [];
+  private readonly pedalControls: PedalControlSample[] = [];
+  private readonly completedPedalPasses = new Map<number, number>();
+  private pedalProgress = { pass: 0, through: 0 };
   private droppedEvents = 0;
   readonly context: PracticeSessionContext;
   readonly startedAt: number;
@@ -237,9 +267,52 @@ export class PracticeAnalytics {
   constructor(
     context: PracticeSessionContext,
     startedAt = Date.now(),
+    private readonly pedalTargets: ScorePedalEvent[] = [],
   ) {
     this.context = structuredClone(context);
     this.startedAt = startedAt;
+  }
+
+  recordPedal(value: number, scoreTime: number, pass = 0): boolean {
+    if (this.pedalControls.length >= MAX_EVENTS_PER_SESSION || !Number.isFinite(scoreTime)) {
+      this.droppedEvents += 1;
+      return false;
+    }
+    this.pedalControls.push({
+      value: Math.max(0, Math.min(127, Math.round(value))),
+      scoreTime,
+      pass: Math.max(0, Math.floor(pass)),
+    });
+    return true;
+  }
+
+  completePedalPass(pass: number, through: number): void {
+    if (Number.isFinite(through)) this.completedPedalPasses.set(Math.max(0, Math.floor(pass)), through);
+  }
+
+  setPedalProgress(pass: number, through: number): void {
+    if (!Number.isFinite(through)) return;
+    this.pedalProgress = { pass: Math.max(0, Math.floor(pass)), through };
+  }
+
+  pedalAssessmentSnapshot(): PedalEvaluation | undefined {
+    if (this.pedalTargets.length === 0) return undefined;
+    const assessments: PedalAssessment[] = [];
+    const progress = new Map(this.completedPedalPasses);
+    progress.set(this.pedalProgress.pass, Math.max(progress.get(this.pedalProgress.pass) ?? 0, this.pedalProgress.through));
+    const rangeStart = this.context.loop?.start ?? 0;
+    for (const [pass, through] of [...progress].sort(([a], [b]) => a - b)) {
+      const rangeEnd = Math.min(this.context.loop?.end ?? through, through);
+      const dueEnd = this.completedPedalPasses.has(pass)
+        ? rangeEnd
+        : rangeEnd - 0.45 * this.context.tempo;
+      const targets = this.pedalTargets.filter((target) => target.time >= rangeStart - 1e-6
+        && target.time <= dueEnd + 1e-6);
+      if (targets.length === 0) continue;
+      const result = evaluatePedal(targets, this.pedalControls, this.context.tempo, pass);
+      if (result) assessments.push(...result.assessments);
+    }
+    return assessments.length > 0 ? summarizePedalAssessments(assessments) : undefined;
   }
 
   record(event: PracticeEvent): number | undefined {
@@ -266,28 +339,35 @@ export class PracticeAnalytics {
   }
 
   hasEvents(): boolean {
-    return this.events.length > 0 || this.droppedEvents > 0;
+    return this.events.length > 0 || this.pedalControls.length > 0 || this.droppedEvents > 0;
   }
 
   snapshot(): SessionSummary {
-    return summarizePractice(this.events);
+    return summarizePractice(this.events, this.pedalAssessmentSnapshot());
   }
 
   eventsSnapshot(): PracticeEvent[] {
     return this.events.map((event) => ({ ...event }));
   }
 
+  pedalControlsSnapshot(): PedalControlSample[] {
+    return this.pedalControls.map((sample) => ({ ...sample }));
+  }
+
   finish(endedAt = Date.now()): PracticeSession | undefined {
     if (!this.hasEvents()) return undefined;
     const safeEnd = Math.max(this.startedAt, endedAt);
+    const pedal = this.pedalAssessmentSnapshot();
     return {
       id: uniqueId(),
       startedAt: this.startedAt,
       endedAt: safeEnd,
       elapsedMs: safeEnd - this.startedAt,
       context: structuredClone(this.context),
-      summary: this.snapshot(),
+      summary: summarizePractice(this.events, pedal),
       events: this.events.map((event) => ({ ...event })),
+      ...(this.pedalControls.length > 0 ? { pedalControls: this.pedalControlsSnapshot() } : {}),
+      ...(pedal ? { pedalAssessments: pedal.assessments } : {}),
       droppedEvents: this.droppedEvents,
     };
   }
@@ -313,6 +393,8 @@ function validSession(value: unknown): value is PracticeSession {
       || (typeof session.context.scoreFingerprint === "string"
         && /^[0-9a-f]{64}$/.test(session.context.scoreFingerprint)))
     && Array.isArray(session.events)
+    && (session.pedalControls === undefined || Array.isArray(session.pedalControls))
+    && (session.pedalAssessments === undefined || Array.isArray(session.pedalAssessments))
     && !!session.summary;
 }
 

@@ -140,6 +140,21 @@ describe("practice coach", () => {
     expect(recommendation.reason).toContain("双手同步 33%");
   });
 
+  it("keeps pedal remediation in realtime and blocks a tempo increase", () => {
+    const events = Array.from({ length: 12 }, (_, index) => ({
+      kind: "hit" as const, note: 60 + index % 4, hand: "right" as const,
+      velocity: 80, scoreTime: index, timingMs: 20,
+    }));
+    const weakPedal = session("Pedal", 2_000, events, 1);
+    weakPedal.summary.meanAbsTimingMs = 20;
+    weakPedal.summary.pedalScore = 42;
+    const recommendation = recommendPractice([weakPedal], "Pedal", 15)!;
+    expect(recommendation).toMatchObject({
+      mode: "realtime", tempo: 0.95, evidence: { pedalScore: 42 },
+    });
+    expect(recommendation.reason).toContain("谱面踏板 42%");
+  });
+
   it("does not infer a recommendation from another score", () => {
     expect(recommendPractice([session("Other", 1, [{ kind: "wrong", note: 60, velocity: 90, scoreTime: 0 }])], "Current", 10))
       .toBeUndefined();

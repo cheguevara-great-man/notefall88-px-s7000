@@ -59,7 +59,8 @@ public class NativeWaterfallPlugin extends Plugin {
     public void setScore(PluginCall call) {
         JSArray notes = call.getArray("notes");
         JSArray beats = call.getArray("beats");
-        onUi(() -> ensureView().setScore(notes, beats));
+        JSArray pedals = call.getArray("pedals");
+        onUi(() -> ensureView().setScore(notes, beats, pedals));
         call.resolve();
     }
 
@@ -176,6 +177,20 @@ public class NativeWaterfallPlugin extends Plugin {
         }
     }
 
+    private static final class PedalCue {
+        final double time;
+        final int value;
+        final String kind;
+        final String label;
+
+        PedalCue(double time, int value, String kind, String label) {
+            this.time = time;
+            this.value = value;
+            this.kind = kind;
+            this.label = label;
+        }
+    }
+
     private static final class Feedback {
         final String kind;
         final int note;
@@ -201,6 +216,7 @@ public class NativeWaterfallPlugin extends Plugin {
         private final Path chordPath = new Path();
         private final List<NoteBar> notes = new ArrayList<>();
         private final List<BeatLine> beats = new ArrayList<>();
+        private final List<PedalCue> pedals = new ArrayList<>();
         private final List<Feedback> feedback = new ArrayList<>();
         private final KeyGeometry[] keys = new KeyGeometry[128];
         private final boolean[] pressed = new boolean[128];
@@ -256,9 +272,10 @@ public class NativeWaterfallPlugin extends Plugin {
             invalidate();
         }
 
-        void setScore(JSArray source, JSArray beatSource) {
+        void setScore(JSArray source, JSArray beatSource, JSArray pedalSource) {
             notes.clear();
             beats.clear();
+            pedals.clear();
             if (source != null) {
                 for (int index = 0; index < source.length(); index += 1) {
                     try {
@@ -286,8 +303,25 @@ public class NativeWaterfallPlugin extends Plugin {
                     }
                 }
             }
+            if (pedalSource != null) {
+                for (int index = 0; index < pedalSource.length(); index += 1) {
+                    try {
+                        JSONObject item = pedalSource.getJSONObject(index);
+                        double time = item.getDouble("time");
+                        int value = Math.max(0, Math.min(127, item.optInt("value", 0)));
+                        String kind = item.optString("kind", "level");
+                        if (!"down".equals(kind) && !"up".equals(kind)
+                            && !"change".equals(kind) && !"level".equals(kind)) kind = "level";
+                        String label = item.optString("label", "PED");
+                        if (time >= 0 && !label.isEmpty()) pedals.add(new PedalCue(time, value, kind, label));
+                    } catch (JSONException ignored) {
+                        // Invalid pedal metadata must not discard an otherwise playable score.
+                    }
+                }
+            }
             notes.sort(Comparator.comparingDouble(note -> note.start));
             beats.sort(Comparator.comparingDouble(beat -> beat.time));
+            pedals.sort(Comparator.comparingDouble(pedal -> pedal.time));
             buildDynamicsProfile();
             buildPhraseMap();
             invalidate();
@@ -413,6 +447,7 @@ public class NativeWaterfallPlugin extends Plugin {
             drawTimeline(canvas, width, keyboardTop, now);
             drawNotes(canvas, width, keyboardTop, now);
             drawChordGuides(canvas, width, keyboardTop, now);
+            drawPedalCues(canvas, width, keyboardTop, now);
             drawPhraseMap(canvas, width, keyboardTop, now);
             drawLoop(canvas, width, keyboardTop, now, loopStart, "A");
             drawLoop(canvas, width, keyboardTop, now, loopEnd, "B");
@@ -420,6 +455,56 @@ public class NativeWaterfallPlugin extends Plugin {
             drawFeedback(canvas, width, keyboardTop);
             drawKeyboard(canvas, width, keyboardTop, keyboardHeight);
             if ((running || !feedback.isEmpty()) && getVisibility() == View.VISIBLE) postInvalidateOnAnimation();
+        }
+
+        private void drawPedalCues(Canvas canvas, int width, float keyboardTop, double now) {
+            if (pedals.isEmpty()) return;
+            float density = getResources().getDisplayMetrics().density;
+            float laneX = 8 * density;
+            float laneWidth = Math.max(58 * density, Math.min(104 * density, width * .078f));
+            float labelSize = Math.max(10 * density, Math.min(15 * density, width * .009f));
+            float boxHeight = labelSize * 1.75f;
+            float[] dash = { 5 * density, 7 * density };
+            for (PedalCue cue : pedals) {
+                double delta = cue.time - now;
+                if (delta < -.12 || delta > visibleSeconds) continue;
+                float y = keyboardTop - (float) (delta / visibleSeconds) * keyboardTop;
+                float imminent = 1 - Math.min(1, Math.max(0, (float) delta) / (float) Math.min(1.25, visibleSeconds));
+                int color = "up".equals(cue.kind) ? Color.rgb(121, 216, 255)
+                    : "change".equals(cue.kind) ? Color.rgb(245, 169, 255)
+                    : "level".equals(cue.kind) ? Color.rgb(168, 237, 184)
+                    : Color.rgb(255, 210, 76);
+
+                stroke.setColor(color);
+                stroke.setAlpha((int) (255 * (.12f + imminent * .28f)));
+                stroke.setStrokeWidth(Math.max(1, density));
+                for (float x = laneX + laneWidth; x < width; x += dash[0] + dash[1]) {
+                    canvas.drawLine(x, y, Math.min(width, x + dash[0]), y, stroke);
+                }
+
+                float top = Math.max(1, Math.min(keyboardTop - boxHeight - 1, y - boxHeight / 2));
+                paint.setColor(Color.argb(230, 3, 6, 12));
+                paint.setAlpha(255);
+                canvas.drawRoundRect(new RectF(laneX, top, laneX + laneWidth, top + boxHeight),
+                    boxHeight / 2, boxHeight / 2, paint);
+                stroke.setColor(color);
+                stroke.setAlpha((int) (255 * (.88f + imminent * .12f)));
+                stroke.setStrokeWidth(Math.max(1.2f, 1.4f * density));
+                canvas.drawRoundRect(new RectF(laneX, top, laneX + laneWidth, top + boxHeight),
+                    boxHeight / 2, boxHeight / 2, stroke);
+                paint.setColor(color);
+                paint.setAlpha(255);
+                paint.setTextSize(labelSize);
+                paint.setTextAlign(Paint.Align.CENTER);
+                paint.setFakeBoldText(true);
+                Paint.FontMetrics metrics = paint.getFontMetrics();
+                float baseline = top + boxHeight / 2 - (metrics.ascent + metrics.descent) / 2;
+                canvas.drawText(cue.label, laneX + laneWidth / 2, baseline, paint);
+                paint.setFakeBoldText(false);
+                paint.setTextAlign(Paint.Align.LEFT);
+            }
+            stroke.setAlpha(255);
+            paint.setAlpha(255);
         }
 
         private float phraseProgress(double time) {

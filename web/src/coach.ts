@@ -22,6 +22,7 @@ export interface PracticeRecommendation {
     releasePrecisionScore?: number;
     coordinationScore?: number;
     handAlignmentScore?: number;
+    pedalScore?: number;
   };
 }
 
@@ -33,6 +34,7 @@ function recommendedTempo(
   durationCoverageScore?: number,
   releasePrecisionScore?: number,
   coordinationScore?: number,
+  pedalScore?: number,
 ): number {
   const normalized = normalizeTempo(current);
   const delta = accuracy < 70
@@ -42,13 +44,15 @@ function recommendedTempo(
       : ((dynamicsScore !== undefined && dynamicsScore < 60)
           || (durationCoverageScore !== undefined && durationCoverageScore < 75)
           || (releasePrecisionScore !== undefined && releasePrecisionScore < 60)
-          || (coordinationScore !== undefined && coordinationScore < 65))
+          || (coordinationScore !== undefined && coordinationScore < 65)
+          || (pedalScore !== undefined && pedalScore < 65))
         ? -0.05
         : (accuracy >= 96 && (timingMs === undefined || timingMs < 65)
           && (dynamicsScore === undefined || dynamicsScore >= 80)
           && (durationCoverageScore === undefined || durationCoverageScore >= 90)
           && (releasePrecisionScore === undefined || releasePrecisionScore >= 75)
-          && (coordinationScore === undefined || coordinationScore >= 85)) ? 0.05 : 0;
+          && (coordinationScore === undefined || coordinationScore >= 85)
+          && (pedalScore === undefined || pedalScore >= 85)) ? 0.05 : 0;
   return normalizeTempo(Math.max(MIN_TEMPO, Math.min(MAX_TEMPO, normalized + delta)));
 }
 
@@ -101,6 +105,17 @@ function hardestWindow(
         } else if (event.kind === "wrong") {
           errors += 1;
           errorTimeSum += event.scoreTime;
+          errorEvents += 1;
+        }
+      }
+      for (const assessment of session.pedalAssessments ?? []) {
+        if (assessment.scoreTime < start || assessment.scoreTime >= end) continue;
+        attempts += 1;
+        const weakHit = assessment.status === "hit"
+          && (Math.abs(assessment.timingMs ?? 0) > 180 || (assessment.valueError ?? 0) > 20);
+        if (assessment.status !== "hit" || weakHit) {
+          errors += assessment.status === "missed" ? 2 : 1;
+          errorTimeSum += assessment.scoreTime;
           errorEvents += 1;
         }
       }
@@ -169,6 +184,12 @@ export function recommendPractice(
   const handAlignment = handAlignmentValues.length > 0
     ? handAlignmentValues.reduce((sum, value) => sum + value, 0) / handAlignmentValues.length
     : undefined;
+  const pedalValues = sessions
+    .map((session) => session.summary.pedalScore)
+    .filter((value): value is number => value !== undefined);
+  const pedal = pedalValues.length > 0
+    ? pedalValues.reduce((sum, value) => sum + value, 0) / pedalValues.length
+    : undefined;
   const tempo = recommendedTempo(
     latest.context.tempo,
     accuracy,
@@ -177,10 +198,12 @@ export function recommendPractice(
     durationCoverage,
     releasePrecision,
     coordination,
+    pedal,
   );
   const hand = chooseHand(sessions);
   const loop = hardestWindow(sessions, scoreDuration);
-  const mode: PracticeMode = accuracy < 70 ? "wait" : "realtime";
+  // Pedal timing needs the score clock; wait-for-me deliberately has no absolute onset.
+  const mode: PracticeMode = pedal !== undefined && pedal < 65 ? "realtime" : accuracy < 70 ? "wait" : "realtime";
   const reasonParts: string[] = [];
   if (loop) reasonParts.push(`${loop.start.toFixed(1)}–${loop.end.toFixed(1)} 秒聚集了 ${loop.errors} 个加权错漏`);
   if (hand !== "both") reasonParts.push(`${hand === "left" ? "左手" : "右手"}错误率更高`);
@@ -192,6 +215,8 @@ export function recommendPractice(
         ? `先降到 ${Math.round(tempo * 100)}% 修正提前收音与指尖释放`
         : coordination !== undefined && coordination < 65
           ? `先降到 ${Math.round(tempo * 100)}% 收紧和弦与双手落键`
+        : pedal !== undefined && pedal < 65
+          ? `先降到 ${Math.round(tempo * 100)}% 对齐谱面换踏与松踏`
       : `先降到 ${Math.round(tempo * 100)}% 稳定准确度`,
   );
   else if (tempo > latest.context.tempo) reasonParts.push(`表现稳定，可提升到 ${Math.round(tempo * 100)}%`);
@@ -209,6 +234,9 @@ export function recommendPractice(
   }
   if (handAlignment !== undefined && handAlignment < 65) {
     reasonParts.push(`双手同步 ${Math.round(handAlignment)}%，先用落键重音确认两手共同脉冲`);
+  }
+  if (pedal !== undefined && pedal < 65) {
+    reasonParts.push(`谱面踏板 ${Math.round(pedal)}%，用实时模式逐个对齐踩下、松开与换踏`);
   }
   if (reasonParts.length === 0) reasonParts.push("保持当前设置，继续巩固一致性");
 
@@ -230,6 +258,7 @@ export function recommendPractice(
       releasePrecisionScore: releasePrecision,
       coordinationScore: coordination,
       handAlignmentScore: handAlignment,
+      pedalScore: pedal,
     },
   };
 }

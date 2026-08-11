@@ -28,6 +28,15 @@ export interface BeatMarker {
   measure: number;
 }
 
+export type ScorePedalAction = "down" | "up" | "change-up" | "change-down" | "level";
+
+export interface ScorePedalEvent {
+  time: number;
+  value: number;
+  action: ScorePedalAction;
+  scoreQuarter?: number;
+}
+
 export interface ParsedScore {
   name: string;
   duration: number;
@@ -38,6 +47,8 @@ export interface ParsedScore {
   measureQuarterStarts?: number[];
   measureMap?: number[];
   beatMap?: BeatMarker[];
+  /** Expanded damper-pedal targets parsed from MusicXML directions/sound. */
+  pedalEvents?: ScorePedalEvent[];
 }
 
 export interface TargetNote {

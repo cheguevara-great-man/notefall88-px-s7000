@@ -154,6 +154,57 @@ describe("practice analytics", () => {
     expect(session?.events).not.toBe(events);
   });
 
+  it("assesses score pedal targets separately for every physical loop pass", () => {
+    const pedalTargets = [
+      { time: 1, value: 127, action: "down" as const },
+      { time: 3, value: 0, action: "up" as const },
+    ];
+    const analytics = new PracticeAnalytics({
+      scoreName: "Pedal study", mode: "realtime", hand: "both", tempo: 1, transpose: 0,
+      loop: { start: 0, end: 4 },
+    }, 1_000, pedalTargets);
+    analytics.record({ kind: "hit", note: 60, velocity: 80, scoreTime: 1, timingMs: 0 });
+    analytics.recordPedal(127, 1.02, 0);
+    analytics.recordPedal(0, 3.02, 0);
+    analytics.completePedalPass(0, 4);
+    analytics.recordPedal(127, 1.04, 1);
+    analytics.recordPedal(0, 3.04, 1);
+    analytics.setPedalProgress(1, 4);
+
+    expect(analytics.snapshot()).toMatchObject({
+      pedalTargets: 4, pedalMatched: 4, pedalMissed: 0, pedalUnexpected: 0,
+      pedalAccuracy: 100, pedalTimingMs: 30,
+    });
+    const session = analytics.finish(2_000)!;
+    expect(session.pedalControls).toHaveLength(4);
+    expect(session.pedalAssessments).toHaveLength(4);
+  });
+
+  it("exposes due pedal misses without judging future notation", () => {
+    const analytics = new PracticeAnalytics({
+      scoreName: "Pedal study", mode: "realtime", hand: "both", tempo: 1, transpose: 0,
+    }, 1_000, [
+      { time: 1, value: 127, action: "down" },
+      { time: 3, value: 0, action: "up" },
+    ]);
+    analytics.record({ kind: "hit", note: 60, velocity: 80, scoreTime: 0 });
+    analytics.setPedalProgress(0, 1.5);
+    expect(analytics.snapshot()).toMatchObject({ pedalTargets: 1, pedalMissed: 1 });
+    analytics.setPedalProgress(0, 4);
+    expect(analytics.snapshot()).toMatchObject({ pedalTargets: 2, pedalMissed: 2 });
+  });
+
+  it("honors the live late-action window but grades the end of a completed pass", () => {
+    const analytics = new PracticeAnalytics({
+      scoreName: "Pedal grace", mode: "realtime", hand: "both", tempo: 1, transpose: 0,
+    }, 1_000, [{ time: 1, value: 127, action: "down" }]);
+    analytics.record({ kind: "hit", note: 60, velocity: 80, scoreTime: 0 });
+    analytics.setPedalProgress(0, 1.2);
+    expect(analytics.snapshot().pedalTargets).toBeUndefined();
+    analytics.completePedalPass(0, 1.2);
+    expect(analytics.snapshot()).toMatchObject({ pedalTargets: 1, pedalMissed: 1 });
+  });
+
   it("stores newest sessions first and exports a portable envelope", async () => {
     const history = store();
     for (const [name, endedAt] of [["First", 2_000], ["Second", 4_000]] as const) {

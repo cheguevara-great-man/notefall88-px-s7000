@@ -4,6 +4,8 @@ import type { BeatMarker, HandSelection, ParsedScore } from "./types";
 import { WaterfallRenderer } from "./waterfall";
 import type { WaterfallFeedbackKind } from "./waterfall";
 import type { VisualTheme } from "./visual-theme";
+import { buildPedalCues } from "./pedal-cue";
+import type { PedalCue } from "./pedal-cue";
 
 export interface WaterfallSurface {
   setScore(score: ParsedScore | undefined): void;
@@ -18,7 +20,7 @@ export interface WaterfallSurface {
 
 interface NativeWaterfallPlugin {
   setGeometry(options: { keys: ReturnType<typeof pianoKeys> }): Promise<void>;
-  setScore(options: { notes: NativeNote[]; beats: NativeBeat[] }): Promise<void>;
+  setScore(options: { notes: NativeNote[]; beats: NativeBeat[]; pedals: PedalCue[] }): Promise<void>;
   setState(options: {
     pressed: number[];
     expected: number[];
@@ -60,6 +62,10 @@ export function nativeScoreBeats(score: ParsedScore | undefined): NativeBeat[] {
   }));
 }
 
+export function nativeScorePedals(score: ParsedScore | undefined): PedalCue[] {
+  return buildPedalCues(score?.pedalEvents);
+}
+
 function nativePlugin(): NativeWaterfallPlugin | undefined {
   const capacitor = (window as typeof window & {
     Capacitor?: { Plugins?: { NativeWaterfall?: NativeWaterfallPlugin } };
@@ -87,7 +93,11 @@ class NativeWaterfallSurface implements WaterfallSurface {
   }
 
   setScore(score: ParsedScore | undefined): void {
-    void this.plugin.setScore({ notes: nativeScoreNotes(score), beats: nativeScoreBeats(score) });
+    void this.plugin.setScore({
+      notes: nativeScoreNotes(score),
+      beats: nativeScoreBeats(score),
+      pedals: nativeScorePedals(score),
+    });
   }
 
   setState(pressed: Set<number>, expected: Set<number>, wrong: Set<number>): void {

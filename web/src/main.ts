@@ -2,6 +2,7 @@ import "./style.css";
 
 import { PracticeAnalytics, PracticeSessionStore } from "./analytics";
 import type { PracticeEvent, PracticeSession } from "./analytics";
+import type { PedalAssessment } from "./pedal";
 import { ArticulationTracker } from "./articulation";
 import type { ArticulationCompletion } from "./articulation";
 import { buildPracticeReview, reviewBucketTone } from "./review";
@@ -15,6 +16,7 @@ import {
   savePracticeCircuit,
 } from "./practice-circuit";
 import type { PracticeCircuit, PracticeMission } from "./practice-circuit";
+import { buildPracticeQueue, practiceDueLabel } from "./practice-queue";
 import {
   commissioningReport,
   completeCommissioning,
@@ -192,6 +194,7 @@ const updateProgress = required<HTMLProgressElement>("update-progress");
 const libraryPanel = required("library-panel");
 const libraryList = required("library-list");
 const librarySummary = required("library-summary");
+const practiceQueue = required("practice-queue");
 const storageSummary = required("storage-summary");
 const storagePersist = required<HTMLButtonElement>("storage-persist");
 const librarySearch = required<HTMLInputElement>("library-search");
@@ -305,6 +308,7 @@ let midiOutBlocked = false;
 let followPlanner = new FollowAccompanimentPlanner([]);
 let analytics: PracticeAnalytics | undefined;
 let completedReviewEvents: PracticeEvent[] = [];
+let completedPedalAssessments: PedalAssessment[] = [];
 let completedReviewFingerprint: string | undefined;
 let selectedReviewSession: PracticeSession | undefined;
 let reviewRevision = 0;
@@ -320,6 +324,7 @@ let updateInfo: UpdateInfo | undefined;
 let commissioning: CommissioningState = loadCommissioning();
 let backgroundSuspension: BackgroundSuspension | undefined;
 let backgroundPlayLabel = "播放";
+let practicePass = 0;
 
 modeSelect.value = mode;
 handSelect.value = hand;
@@ -604,10 +609,22 @@ function sessionContext() {
   };
 }
 
+function createPracticeAnalytics(): PracticeAnalytics | undefined {
+  if (!score || chords.length === 0) return undefined;
+  const result = new PracticeAnalytics(
+    sessionContext(),
+    Date.now(),
+    mode === "realtime" ? score.pedalEvents ?? [] : [],
+  );
+  result.setPedalProgress(practicePass, lastScoreSeconds);
+  return result;
+}
+
 function beginPracticeSession(): void {
   articulationTracker.clearActive();
-  analytics = score && chords.length > 0 ? new PracticeAnalytics(sessionContext()) : undefined;
+  analytics = createPracticeAnalytics();
   completedReviewEvents = [];
+  completedPedalAssessments = [];
   completedReviewFingerprint = undefined;
   selectedReviewSession = undefined;
   reviewRevision += 1;
@@ -615,11 +632,13 @@ function beginPracticeSession(): void {
 }
 
 async function finishPracticeSession(): Promise<PracticeSession | undefined> {
+  analytics?.setPedalProgress(practicePass, lastScoreSeconds);
   const completed = analytics?.finish();
   analytics = undefined;
   articulationTracker.clearActive();
   if (!completed) return undefined;
   completedReviewEvents = completed.events;
+  completedPedalAssessments = completed.pedalAssessments ?? [];
   completedReviewFingerprint = completed.context.scoreFingerprint;
   selectedReviewSession = undefined;
   reviewRevision += 1;
@@ -635,7 +654,7 @@ async function finishPracticeSession(): Promise<PracticeSession | undefined> {
 
 function recordPracticeEvent(event: PracticeEvent): number | undefined {
   selectedReviewSession = undefined;
-  if (!analytics && score && chords.length > 0) analytics = new PracticeAnalytics(sessionContext());
+  if (!analytics) analytics = createPracticeAnalytics();
   const token = analytics?.record(event);
   renderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
   sheetRenderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
@@ -686,6 +705,17 @@ if (import.meta.env.DEV) {
     if (!event || !Number.isInteger(event.note) || !Number.isFinite(event.scoreTime)) return;
     recordPracticeEvent(event);
   });
+  window.addEventListener("notefall:test-pedal-control", (rawEvent) => {
+    const detail = (rawEvent as CustomEvent<{ value?: number; scoreTime?: number; pass?: number }>).detail;
+    const value = Number(detail?.value);
+    const time = Number(detail?.scoreTime);
+    if (!Number.isFinite(value) || !Number.isFinite(time)) return;
+    if (!analytics) analytics = createPracticeAnalytics();
+    analytics?.recordPedal(value, time, Number(detail?.pass) || 0);
+    analytics?.setPedalProgress(Number(detail?.pass) || 0, time + 0.001);
+    reviewRevision += 1;
+    renderInsights();
+  });
 }
 
 function recordMissedNotes(notes: ReturnType<RealtimeMatcher["advance"]>): void {
@@ -725,6 +755,13 @@ function renderInsights(): void {
       ? `${summary.pedalExtendedSamples}/${summary.articulationSamples} 音由踏板延长 · 平均 +${summary.meanPedalExtensionMs?.toFixed(0) ?? "0"} ms`
       : "未检测到踏板延音"
     : "--";
+  required("insight-score-pedal").textContent = !score?.pedalEvents?.length
+    ? "谱面未提供可判定踏板记号"
+    : summary?.pedalScore !== undefined
+      ? `${summary.pedalScore.toFixed(0)}% · 命中 ${summary.pedalMatched}/${summary.pedalTargets}${summary.pedalTimingMs === undefined ? "" : ` · ±${summary.pedalTimingMs.toFixed(0)} ms`}`
+      : summary?.pedalTargets
+        ? `${summary.pedalMatched ?? 0}/${summary.pedalTargets} 个目标 · 继续积累`
+        : "等待经过踏板记号";
   required("insight-coordination").textContent = summary?.coordinationScore !== undefined
     ? `${summary.coordinationScore.toFixed(0)}% · 平均 ${summary.meanChordSpreadMs?.toFixed(0) ?? "--"} / P95 ${summary.p95ChordSpreadMs?.toFixed(0) ?? "--"} ms`
     : summary?.coordinationSamples
@@ -749,28 +786,33 @@ function renderInsights(): void {
 function renderPracticeReview(): void {
   const historic = analytics ? undefined : selectedReviewSession;
   const events = analytics?.eventsSnapshot() ?? historic?.events ?? completedReviewEvents;
+  const pedalAssessments = analytics?.pedalAssessmentSnapshot()
+    ?.assessments ?? historic?.pedalAssessments ?? completedPedalAssessments;
   const duration = Math.max(score?.duration ?? 0, ...events.map((event) => event.scoreTime + 0.5), 1);
   const compatibleHistoricReview = !historic || (score && (scoreFingerprint
     ? historic.context.scoreFingerprint === scoreFingerprint
     : historic.context.scoreName === score.name));
-  const signature = `${reviewRevision}:${duration}:${historic?.id ?? "current"}:${compatibleHistoricReview}`;
+  const signature = `${reviewRevision}:${duration}:${historic?.id ?? "current"}:${compatibleHistoricReview}:${pedalAssessments.length}`;
   if (signature === lastReviewSignature) return;
   lastReviewSignature = signature;
-  const review = buildPracticeReview(events, duration);
+  const review = buildPracticeReview(events, duration, 24, pedalAssessments);
   const eventCount = events.length;
-  practiceReview.dataset.active = String(eventCount > 0);
-  reviewCaption.textContent = eventCount === 0
+  practiceReview.dataset.active = String(eventCount + pedalAssessments.length > 0);
+  reviewCaption.textContent = eventCount + pedalAssessments.length === 0
     ? "导入乐谱后，按时间与琴键定位本次问题。"
-    : `${historic ? `历史复盘 · ${new Date(historic.endedAt).toLocaleString("zh-CN")} · ` : ""}${eventCount} 个判定事件 · 绿=稳定 · 黄=力度/时值/和弦注意 · 红=错漏集中${compatibleHistoricReview ? "" : " · 导入同一乐谱后才能从此处循环"}`;
+    : `${historic ? `历史复盘 · ${new Date(historic.endedAt).toLocaleString("zh-CN")} · ` : ""}${eventCount} 个按键判定${pedalAssessments.length ? ` · ${pedalAssessments.length} 个踏板判定` : ""} · 绿=稳定 · 黄=表现注意 · 红=错漏集中${compatibleHistoricReview ? "" : " · 导入同一乐谱后才能从此处循环"}`;
   reviewTimeline.replaceChildren(...review.buckets.map((bucket) => {
     const segment = document.createElement("button");
     segment.type = "button";
     const errors = bucket.wrong + bucket.missed;
+    const pedalErrors = bucket.pedalMissed + bucket.pedalUnexpected;
     segment.className = "review-segment";
     segment.dataset.tone = reviewBucketTone(bucket);
     const dynamicsWarning = (bucket.meanAbsDynamicsError ?? 0) >= 16;
     segment.dataset.marker = errors > 0
       ? `−${errors}`
+      : pedalErrors > 0
+        ? `⌁${pedalErrors}`
       : bucket.looseChordSamples > 0
         ? `⇆${bucket.looseChordSamples}`
       : bucket.earlyReleaseSamples > 0
@@ -789,7 +831,10 @@ function renderPracticeReview(): void {
       : ` · 和弦展开 ${bucket.meanChordSpreadMs} ms${bucket.meanHandOffsetMs === undefined || Math.abs(bucket.meanHandOffsetMs) < 4
         ? ""
         : `，${bucket.meanHandOffsetMs > 0 ? "右手晚" : "左手晚"} ${Math.abs(bucket.meanHandOffsetMs)} ms`}`;
-    segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}${dynamics}${articulation}${coordination}`;
+    const pedal = bucket.pedalTargets + bucket.pedalUnexpected === 0
+      ? ""
+      : ` · 踏板命中 ${bucket.pedalHits}/${bucket.pedalTargets}，漏记号 ${bucket.pedalMissed}，多余动作 ${bucket.pedalUnexpected}${bucket.meanAbsPedalTimingMs === undefined ? "" : `，平均偏差 ${bucket.meanAbsPedalTimingMs} ms`}`;
+    segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}${dynamics}${articulation}${coordination}${pedal}`;
     return segment;
   }));
   reviewKeys.replaceChildren(...review.keys.map((key) => {
@@ -843,7 +888,8 @@ function renderPracticeHistory(): void {
       const coordination = session.summary.coordinationScore === undefined
         ? ""
         : ` · 和弦 ${session.summary.coordinationScore.toFixed(0)}%`;
-      result.textContent = `${session.summary.accuracy.toFixed(0)}% · 命中 ${session.summary.hits} · 错漏 ${session.summary.wrong + session.summary.missed}${dynamics}${articulation}${coordination}`;
+      const pedal = session.summary.pedalScore === undefined ? "" : ` · 踏板 ${session.summary.pedalScore.toFixed(0)}%`;
+      result.textContent = `${session.summary.accuracy.toFixed(0)}% · 命中 ${session.summary.hits} · 错漏 ${session.summary.wrong + session.summary.missed}${dynamics}${articulation}${coordination}${pedal}`;
       const detail = document.createElement("small");
       const modeLabel = session.context.mode === "realtime" ? "实时" : session.context.mode === "follow" ? "跟随我" : "等我弹";
       const timing = session.summary.meanAbsTimingMs === undefined ? "无节奏判定" : `平均偏差 ${session.summary.meanAbsTimingMs.toFixed(0)} ms`;
@@ -865,6 +911,7 @@ function renderPracticeHistory(): void {
   historySummary.textContent = `${recentSessions.length} 次近期练习 · ${totalNotes} 个判定事件 · 数据只保存在本机`;
   renderPracticeTrend();
   renderCoach();
+  renderPracticeQueue();
 }
 
 function renderPracticeTrend(): void {
@@ -891,7 +938,8 @@ function renderPracticeTrend(): void {
     const coordination = point.coordinationScore === undefined
       ? ""
       : ` · 和弦 ${point.coordinationScore.toFixed(0)}%${point.handAlignmentScore === undefined ? "" : ` / 双手 ${point.handAlignmentScore.toFixed(0)}%`}`;
-    bar.title = `${new Date(point.endedAt).toLocaleString("zh-CN")}：${point.accuracy.toFixed(0)}% · ${timing}${dynamics}${articulation}${coordination} · ${point.events} 事件`;
+    const pedal = point.pedalScore === undefined ? "" : ` · 谱面踏板 ${point.pedalScore.toFixed(0)}%`;
+    bar.title = `${new Date(point.endedAt).toLocaleString("zh-CN")}：${point.accuracy.toFixed(0)}% · ${timing}${dynamics}${articulation}${coordination}${pedal} · ${point.events} 事件`;
     bar.setAttribute("aria-label", bar.title);
     return bar;
   }));
@@ -910,8 +958,11 @@ function renderPracticeTrend(): void {
   const coordinationDelta = trend.coordinationDelta === undefined
     ? "同步样本不足"
     : `${trend.coordinationDelta >= 0 ? "+" : ""}${trend.coordinationDelta.toFixed(1)}%`;
+  const pedalDelta = trend.pedalDelta === undefined
+    ? "踏板样本不足"
+    : `${trend.pedalDelta >= 0 ? "+" : ""}${trend.pedalDelta.toFixed(1)}%`;
   trendCaption.textContent = `${trend.points.length} 次 · 最新 ${latest.accuracy.toFixed(0)}% · 准确率趋势 ${accuracyDelta}`;
-  trendDetail.textContent = `前后窗口对比：准确率 ${accuracyDelta}；绝对节奏偏差改善 ${timingDelta}；力度轮廓 ${dynamicsDelta}；时值覆盖 ${articulationDelta}；和弦同步 ${coordinationDelta}。共 ${trend.totalEvents} 个判定事件。`;
+  trendDetail.textContent = `前后窗口对比：准确率 ${accuracyDelta}；绝对节奏偏差改善 ${timingDelta}；力度轮廓 ${dynamicsDelta}；时值覆盖 ${articulationDelta}；和弦同步 ${coordinationDelta}；谱面踏板 ${pedalDelta}。共 ${trend.totalEvents} 个判定事件。`;
 }
 
 function renderCoach(): void {
@@ -946,7 +997,8 @@ function renderCoach(): void {
     ? ""
     : ` · 和弦 ${recommendation.evidence.coordinationScore.toFixed(0)}%${recommendation.evidence.handAlignmentScore === undefined
       ? "" : ` / 双手 ${recommendation.evidence.handAlignmentScore.toFixed(0)}%`}`;
-  required("coach-evidence").textContent = `${recommendation.evidence.sessions} 次 / ${recommendation.evidence.events} 事件 · 历史准确率 ${recommendation.evidence.accuracy.toFixed(1)}%${dynamics}${articulation}${coordination} · 置信度 ${confidence}`;
+  const pedal = recommendation.evidence.pedalScore === undefined ? "" : ` · 谱面踏板 ${recommendation.evidence.pedalScore.toFixed(0)}%`;
+  required("coach-evidence").textContent = `${recommendation.evidence.sessions} 次 / ${recommendation.evidence.events} 事件 · 历史准确率 ${recommendation.evidence.accuracy.toFixed(1)}%${dynamics}${articulation}${coordination}${pedal} · 置信度 ${confidence}`;
   renderPracticeCircuit();
 }
 
@@ -994,7 +1046,8 @@ function renderPracticeCircuit(): void {
     const dynamics = mission.targetDynamicsScore === undefined ? "" : ` · 力度轮廓 ≥ ${mission.targetDynamicsScore}%`;
     const articulation = mission.targetDurationCoverage === undefined ? "" : ` · 时值覆盖 ≥ ${mission.targetDurationCoverage}%`;
     const coordination = mission.targetCoordinationScore === undefined ? "" : ` · 和弦整齐度 ≥ ${mission.targetCoordinationScore}%`;
-    target.textContent = `目标 ${mission.targetAccuracy}%${timing}${dynamics}${articulation}${coordination} · 连续 ${mission.requiredPasses} 次 · 已 ${mission.consecutivePasses} 次`;
+    const pedal = mission.targetPedalScore === undefined ? "" : ` · 谱面踏板 ≥ ${mission.targetPedalScore}%`;
+    target.textContent = `目标 ${mission.targetAccuracy}%${timing}${dynamics}${articulation}${coordination}${pedal} · 连续 ${mission.requiredPasses} 次 · 已 ${mission.consecutivePasses} 次`;
     const reason = document.createElement("p");
     reason.textContent = mission.reason;
     copy.append(title, target, reason);
@@ -1022,7 +1075,7 @@ function applyCircuitMission(mission: PracticeMission): void {
 }
 
 async function refreshPracticeHistory(): Promise<void> {
-  recentSessions = await sessionStore.list(50);
+  recentSessions = await sessionStore.list(500);
   renderPracticeHistory();
 }
 
@@ -1092,6 +1145,7 @@ function resetPractice(resetStats = true): void {
   cancelCountIn();
   cancelFollowPlayback();
   const start = rangeStart();
+  practicePass = 0;
   clock.reset(start);
   waitIndex = 0;
   pressed = new Set();
@@ -1289,6 +1343,7 @@ function handleMidi(event: MidiInputEvent): void {
 
 function handleControl(event: MidiControlEvent): void {
   const capturedAt = event.capturedAt ?? performance.now();
+  const capturedScoreTime = clock.time(capturedAt);
   recorder.handleControl(event, capturedAt);
   completeArticulations(articulationTracker.control(
     event.channel,
@@ -1298,6 +1353,16 @@ function handleControl(event: MidiControlEvent): void {
   ));
   finishTruncatedRecording();
   if (event.controller === 64) {
+    if (score && mode === "realtime" && clock.isRunning()) {
+      if (!analytics) analytics = createPracticeAnalytics();
+      const loop = selectedLoop();
+      const crossedBoundary = Boolean(loop && capturedScoreTime >= loop.end);
+      const sampleTime = crossedBoundary && loop
+        ? loop.start + ((capturedScoreTime - loop.start) % (loop.end - loop.start))
+        : capturedScoreTime;
+      const samplePass = crossedBoundary ? practicePass + 1 : practicePass;
+      if (analytics?.recordPedal(event.value, sampleTime, samplePass)) reviewRevision += 1;
+    }
     const down = event.value >= 64;
     setStatus(sustainStatus, down, down ? "延音踏板踩下" : "延音踏板松开");
   } else if (event.controller === 120 || event.controller === 123) {
@@ -1656,6 +1721,41 @@ function renderLibrary(): void {
   }
   const bytes = libraryScores.reduce((sum, item) => sum + item.sourceBytes, 0);
   librarySummary.textContent = `${libraryScores.length} 首 · ${libraryFolders.length} 个文件夹 · ${(bytes / 1024 / 1024).toFixed(2)} MiB`;
+  renderPracticeQueue();
+}
+
+function renderPracticeQueue(): void {
+  const now = Date.now();
+  const items = buildPracticeQueue(libraryScores, recentSessions, now);
+  practiceQueue.replaceChildren();
+  if (items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "library-empty";
+    empty.textContent = "曲库中还没有乐谱；导入后会自动安排首次练习。";
+    practiceQueue.append(empty);
+    return;
+  }
+  for (const item of items) {
+    const card = document.createElement("article");
+    card.className = "practice-queue-item";
+    card.dataset.state = item.state;
+    card.dataset.scoreId = item.scoreId;
+    const copy = document.createElement("div");
+    copy.className = "practice-queue-copy";
+    const title = document.createElement("strong");
+    title.textContent = `${practiceDueLabel(item, now)} · ${item.title}`;
+    const detail = document.createElement("small");
+    const mastery = item.mastery === undefined ? "首次建立基线" : `综合掌握 ${item.mastery.toFixed(0)}%`;
+    detail.textContent = `${mastery} · 约 ${item.estimatedMinutes} 分钟 · ${item.reason}`;
+    copy.append(title, detail);
+    const start = document.createElement("button");
+    start.type = "button";
+    start.className = "primary";
+    start.dataset.action = "practice";
+    start.textContent = item.due ? "开始" : "提前练";
+    card.append(copy, start);
+    practiceQueue.append(card);
+  }
 }
 
 async function refreshLibrary(): Promise<void> {
@@ -1715,6 +1815,23 @@ libraryList.addEventListener("change", async (event) => {
     await refreshLibrary();
   } catch (error) {
     librarySummary.textContent = error instanceof Error ? error.message : "无法移动乐谱";
+  }
+});
+
+practiceQueue.addEventListener("click", async (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action='practice']");
+  const id = button?.closest<HTMLElement>("[data-score-id]")?.dataset.scoreId;
+  if (!button || !id) return;
+  button.disabled = true;
+  try {
+    const stored = await library.getScore(id);
+    if (!stored) throw new Error("乐谱不存在");
+    await loadScoreBuffer(stored.source, stored.fileName, false, stored.sha256);
+    libraryPanel.hidden = true;
+    practicePanel.hidden = false;
+  } catch (error) {
+    librarySummary.textContent = error instanceof Error ? error.message : "无法开始今日练习";
+    button.disabled = false;
   }
 });
 
@@ -2299,6 +2416,8 @@ function frame(now: number): void {
       scoreSeconds = currentWaitChord()?.start ?? rangeEnd();
     } else if (clock.isRunning() && loop && scoreSeconds >= loop.end) {
       recordMissedNotes(realtimeMatcher.advance(loop.end + realtimeMatcher.maximumLateSeconds() + 0.001));
+      analytics?.completePedalPass(practicePass, loop.end);
+      practicePass += 1;
       const span = loop.end - loop.start;
       scoreSeconds = loop.start + ((scoreSeconds - loop.start) % span);
       clock.seek(scoreSeconds, now);
@@ -2308,6 +2427,8 @@ function frame(now: number): void {
       lastTargetSignature = "";
     } else if (scoreSeconds >= score.duration) {
       recordMissedNotes(realtimeMatcher.advance(score.duration + realtimeMatcher.maximumLateSeconds() + 0.001));
+      analytics?.completePedalPass(practicePass, score.duration);
+      analytics?.setPedalProgress(practicePass, score.duration);
       clock.pause(now);
       scoreSeconds = score.duration;
       playButton.textContent = "重播";
@@ -2321,6 +2442,7 @@ function frame(now: number): void {
       metronome.schedule(score.beatMap ?? [], scoreSeconds, clock.speed);
     }
     lastScoreSeconds = scoreSeconds;
+    analytics?.setPedalProgress(practicePass, scoreSeconds);
     updateTarget(scoreSeconds);
     scoreTime.textContent = `${formatTime(scoreSeconds)} / ${formatTime(score.duration)}`;
     renderStats();

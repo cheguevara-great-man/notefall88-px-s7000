@@ -192,6 +192,35 @@ describe("adaptive weak-passage circuit", () => {
     expect(assessment.message).toContain("和弦整齐度需达到 80%");
   });
 
+  it("turns local score-pedal errors into a realtime pedal mission", () => {
+    const history = makeSession([hit(60, 4.2), hit(62, 5.2), hit(64, 6.2)]);
+    history.pedalAssessments = [
+      { pass: 0, scoreTime: 4.4, targetValue: 127, action: "down", status: "missed" },
+      { pass: 0, scoreTime: 5.2, targetValue: 0, action: "up", status: "unexpected" },
+      {
+        pass: 0, scoreTime: 6, targetValue: 0, action: "up", status: "hit",
+        actualScoreTime: 6.3, actualValue: 0, timingMs: 300,
+      },
+    ];
+    history.summary.pedalScore = 18;
+    const circuit = buildPracticeCircuit([history], score, fingerprint)!;
+    const mission = circuit.missions[0];
+    expect(mission).toMatchObject({ mode: "realtime", targetPedalScore: 80 });
+    expect(mission.reason).toContain("换踏");
+
+    const attemptEvents = Array.from({ length: mission.minimumEvents }, (_, index) => (
+      hit(60 + index % 8, mission.start + 0.1 + index * 0.2, index % 2 ? "right" : "left", 20)
+    ));
+    const attempt = makeSession(attemptEvents, {
+      mode: mission.mode, hand: mission.hand, tempo: mission.tempo,
+      loop: { start: mission.start, end: mission.end },
+    });
+    attempt.summary.pedalScore = 55;
+    const assessment = assessPracticeMission(circuit, attempt);
+    expect(assessment).toMatchObject({ outcome: "retry", pedalScore: 55 });
+    expect(assessment.message).toContain("谱面踏板需达到 80%");
+  });
+
   it("requires compatible settings, enough evidence and consecutive passes before advancing", () => {
     const weak = [
       { kind: "missed" as const, note: 48, hand: "left" as const, scoreTime: 4.5 },

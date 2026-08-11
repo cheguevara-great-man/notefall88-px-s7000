@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createWaterfallSurface, nativeScoreBeats, nativeScoreNotes } from "./native-waterfall";
+import { createWaterfallSurface, nativeScoreBeats, nativeScoreNotes, nativeScorePedals } from "./native-waterfall";
 
 describe("native waterfall bridge", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -18,6 +18,17 @@ describe("native waterfall bridge", () => {
   it("clears the native score explicitly", () => {
     expect(nativeScoreNotes(undefined)).toEqual([]);
     expect(nativeScoreBeats(undefined)).toEqual([]);
+    expect(nativeScorePedals(undefined)).toEqual([]);
+  });
+
+  it("sends compact score-pedal cues to the native renderer", () => {
+    expect(nativeScorePedals({
+      name: "Pedal", duration: 1, notes: [],
+      pedalEvents: [
+        { time: 0.5, value: 0, action: "change-up" },
+        { time: 0.5, value: 127, action: "change-down" },
+      ],
+    })).toEqual([{ time: 0.5, value: 127, kind: "change", label: "PED ↻" }]);
   });
 
   it("keeps real beat and measure markers for the native timeline", () => {
@@ -56,6 +67,7 @@ describe("native waterfall bridge", () => {
       name: "Native",
       duration: 1,
       notes: [{ note: 60, start: 0, end: 1, velocity: 80, hand: "right" }],
+      pedalEvents: [{ time: 0.5, value: 127, action: "down" }],
     });
     surface.setState(new Set([64, 60]), new Set([67]), new Set([64]));
     surface.setPracticeView("right", { start: 0.25, end: 0.75 });
@@ -64,7 +76,9 @@ describe("native waterfall bridge", () => {
     surface.render(0.4, true);
 
     expect(plugin.setScore).toHaveBeenCalledWith({
-      notes: [{ note: 60, start: 0, end: 1, velocity: 80, hand: "right" }], beats: [],
+      notes: [{ note: 60, start: 0, end: 1, velocity: 80, hand: "right" }],
+      beats: [],
+      pedals: [{ time: 0.5, value: 127, kind: "down", label: "PED ↓" }],
     });
     expect(plugin.setState).toHaveBeenLastCalledWith({
       pressed: [60, 64], expected: [67], wrong: [64], hand: "right", loopStart: 0.25, loopEnd: 0.75,

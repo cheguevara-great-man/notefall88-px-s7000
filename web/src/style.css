@@ -200,6 +200,17 @@ html[data-edition="studio"] h1::after { content: "STUDIO"; margin-left: 10px; pa
 .library-restore { justify-content: center; }
 .library-summary { margin: 14px 0 8px; color: #929daf; font-size: 12px; }
 .library-list { display: grid; gap: 8px; }
+.practice-queue-section { margin: 14px 0 18px; padding: 12px; border: 1px solid #30394a; border-radius: 12px; background: linear-gradient(145deg, rgba(79,98,255,.09), rgba(72,219,185,.04)); }
+.practice-queue { display: grid; gap: 8px; margin-top: 10px; }
+.practice-queue-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 10px; border: 1px solid #2b3442; border-radius: 10px; background: rgba(5,8,13,.72); }
+.practice-queue-item[data-state="weak"] { border-color: rgba(255,123,92,.52); }
+.practice-queue-item[data-state="review"] { border-color: rgba(255,210,76,.48); }
+.practice-queue-item[data-state="new"] { border-color: rgba(111,147,255,.5); }
+.practice-queue-copy { min-width: 0; }
+.practice-queue-copy strong, .practice-queue-copy small { display: block; }
+.practice-queue-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.practice-queue-copy small { margin-top: 3px; color: #8f9caf; line-height: 1.35; }
+.practice-queue-item button { grid-column: 2; grid-row: 1 / span 2; }
 .library-empty { padding: 30px 12px; border: 1px dashed #343b48; border-radius: 12px; text-align: center; color: #8792a4; }
 .library-item { display: grid; gap: 9px; padding: 12px; border: 1px solid #2a303c; border-radius: 11px; background: #0b0e14; }
 .library-item-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }

@@ -23,6 +23,7 @@ export interface PracticeMission {
   targetDynamicsScore?: number;
   targetDurationCoverage?: number;
   targetCoordinationScore?: number;
+  targetPedalScore?: number;
   minimumEvents: number;
   requiredPasses: number;
   consecutivePasses: number;
@@ -50,6 +51,7 @@ export interface MissionAssessment {
   dynamicsScore?: number;
   durationCoverageScore?: number;
   coordinationScore?: number;
+  pedalScore?: number;
   message: string;
 }
 
@@ -73,6 +75,8 @@ interface Bucket {
   crossHandCoordinationWeight: number;
   leftChordWeight: number;
   rightChordWeight: number;
+  pedalTotal: number;
+  pedalWeight: number;
 }
 
 function round(value: number, digits = 3): number {
@@ -126,6 +130,8 @@ function emptyBucket(): Bucket {
     crossHandCoordinationWeight: 0,
     leftChordWeight: 0,
     rightChordWeight: 0,
+    pedalTotal: 0,
+    pedalWeight: 0,
   };
 }
 
@@ -150,8 +156,8 @@ function chooseHand(bucket: Bucket): HandSelection {
 
 function severityOf(bucket: Bucket): number {
   const attempts = bucket.hits + bucket.wrong + bucket.missed;
-  if (attempts <= 0) return 0;
-  const weightedErrorRate = Math.min(1, (bucket.wrong + bucket.missed * 1.45) / attempts);
+  if (attempts <= 0 && bucket.pedalWeight <= 0) return 0;
+  const weightedErrorRate = attempts <= 0 ? 0 : Math.min(1, (bucket.wrong + bucket.missed * 1.45) / attempts);
   const timing = bucket.timingWeight > 0 ? bucket.timingTotal / bucket.timingWeight : 0;
   const timingPenalty = Math.min(1, timing / 220);
   const dynamicsPenalty = bucket.dynamicsWeight > 0 ? bucket.dynamicsTotal / bucket.dynamicsWeight : 0;
@@ -159,13 +165,15 @@ function severityOf(bucket: Bucket): number {
     ? bucket.articulationTotal / bucket.articulationWeight : 0;
   const coordinationPenalty = bucket.coordinationWeight > 0
     ? bucket.coordinationTotal / bucket.coordinationWeight : 0;
+  const pedalPenalty = bucket.pedalWeight > 0 ? bucket.pedalTotal / bucket.pedalWeight : 0;
   const confidence = 0.72 + Math.min(0.28, bucket.rawEvents / 30);
   return round(Math.min(1, (
-    weightedErrorRate * 0.55
-      + timingPenalty * 0.13
-      + dynamicsPenalty * 0.08
-      + articulationPenalty * 0.1
-      + coordinationPenalty * 0.14
+    weightedErrorRate * 0.48
+      + timingPenalty * 0.11
+      + dynamicsPenalty * 0.07
+      + articulationPenalty * 0.09
+      + coordinationPenalty * 0.12
+      + pedalPenalty * 0.13
   ) * confidence));
 }
 
@@ -218,12 +226,15 @@ function buildMission(
   const coordinationPenalty = bucket.coordinationWeight > 0
     ? bucket.coordinationTotal / bucket.coordinationWeight : 0;
   const targetCoordinationScore = bucket.coordinationWeight >= 3 && coordinationPenalty >= 0.2 ? 80 : undefined;
+  const pedalPenalty = bucket.pedalWeight > 0 ? bucket.pedalTotal / bucket.pedalWeight : 0;
+  const targetPedalScore = bucket.pedalWeight >= 2 && pedalPenalty >= 0.2 ? 80 : undefined;
   const coordinationHand: HandSelection = bucket.crossHandCoordinationWeight > 0
     ? "both"
     : bucket.leftChordWeight > bucket.rightChordWeight ? "left" : "right";
   const hand = targetCoordinationScore === undefined ? chooseHand(bucket) : coordinationHand;
-  // Wait-for-me has no absolute onset, so synchronization missions must stay realtime.
-  const mode = targetCoordinationScore !== undefined ? "realtime" : severity >= 0.38 ? "wait" : "realtime";
+  // Wait-for-me has no absolute onset, so synchronization and pedal missions must stay realtime.
+  const mode = targetCoordinationScore !== undefined || targetPedalScore !== undefined
+    ? "realtime" : severity >= 0.38 ? "wait" : "realtime";
   const measures = writtenMeasures(score, from, through);
   const expected = expectedEvents(score, start, end, hand);
   const targetAccuracy = severity >= 0.58 ? 85 : severity >= 0.34 ? 90 : 94;
@@ -241,6 +252,8 @@ function buildMission(
         ? "，多余按键需要先清理"
         : targetDurationCoverage !== undefined
           ? "，提前收音使谱面时值没有完整覆盖"
+          : targetPedalScore !== undefined
+            ? "，踩下、松开或换踏没有对齐谱面记号"
           : targetCoordinationScore !== undefined
             ? bucket.crossHandCoordinationWeight > 0
               ? "，双手和弦落键没有形成共同起点"
@@ -264,6 +277,7 @@ function buildMission(
     targetDynamicsScore,
     targetDurationCoverage,
     targetCoordinationScore,
+    targetPedalScore,
     minimumEvents: Math.max(3, Math.min(20_000, expected)),
     requiredPasses: 2,
     consecutivePasses: 0,
@@ -351,6 +365,20 @@ export function buildPracticeCircuit(
       else if (sample.leftNotes > 0) bucket.leftChordWeight += weight;
       else if (sample.rightNotes > 0) bucket.rightChordWeight += weight;
     }
+    for (const assessment of session.pedalAssessments ?? []) {
+      if (!Number.isFinite(assessment.scoreTime)) continue;
+      const bucket = buckets[occurrenceAt(starts, assessment.scoreTime)];
+      if (!bucket) continue;
+      const penalty = assessment.status === "hit"
+        ? Math.min(1, Math.max(
+          Math.abs(assessment.timingMs ?? 0) / 300,
+          (assessment.valueError ?? 0) / 63,
+        ))
+        : 1;
+      bucket.pedalTotal += penalty * weight;
+      bucket.pedalWeight += weight;
+      bucket.rawEvents += 1;
+    }
   }
 
   const ranked = buckets
@@ -431,13 +459,17 @@ export function assessPracticeMission(circuit: PracticeCircuit, session: Practic
   const dynamicsScore = expressive.dynamicsScore;
   const durationCoverageScore = expressive.durationCoverageScore;
   const coordinationScore = expressive.coordinationScore;
+  const pedalScore = session.summary.pedalScore;
   const dynamicsPassed = mission.targetDynamicsScore === undefined
     || (dynamicsScore !== undefined && dynamicsScore >= mission.targetDynamicsScore);
   const durationPassed = mission.targetDurationCoverage === undefined
     || (durationCoverageScore !== undefined && durationCoverageScore >= mission.targetDurationCoverage);
   const coordinationPassed = mission.targetCoordinationScore === undefined
     || (coordinationScore !== undefined && coordinationScore >= mission.targetCoordinationScore);
-  const passed = accuracy >= mission.targetAccuracy && timingPassed && dynamicsPassed && durationPassed && coordinationPassed;
+  const pedalPassed = mission.targetPedalScore === undefined
+    || (pedalScore !== undefined && pedalScore >= mission.targetPedalScore);
+  const passed = accuracy >= mission.targetAccuracy && timingPassed && dynamicsPassed && durationPassed
+    && coordinationPassed && pedalPassed;
   const missions = circuit.missions.map((item, index) => index === circuit.activeIndex
     ? {
       ...item,
@@ -453,13 +485,15 @@ export function assessPracticeMission(circuit: PracticeCircuit, session: Practic
   const metrics = `${accuracy.toFixed(1)}%${mission.targetTimingMs === undefined ? "" : ` / ${timingMs === undefined ? "无节奏样本" : `${Math.round(timingMs)} ms`}`}`
     + `${mission.targetDynamicsScore === undefined ? "" : ` / 力度 ${dynamicsScore === undefined ? "无样本" : `${Math.round(dynamicsScore)}%`}`}`
     + `${mission.targetDurationCoverage === undefined ? "" : ` / 时值 ${durationCoverageScore === undefined ? "无样本" : `${Math.round(durationCoverageScore)}%`}`}`
-    + `${mission.targetCoordinationScore === undefined ? "" : ` / 和弦 ${coordinationScore === undefined ? "无样本" : `${Math.round(coordinationScore)}%`}`}`;
+    + `${mission.targetCoordinationScore === undefined ? "" : ` / 和弦 ${coordinationScore === undefined ? "无样本" : `${Math.round(coordinationScore)}%`}`}`
+    + `${mission.targetPedalScore === undefined ? "" : ` / 踏板 ${pedalScore === undefined ? "无样本" : `${Math.round(pedalScore)}%`}`}`;
   if (!passed) {
     const accuracyHint = accuracy < mission.targetAccuracy ? `准确率需达到 ${mission.targetAccuracy}%` : "准确率已达标";
     const timingHint = mission.targetTimingMs === undefined ? "" : `，平均拍点需在 ${mission.targetTimingMs} ms 内`;
     const dynamicsHint = mission.targetDynamicsScore === undefined ? "" : `，力度轮廓需达到 ${mission.targetDynamicsScore}%`;
     const durationHint = mission.targetDurationCoverage === undefined ? "" : `，时值覆盖需达到 ${mission.targetDurationCoverage}%`;
     const coordinationHint = mission.targetCoordinationScore === undefined ? "" : `，和弦整齐度需达到 ${mission.targetCoordinationScore}%`;
+    const pedalHint = mission.targetPedalScore === undefined ? "" : `，谱面踏板需达到 ${mission.targetPedalScore}%`;
     return {
       circuit: updated,
       outcome: "retry",
@@ -468,7 +502,8 @@ export function assessPracticeMission(circuit: PracticeCircuit, session: Practic
       dynamicsScore,
       durationCoverageScore,
       coordinationScore,
-      message: `本轮 ${metrics}：${accuracyHint}${timingHint}${dynamicsHint}${durationHint}${coordinationHint}，连续达标计数已重置。`,
+      pedalScore,
+      message: `本轮 ${metrics}：${accuracyHint}${timingHint}${dynamicsHint}${durationHint}${coordinationHint}${pedalHint}，连续达标计数已重置。`,
     };
   }
   if (!mastered) {
@@ -480,15 +515,16 @@ export function assessPracticeMission(circuit: PracticeCircuit, session: Practic
       dynamicsScore,
       durationCoverageScore,
       coordinationScore,
+      pedalScore,
       message: `本轮 ${metrics} 达标；再连续通过 ${updatedMission.requiredPasses - updatedMission.consecutivePasses} 次即可进阶。`,
     };
   }
   if (completed) return {
-    circuit: updated, outcome: "completed", accuracy, timingMs, dynamicsScore, durationCoverageScore, coordinationScore,
+    circuit: updated, outcome: "completed", accuracy, timingMs, dynamicsScore, durationCoverageScore, coordinationScore, pedalScore,
     message: `本轮 ${metrics} 达标，全部弱点关卡已完成。`,
   };
   return {
-    circuit: updated, outcome: "advanced", accuracy, timingMs, dynamicsScore, durationCoverageScore, coordinationScore,
+    circuit: updated, outcome: "advanced", accuracy, timingMs, dynamicsScore, durationCoverageScore, coordinationScore, pedalScore,
     message: `本轮 ${metrics} 达标，已自动进入下一处弱点。`,
   };
 }
@@ -512,6 +548,8 @@ function validStoredMission(value: unknown): value is PracticeMission {
       || (Number.isFinite(mission.targetDurationCoverage) && mission.targetDurationCoverage! >= 0 && mission.targetDurationCoverage! <= 100))
     && (mission.targetCoordinationScore === undefined
       || (Number.isFinite(mission.targetCoordinationScore) && mission.targetCoordinationScore! >= 0 && mission.targetCoordinationScore! <= 100))
+    && (mission.targetPedalScore === undefined
+      || (Number.isFinite(mission.targetPedalScore) && mission.targetPedalScore! >= 0 && mission.targetPedalScore! <= 100))
     && Number.isInteger(mission.minimumEvents)
     && mission.minimumEvents! >= 3
     && Number.isInteger(mission.requiredPasses)
