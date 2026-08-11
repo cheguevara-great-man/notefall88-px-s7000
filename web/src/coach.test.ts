@@ -75,6 +75,27 @@ describe("practice coach", () => {
     });
   });
 
+  it("holds back tempo and explains weak dynamics despite correct pitches", () => {
+    const events = Array.from({ length: 12 }, (_, index) => ({
+      kind: "hit" as const,
+      note: 60 + index % 4,
+      hand: "right" as const,
+      velocity: 70,
+      targetVelocity: 40 + (index % 4) * 20,
+      scoreTime: index,
+      timingMs: 20,
+    }));
+    const expressive = session("Dynamics", 2_000, events, 1);
+    expressive.summary.meanAbsTimingMs = 20;
+    expressive.summary.dynamicsScore = 25;
+    const recommendation = recommendPractice([expressive], "Dynamics", 15)!;
+    expect(recommendation).toMatchObject({
+      tempo: 0.95,
+      evidence: { dynamicsScore: 25 },
+    });
+    expect(recommendation.reason).toContain("力度轮廓 25%");
+  });
+
   it("does not infer a recommendation from another score", () => {
     expect(recommendPractice([session("Other", 1, [{ kind: "wrong", note: 60, velocity: 90, scoreTime: 0 }])], "Current", 10))
       .toBeUndefined();

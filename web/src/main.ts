@@ -683,9 +683,13 @@ function renderInsights(): void {
   required("insight-spread").textContent = summary?.meanAbsTimingMs === undefined
     ? "--"
     : `平均 ${summary.meanAbsTimingMs.toFixed(0)} / P95 ${summary.p95AbsTimingMs?.toFixed(0) ?? "--"} ms`;
-  required("insight-velocity").textContent = summary?.velocityMean === undefined
-    ? "--"
-    : `${summary.velocityMean.toFixed(0)} ± ${summary.velocityStdDev?.toFixed(0) ?? "0"}`;
+  required("insight-velocity").textContent = summary?.dynamicsScore !== undefined
+    ? `轮廓 ${summary.dynamicsScore.toFixed(0)}% · 基准 ${summary.velocityBias! >= 0 ? "+" : ""}${summary.velocityBias!.toFixed(0)}`
+    : summary?.dynamicsSamples
+      ? `${summary.dynamicsSamples} 个目标样本 · 基准 ${summary.velocityBias! >= 0 ? "+" : ""}${summary.velocityBias!.toFixed(0)}`
+      : summary?.velocityMean === undefined
+        ? "--"
+        : `实弹 ${summary.velocityMean.toFixed(0)} ± ${summary.velocityStdDev?.toFixed(0) ?? "0"}`;
   required("insight-streak").textContent = String(summary?.bestStreak ?? 0);
   const problems = summary?.problemNotes ?? [];
   required("insight-problems").textContent = problems.length === 0
@@ -710,19 +714,21 @@ function renderPracticeReview(): void {
   practiceReview.dataset.active = String(eventCount > 0);
   reviewCaption.textContent = eventCount === 0
     ? "导入乐谱后，按时间与琴键定位本次问题。"
-    : `${historic ? `历史复盘 · ${new Date(historic.endedAt).toLocaleString("zh-CN")} · ` : ""}${eventCount} 个判定事件 · 绿=命中 · 黄=多余键 · 红=漏音或集中错误${compatibleHistoricReview ? "" : " · 导入同一乐谱后才能从此处循环"}`;
+    : `${historic ? `历史复盘 · ${new Date(historic.endedAt).toLocaleString("zh-CN")} · ` : ""}${eventCount} 个判定事件 · 绿=命中 · 黄=多余键或力度偏差 · 红=漏音或集中错误${compatibleHistoricReview ? "" : " · 导入同一乐谱后才能从此处循环"}`;
   reviewTimeline.replaceChildren(...review.buckets.map((bucket) => {
     const segment = document.createElement("button");
     segment.type = "button";
     const errors = bucket.wrong + bucket.missed;
     segment.className = "review-segment";
     segment.dataset.tone = reviewBucketTone(bucket);
-    segment.dataset.marker = errors > 0 ? `−${errors}` : bucket.hits > 0 ? `+${bucket.hits}` : "";
+    const dynamicsWarning = (bucket.meanAbsDynamicsError ?? 0) >= 16;
+    segment.dataset.marker = errors > 0 ? `−${errors}` : dynamicsWarning ? "◇" : bucket.hits > 0 ? `+${bucket.hits}` : "";
     segment.dataset.start = String(bucket.start);
     segment.dataset.end = String(bucket.end);
     segment.disabled = !compatibleHistoricReview;
     const timing = bucket.timingBiasMs === undefined ? "" : ` · ${Math.abs(bucket.timingBiasMs)}ms${bucket.timingBiasMs < 0 ? "早" : "晚"}`;
-    segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}`;
+    const dynamics = bucket.meanAbsDynamicsError === undefined ? "" : ` · 力度轮廓偏差 ${bucket.meanAbsDynamicsError}`;
+    segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}${dynamics}`;
     return segment;
   }));
   reviewKeys.replaceChildren(...review.keys.map((key) => {
@@ -769,7 +775,8 @@ function renderPracticeHistory(): void {
       const title = document.createElement("strong");
       title.textContent = session.context.scoreName;
       const result = document.createElement("span");
-      result.textContent = `${session.summary.accuracy.toFixed(0)}% · 命中 ${session.summary.hits} · 错漏 ${session.summary.wrong + session.summary.missed}`;
+      const dynamics = session.summary.dynamicsScore === undefined ? "" : ` · 力度 ${session.summary.dynamicsScore.toFixed(0)}%`;
+      result.textContent = `${session.summary.accuracy.toFixed(0)}% · 命中 ${session.summary.hits} · 错漏 ${session.summary.wrong + session.summary.missed}${dynamics}`;
       const detail = document.createElement("small");
       const modeLabel = session.context.mode === "realtime" ? "实时" : session.context.mode === "follow" ? "跟随我" : "等我弹";
       const timing = session.summary.meanAbsTimingMs === undefined ? "无节奏判定" : `平均偏差 ${session.summary.meanAbsTimingMs.toFixed(0)} ms`;
@@ -809,7 +816,8 @@ function renderPracticeTrend(): void {
     bar.style.setProperty("--accuracy", point.accuracy.toFixed(1));
     bar.dataset.latest = String(index === trend.points.length - 1);
     const timing = point.timingMs === undefined ? "无节奏判定" : `平均偏差 ${point.timingMs.toFixed(0)} ms`;
-    bar.title = `${new Date(point.endedAt).toLocaleString("zh-CN")}：${point.accuracy.toFixed(0)}% · ${timing} · ${point.events} 事件`;
+    const dynamics = point.dynamicsScore === undefined ? "" : ` · 力度轮廓 ${point.dynamicsScore.toFixed(0)}%`;
+    bar.title = `${new Date(point.endedAt).toLocaleString("zh-CN")}：${point.accuracy.toFixed(0)}% · ${timing}${dynamics} · ${point.events} 事件`;
     bar.setAttribute("aria-label", bar.title);
     return bar;
   }));
@@ -821,8 +829,9 @@ function renderPracticeTrend(): void {
   const latest = trend.points.at(-1)!;
   const accuracyDelta = trend.accuracyDelta === undefined ? "还需至少两次可比练习" : `${trend.accuracyDelta >= 0 ? "+" : ""}${trend.accuracyDelta.toFixed(1)}%`;
   const timingDelta = trend.timingDeltaMs === undefined ? "节奏样本不足" : `${trend.timingDeltaMs >= 0 ? "+" : ""}${trend.timingDeltaMs.toFixed(0)} ms`;
+  const dynamicsDelta = trend.dynamicsDelta === undefined ? "力度样本不足" : `${trend.dynamicsDelta >= 0 ? "+" : ""}${trend.dynamicsDelta.toFixed(1)}%`;
   trendCaption.textContent = `${trend.points.length} 次 · 最新 ${latest.accuracy.toFixed(0)}% · 准确率趋势 ${accuracyDelta}`;
-  trendDetail.textContent = `前后窗口对比：准确率 ${accuracyDelta}；绝对节奏偏差改善 ${timingDelta}。共 ${trend.totalEvents} 个判定事件。`;
+  trendDetail.textContent = `前后窗口对比：准确率 ${accuracyDelta}；绝对节奏偏差改善 ${timingDelta}；力度轮廓 ${dynamicsDelta}。共 ${trend.totalEvents} 个判定事件。`;
 }
 
 function renderCoach(): void {
@@ -846,7 +855,10 @@ function renderCoach(): void {
   required("coach-title").textContent = `${modeLabel} · ${handLabel} · ${Math.round(recommendation.tempo * 100)}% · ${loopLabel}`;
   required("coach-reason").textContent = recommendation.reason;
   const confidence = recommendation.confidence === "high" ? "高" : recommendation.confidence === "medium" ? "中" : "初步";
-  required("coach-evidence").textContent = `${recommendation.evidence.sessions} 次 / ${recommendation.evidence.events} 事件 · 历史准确率 ${recommendation.evidence.accuracy.toFixed(1)}% · 置信度 ${confidence}`;
+  const dynamics = recommendation.evidence.dynamicsScore === undefined
+    ? ""
+    : ` · 力度轮廓 ${recommendation.evidence.dynamicsScore.toFixed(0)}%`;
+  required("coach-evidence").textContent = `${recommendation.evidence.sessions} 次 / ${recommendation.evidence.events} 事件 · 历史准确率 ${recommendation.evidence.accuracy.toFixed(1)}%${dynamics} · 置信度 ${confidence}`;
   renderPracticeCircuit();
 }
 
@@ -1128,6 +1140,7 @@ function handleMidi(event: MidiInputEvent): void {
           note: event.note,
           hand: expected?.hand,
           velocity: analysisVelocity,
+          targetVelocity: expected?.velocity,
           scoreTime: currentWaitChord()?.start ?? lastScoreSeconds,
         });
       }
@@ -1148,6 +1161,7 @@ function handleMidi(event: MidiInputEvent): void {
           note: event.note,
           hand: result.matched?.hand,
           velocity: analysisVelocity,
+          targetVelocity: result.matched?.velocity,
           scoreTime: result.matched?.start ?? lastScoreSeconds,
           timingMs: result.timingMs,
         });

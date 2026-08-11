@@ -1,4 +1,5 @@
 import type { PracticeEvent } from "./analytics";
+import { evaluateDynamics } from "./expression";
 
 export interface ReviewBucket {
   start: number;
@@ -7,6 +8,7 @@ export interface ReviewBucket {
   wrong: number;
   missed: number;
   timingBiasMs?: number;
+  meanAbsDynamicsError?: number;
 }
 
 export interface KeyReview {
@@ -32,6 +34,12 @@ export function buildPracticeReview(events: PracticeEvent[], duration: number, b
     start: index * span, end: (index + 1) * span, hits: 0, wrong: 0, missed: 0,
   }));
   const timingTotals = Array.from({ length: count }, () => ({ total: 0, count: 0 }));
+  const dynamics = evaluateDynamics(events.flatMap((event) => (
+    event.kind === "hit" && event.targetVelocity !== undefined
+      ? [{ actual: event.velocity, target: event.targetVelocity }]
+      : []
+  )));
+  const dynamicsTotals = Array.from({ length: count }, () => ({ total: 0, count: 0 }));
   const byKey = new Map<number, KeyReview>();
   for (const event of events) {
     const index = Math.max(0, Math.min(count - 1, Math.floor(event.scoreTime / span)));
@@ -43,6 +51,10 @@ export function buildPracticeReview(events: PracticeEvent[], duration: number, b
       if (event.timingMs !== undefined && Number.isFinite(event.timingMs)) {
         timingTotals[index].total += event.timingMs;
         timingTotals[index].count += 1;
+      }
+      if (dynamics && event.targetVelocity !== undefined && Number.isFinite(event.targetVelocity)) {
+        dynamicsTotals[index].total += Math.abs((event.velocity - event.targetVelocity) - dynamics.bias);
+        dynamicsTotals[index].count += 1;
       }
     } else if (event.kind === "wrong") {
       bucket.wrong += 1;
@@ -56,6 +68,8 @@ export function buildPracticeReview(events: PracticeEvent[], duration: number, b
   buckets.forEach((bucket, index) => {
     const timing = timingTotals[index];
     if (timing.count > 0) bucket.timingBiasMs = Math.round(timing.total / timing.count);
+    const expression = dynamicsTotals[index];
+    if (expression.count > 0) bucket.meanAbsDynamicsError = Math.round(expression.total / expression.count);
   });
   return {
     buckets,
@@ -66,5 +80,6 @@ export function buildPracticeReview(events: PracticeEvent[], duration: number, b
 export function reviewBucketTone(bucket: ReviewBucket): "clean" | "warning" | "error" | "empty" {
   const errors = bucket.wrong + bucket.missed;
   if (errors > 0) return errors >= 2 || bucket.missed > 0 ? "error" : "warning";
+  if ((bucket.meanAbsDynamicsError ?? 0) >= 16) return "warning";
   return bucket.hits > 0 ? "clean" : "empty";
 }

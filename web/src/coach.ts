@@ -17,16 +17,20 @@ export interface PracticeRecommendation {
     events: number;
     accuracy: number;
     errorsInLoop: number;
+    dynamicsScore?: number;
   };
 }
 
-function recommendedTempo(current: number, accuracy: number, timingMs?: number): number {
+function recommendedTempo(current: number, accuracy: number, timingMs?: number, dynamicsScore?: number): number {
   const normalized = normalizeTempo(current);
   const delta = accuracy < 70
     ? -0.15
     : (accuracy < 88 || (timingMs !== undefined && timingMs > 120))
       ? -0.1
-      : (accuracy >= 96 && (timingMs === undefined || timingMs < 65)) ? 0.05 : 0;
+      : (dynamicsScore !== undefined && dynamicsScore < 60)
+        ? -0.05
+        : (accuracy >= 96 && (timingMs === undefined || timingMs < 65)
+          && (dynamicsScore === undefined || dynamicsScore >= 80)) ? 0.05 : 0;
   return normalizeTempo(Math.max(MIN_TEMPO, Math.min(MAX_TEMPO, normalized + delta)));
 }
 
@@ -117,17 +121,28 @@ export function recommendPractice(
   const timing = timingValues.length > 0
     ? timingValues.reduce((sum, value) => sum + value, 0) / timingValues.length
     : undefined;
-  const tempo = recommendedTempo(latest.context.tempo, accuracy, timing);
+  const dynamicsValues = sessions
+    .map((session) => session.summary.dynamicsScore)
+    .filter((value): value is number => value !== undefined);
+  const dynamics = dynamicsValues.length > 0
+    ? dynamicsValues.reduce((sum, value) => sum + value, 0) / dynamicsValues.length
+    : undefined;
+  const tempo = recommendedTempo(latest.context.tempo, accuracy, timing, dynamics);
   const hand = chooseHand(sessions);
   const loop = hardestWindow(sessions, scoreDuration);
   const mode: PracticeMode = accuracy < 70 ? "wait" : "realtime";
   const reasonParts: string[] = [];
   if (loop) reasonParts.push(`${loop.start.toFixed(1)}–${loop.end.toFixed(1)} 秒聚集了 ${loop.errors} 个加权错漏`);
   if (hand !== "both") reasonParts.push(`${hand === "left" ? "左手" : "右手"}错误率更高`);
-  if (tempo < latest.context.tempo) reasonParts.push(`先降到 ${Math.round(tempo * 100)}% 稳定准确度`);
+  if (tempo < latest.context.tempo) reasonParts.push(
+    dynamics !== undefined && dynamics < 60 && accuracy >= 88 && (timing === undefined || timing <= 120)
+      ? `先降到 ${Math.round(tempo * 100)}% 打磨力度层次`
+      : `先降到 ${Math.round(tempo * 100)}% 稳定准确度`,
+  );
   else if (tempo > latest.context.tempo) reasonParts.push(`表现稳定，可提升到 ${Math.round(tempo * 100)}%`);
   if (mode === "wait") reasonParts.push("先用等我弹消除音高错误");
   else if (timing !== undefined && timing > 120) reasonParts.push("用实时模式收紧拍点");
+  if (dynamics !== undefined && dynamics < 60) reasonParts.push(`力度轮廓 ${Math.round(dynamics)}%，放慢后夸大谱面强弱层次`);
   if (reasonParts.length === 0) reasonParts.push("保持当前设置，继续巩固一致性");
 
   return {
@@ -138,6 +153,12 @@ export function recommendPractice(
     loop: loop ? { start: loop.start, end: loop.end } : undefined,
     confidence: sessions.length >= 5 && events.length >= 80 ? "high" : sessions.length >= 2 && events.length >= 20 ? "medium" : "low",
     reason: reasonParts.join("；"),
-    evidence: { sessions: sessions.length, events: events.length, accuracy, errorsInLoop: loop?.errors ?? errors },
+    evidence: {
+      sessions: sessions.length,
+      events: events.length,
+      accuracy,
+      errorsInLoop: loop?.errors ?? errors,
+      dynamicsScore: dynamics,
+    },
   };
 }

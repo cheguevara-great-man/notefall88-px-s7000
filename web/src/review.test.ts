@@ -24,5 +24,17 @@ describe("practice review model", () => {
     expect(reviewBucketTone({ start: 0, end: 1, hits: 1, wrong: 0, missed: 0 })).toBe("clean");
     expect(reviewBucketTone({ start: 0, end: 1, hits: 0, wrong: 1, missed: 0 })).toBe("warning");
     expect(reviewBucketTone({ start: 0, end: 1, hits: 0, wrong: 0, missed: 1 })).toBe("error");
+    expect(reviewBucketTone({ start: 0, end: 1, hits: 2, wrong: 0, missed: 0, meanAbsDynamicsError: 18 })).toBe("warning");
+  });
+
+  it("locates session-bias-corrected dynamics errors on the timeline", () => {
+    const review = buildPracticeReview([
+      { kind: "hit", note: 60, velocity: 40, targetVelocity: 40, scoreTime: 0.2 },
+      { kind: "hit", note: 62, velocity: 100, targetVelocity: 60, scoreTime: 1.2 },
+      { kind: "hit", note: 64, velocity: 80, targetVelocity: 80, scoreTime: 2.2 },
+      { kind: "hit", note: 65, velocity: 100, targetVelocity: 100, scoreTime: 3.2 },
+    ], 4, 4);
+    expect(review.buckets.map((bucket) => bucket.meanAbsDynamicsError)).toEqual([10, 30, 10, 10]);
+    expect(reviewBucketTone(review.buckets[1])).toBe("warning");
   });
 });

@@ -54,6 +54,25 @@ describe("practice analytics", () => {
     });
   });
 
+  it("separates relative dynamic contour from a consistent touch offset", () => {
+    const expressive = [40, 60, 80, 100].map((targetVelocity, index): PracticeEvent => ({
+      kind: "hit",
+      note: 60 + index,
+      hand: "right",
+      velocity: targetVelocity + 10,
+      targetVelocity,
+      scoreTime: index,
+      timingMs: 0,
+    }));
+    expect(summarizePractice(expressive)).toMatchObject({
+      dynamicsSamples: 4,
+      targetVelocityMean: 70,
+      velocityBias: 10,
+      meanAbsVelocityError: 10,
+      dynamicsScore: 100,
+    });
+  });
+
   it("finishes only non-empty sessions with immutable context", () => {
     const context = {
       scoreName: "Etude",

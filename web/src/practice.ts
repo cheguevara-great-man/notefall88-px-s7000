@@ -200,6 +200,7 @@ export interface PendingWaitHit {
   note: number;
   hand?: Hand;
   velocity: number;
+  targetVelocity?: number;
   scoreTime: number;
 }
 

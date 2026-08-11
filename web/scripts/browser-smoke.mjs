@@ -422,6 +422,10 @@ try {
     emit({ kind: 'hit', note: 60, hand: 'right', velocity: 92, scoreTime: .2, timingMs: 10 });
     emit({ kind: 'hit', note: 67, hand: 'right', velocity: 86, scoreTime: 4.2, timingMs: 140 });
     emit({ kind: 'missed', note: 69, hand: 'right', scoreTime: 4.4 });
+    [40, 60, 80, 100].forEach((targetVelocity, index) => emit({
+      kind: 'hit', note: 60 + index, hand: 'right', velocity: targetVelocity + 10,
+      targetVelocity, scoreTime: .6 + index, timingMs: 12,
+    }));
     window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { seconds: 4.3 } }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const overview = [...document.querySelectorAll('#measure-overview .measure-heat')];
@@ -434,6 +438,7 @@ try {
       currentHeight: current?.getBoundingClientRect().height ?? 0,
       overviewHeight: document.querySelector('#measure-overview')?.getBoundingClientRect().height ?? 0,
       weakPill: document.querySelector('.measure-pill[data-occurrence="1"]')?.dataset.tone,
+      expression: document.querySelector('#insight-velocity')?.textContent,
     };
     window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { clear: true } }));
     return JSON.stringify(result);
@@ -443,6 +448,8 @@ try {
   assert(measureHeat.currentOccurrence === '1' && measureHeat.currentTone === 'weak'
     && measureHeat.currentHeight > measureHeat.overviewHeight,
     `measure heat ribbon did not emphasize the current weak measure: ${JSON.stringify(measureHeat)}`);
+  assert(measureHeat.expression?.includes('轮廓 100%') && measureHeat.expression?.includes('基准 +10'),
+    `relative dynamics insight did not separate contour and touch offset: ${JSON.stringify(measureHeat)}`);
   evaluate(`() => { document.querySelector('#reset-button')?.click(); return JSON.stringify(true); }`);
   await waitForCondition(
     `() => JSON.stringify(!document.querySelector('#circuit-start')?.disabled)`,

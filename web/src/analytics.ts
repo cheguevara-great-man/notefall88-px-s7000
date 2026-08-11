@@ -1,4 +1,5 @@
 import type { Hand, HandSelection, PracticeMode, TimingProfile } from "./types";
+import { evaluateDynamics } from "./expression";
 import { storageFailureMessage } from "./storage";
 
 const DB_VERSION = 1;
@@ -7,7 +8,7 @@ const MAX_STORED_SESSIONS = 500;
 const MAX_EVENTS_PER_SESSION = 20_000;
 
 export type PracticeEvent =
-  | { kind: "hit"; note: number; hand?: Hand; velocity: number; scoreTime: number; timingMs?: number }
+  | { kind: "hit"; note: number; hand?: Hand; velocity: number; targetVelocity?: number; scoreTime: number; timingMs?: number }
   | { kind: "wrong"; note: number; velocity: number; scoreTime: number }
   | { kind: "missed"; note: number; hand?: Hand; scoreTime: number };
 
@@ -41,6 +42,11 @@ export interface SessionSummary {
   p95AbsTimingMs?: number;
   velocityMean?: number;
   velocityStdDev?: number;
+  dynamicsSamples?: number;
+  targetVelocityMean?: number;
+  velocityBias?: number;
+  meanAbsVelocityError?: number;
+  dynamicsScore?: number;
   bestStreak: number;
   problemNotes: ProblemNote[];
 }
@@ -91,6 +97,9 @@ export function summarizePractice(events: PracticeEvent[]): SessionSummary {
   const velocityVariance = velocityMean === undefined
     ? undefined
     : velocities.reduce((sum, value) => sum + (value - velocityMean) ** 2, 0) / velocities.length;
+  const dynamics = evaluateDynamics(hits.flatMap((event) => (
+    event.targetVelocity === undefined ? [] : [{ actual: event.velocity, target: event.targetVelocity }]
+  )));
 
   let streak = 0;
   let bestStreak = 0;
@@ -131,6 +140,13 @@ export function summarizePractice(events: PracticeEvent[]): SessionSummary {
     p95AbsTimingMs: absoluteTimings.length > 0 ? round(percentile(absoluteTimings, 0.95) ?? 0) : undefined,
     velocityMean: velocityMean === undefined ? undefined : round(velocityMean),
     velocityStdDev: velocityVariance === undefined ? undefined : round(Math.sqrt(velocityVariance)),
+    ...(dynamics ? {
+      dynamicsSamples: dynamics.samples,
+      targetVelocityMean: round(dynamics.targetMean),
+      velocityBias: round(dynamics.bias),
+      meanAbsVelocityError: round(dynamics.meanAbsError),
+      dynamicsScore: dynamics.score === undefined ? undefined : round(dynamics.score),
+    } : {}),
     bestStreak,
     problemNotes,
   };
