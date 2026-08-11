@@ -154,10 +154,25 @@ try {
     height: innerHeight,
     documentWidth: document.documentElement.scrollWidth,
     bodyWidth: document.body.scrollWidth,
-    overflow: document.documentElement.scrollWidth > innerWidth
+    overflow: document.documentElement.scrollWidth > innerWidth,
+    overflowing: [...document.querySelectorAll('*')]
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.right > innerWidth + 0.5 || rect.left < -0.5 || element.scrollWidth > element.clientWidth + 1;
+      })
+      .slice(0, 12)
+      .map((element) => ({
+        tag: element.tagName,
+        id: element.id,
+        className: typeof element.className === 'string' ? element.className : '',
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        left: Math.round(element.getBoundingClientRect().left),
+        right: Math.round(element.getBoundingClientRect().right),
+      }))
   })`);
   assert(mobile.width === 390 && mobile.height === 844, `mobile viewport was not applied: ${JSON.stringify(mobile)}`);
-  assert(!mobile.overflow && mobile.documentWidth === 390 && mobile.bodyWidth === 390, "mobile page overflows horizontally");
+  assert(!mobile.overflow && mobile.documentWidth === 390 && mobile.bodyWidth === 390, `mobile page overflows horizontally: ${JSON.stringify(mobile)}`);
 
   const practiceRef = refFor(page, /button "练习选项"[^\n]*\[ref=(e\d+)\]/, "practice options button");
   command(["click", practiceRef]);
@@ -310,6 +325,54 @@ try {
   assert(loadedMobile.sheetVisible && loadedMobile.notation, "sheet view is empty after MusicXML import");
   assert(loadedMobile.view === (EDITION === "studio" ? "split" : "sheet"), "MusicXML selected the wrong default view");
   assert(loadedMobile.waterfallVisible === (EDITION === "studio"), "split view did not expose the waterfall");
+  const demonstrationPreview = evaluate(`() => {
+    const tempo = document.querySelector('#tempo');
+    const listen = document.querySelector('#listen-button');
+    if (!tempo || !listen) return JSON.stringify({ missing: true });
+    tempo.value = '150';
+    tempo.dispatchEvent(new Event('change', { bubbles: true }));
+    listen.click();
+    return JSON.stringify({
+      missing: false,
+      active: listen.dataset.active,
+      label: listen.textContent,
+      playDisabled: document.querySelector('#play-button')?.disabled,
+      recordDisabled: document.querySelector('#record-button')?.disabled,
+    });
+  }`);
+  assert(!demonstrationPreview.missing
+    && demonstrationPreview.active === 'true'
+    && demonstrationPreview.label.includes('停止示范')
+    && demonstrationPreview.playDisabled
+    && demonstrationPreview.recordDisabled,
+  `silent piano demonstration preview did not start safely: ${JSON.stringify(demonstrationPreview)}`);
+  await waitForCondition(
+    `() => JSON.stringify(['00:01 / 00:04', '00:02 / 00:04', '00:03 / 00:04', '00:04 / 00:04']
+      .includes(document.querySelector('#score-time')?.textContent ?? ''))`,
+    "piano demonstration timeline did not advance",
+    30,
+  );
+  const demonstrationStopped = evaluate(`() => {
+    const listen = document.querySelector('#listen-button');
+    if (listen?.dataset.active === 'true') listen.click();
+    const tempo = document.querySelector('#tempo');
+    if (tempo) {
+      tempo.value = '100';
+      tempo.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    return JSON.stringify({
+      active: listen?.dataset.active,
+      label: listen?.textContent,
+      playDisabled: document.querySelector('#play-button')?.disabled,
+      recordDisabled: document.querySelector('#record-button')?.disabled,
+      time: document.querySelector('#score-time')?.textContent,
+    });
+  }`);
+  assert(demonstrationStopped.active === 'false'
+    && demonstrationStopped.label === '示范当前声部'
+    && demonstrationStopped.playDisabled === false
+    && demonstrationStopped.recordDisabled === false,
+  `piano demonstration preview did not stop safely: ${JSON.stringify(demonstrationStopped)}`);
   const judgementProfile = evaluate(`() => {
     const select = document.querySelector('#timing-profile');
     const status = document.querySelector('#timing-profile-status');
@@ -907,6 +970,7 @@ try {
     phraseMapSamples,
     studioConversion,
     studioMidiNotation,
+    demonstrationPreview: { started: demonstrationPreview, stopped: demonstrationStopped },
     artifacts: ARTIFACTS,
   }, null, 2));
 } finally {

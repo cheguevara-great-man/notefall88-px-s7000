@@ -1,6 +1,6 @@
 import { Midi } from "@tonejs/midi";
 import { beatMapFromTicks } from "./beatmap";
-import type { Hand, ParsedScore, ScoreNote } from "./types";
+import type { Hand, ParsedScore, ScoreNote, ScorePedalEvent } from "./types";
 
 const LEFT_HINTS = ["left", "lh", "bass", "左手"];
 const RIGHT_HINTS = ["right", "rh", "treble", "右手", "melody"];
@@ -15,6 +15,7 @@ function hintedHand(trackName: string): Hand | undefined {
 export function parseMidiFile(buffer: ArrayBuffer, fallbackName: string): ParsedScore {
   const midi = new Midi(buffer);
   const notes: ScoreNote[] = [];
+  const pedalControls: Array<{ time: number; value: number }> = [];
   for (const track of midi.tracks) {
     const trackHand = hintedHand(track.name ?? "");
     for (const note of track.notes) {
@@ -27,8 +28,29 @@ export function parseMidiFile(buffer: ArrayBuffer, fallbackName: string): Parsed
         hand: trackHand ?? (note.midi < 60 ? "left" : "right"),
       });
     }
+    for (const control of track.controlChanges[64] ?? []) {
+      if (!Number.isFinite(control.time) || !Number.isFinite(control.value)) continue;
+      pedalControls.push({
+        time: Math.max(0, control.time),
+        value: Math.max(0, Math.min(127, Math.round(control.value * 127))),
+      });
+    }
   }
   notes.sort((a, b) => a.start - b.start || a.note - b.note);
+  pedalControls.sort((a, b) => a.time - b.time || a.value - b.value);
+  const pedalEvents: ScorePedalEvent[] = [];
+  let previousPedal = 0;
+  for (const control of pedalControls) {
+    const previous = pedalEvents.at(-1);
+    if (previous && Math.abs(previous.time - control.time) <= 1e-6 && previous.value === control.value) continue;
+    const action = previousPedal < 64 && control.value >= 64
+      ? "down"
+      : previousPedal >= 64 && control.value < 64
+        ? "up"
+        : "level";
+    pedalEvents.push({ time: control.time, value: control.value, action });
+    previousPedal = control.value;
+  }
   const duration = notes.reduce((max, note) => Math.max(max, note.end), midi.duration || 0);
   const embeddedName = midi.header.name?.trim();
   const durationTicks = Math.max(0, Math.ceil(midi.header.secondsToTicks(duration)));
@@ -48,5 +70,6 @@ export function parseMidiFile(buffer: ArrayBuffer, fallbackName: string): Parsed
     notes,
     format: "midi",
     beatMap,
+    pedalEvents: pedalEvents.length > 0 ? pedalEvents : undefined,
   };
 }

@@ -34,6 +34,7 @@ import {
   pianoNoteName,
 } from "./calibration";
 import { DeviceLink } from "./device";
+import { DemonstrationPlanner } from "./demonstration";
 import { parseMidiFile } from "./midi";
 import { measureLoopRange, measureNavigation, measurePerformance } from "./measure-navigation";
 import { practiceTrend } from "./trend";
@@ -60,6 +61,7 @@ import {
   recordingDuration,
   recordingToMidi,
 } from "./performance";
+import { RecordingPlaybackPlanner } from "./recording-playback";
 import { loadPreferences, savePreferences } from "./preferences";
 import { timingWindowRange, timingWindowsForChords } from "./judgement";
 import { clampTempo, normalizeTempo, tempoPercent } from "./tempo";
@@ -132,8 +134,10 @@ if (studioEdition) {
   fileInput.title = "MIDI / MusicXML / MuseScore / Guitar Pro（离线转换）";
 }
 const playButton = required<HTMLButtonElement>("play-button");
+const listenButton = required<HTMLButtonElement>("listen-button");
 const resetButton = required<HTMLButtonElement>("reset-button");
 const recordButton = required<HTMLButtonElement>("record-button");
+const recordPlaybackButton = required<HTMLButtonElement>("record-playback");
 const recordDownload = required<HTMLButtonElement>("record-download");
 const focusButton = required<HTMLButtonElement>("focus-button");
 const focusExit = required<HTMLButtonElement>("focus-exit");
@@ -228,6 +232,8 @@ const sessionStore = new PracticeSessionStore();
 const metronome = new MetronomePlayer();
 const initialPreferences = loadPreferences();
 const VISUAL_THEME_STORAGE_KEY = "notefall88.visual-theme.v1";
+const DEMONSTRATION_LOOKAHEAD_REAL_SECONDS = 1.5;
+const DEMONSTRATION_REFILL_REAL_SECONDS = 0.65;
 
 if (studioEdition) {
   const toolbar = required("studio-toolbar");
@@ -310,7 +316,18 @@ let followAdvancePending = false;
 let midiOutAvailable = false;
 let midiOutOwnedByThisPage = false;
 let midiOutBlocked = false;
+let controlAuthorizedForPage = false;
 let followPlanner = new FollowAccompanimentPlanner([]);
+let demonstrationPlanner = new DemonstrationPlanner([]);
+let demonstrationActive = false;
+let demonstrationScheduledThrough = 0;
+let demonstrationNeedsPedalState = true;
+let recordingPlaybackPlanner = new RecordingPlaybackPlanner([]);
+const recordingPlaybackClock = new ScoreClock();
+let recordingPlaybackActive = false;
+let recordingPlaybackScheduledThrough = 0;
+let recordingPlaybackNeedsControllerState = true;
+let recordingPlaybackDurationSeconds = 0;
 let analytics: PracticeAnalytics | undefined;
 let completedReviewEvents: PracticeEvent[] = [];
 let completedPedalAssessments: PedalAssessment[] = [];
@@ -372,7 +389,9 @@ function selectedTempo(): number {
 function setSelectedTempo(tempo: number): void {
   const normalized = normalizeTempo(tempo);
   tempoInput.value = String(tempoPercent(normalized));
-  clock.setSpeed(normalized, performance.now());
+  const now = performance.now();
+  clock.setSpeed(normalized, now);
+  if (recordingPlaybackActive) recordingPlaybackClock.setSpeed(normalized, now);
 }
 
 function renderTimingProfileStatus(): void {
@@ -451,7 +470,7 @@ function renderCommissioning(): void {
 }
 
 function canUseMidiOut(): boolean {
-  return midiOutAvailable && !midiOutBlocked;
+  return midiOutAvailable && controlAuthorizedForPage && !midiOutBlocked;
 }
 
 function formatTime(seconds: number): string {
@@ -500,6 +519,182 @@ function cancelFollowPlayback(sendPanic = true): void {
   midiOutOwnedByThisPage = false;
 }
 
+function hasRecording(): boolean {
+  return lastRecording.length > 0 || lastRecordingControls.length > 0;
+}
+
+function renderRecordingSummary(prefix = ""): void {
+  const duration = recordingDuration(lastRecording, lastRecordingControls);
+  recordResult.textContent = !hasRecording()
+    ? "尚未录制"
+    : `${prefix}${lastRecording.length} 音符 · ${lastRecordingControls.length} 控制 · ${formatTime(duration)}`;
+}
+
+function renderRecordingPlaybackButton(): void {
+  recordPlaybackButton.dataset.active = String(recordingPlaybackActive);
+  recordPlaybackButton.setAttribute("aria-pressed", String(recordingPlaybackActive));
+  recordPlaybackButton.textContent = recordingPlaybackActive ? "停止回放" : "回放录音";
+  recordPlaybackButton.disabled = recordingPlaybackActive
+    ? false
+    : !hasRecording() || !canUseMidiOut() || demonstrationActive || recorder.isRecording();
+  recordPlaybackButton.title = !hasRecording()
+    ? "录制一段演奏后可直接回放"
+    : !canUseMidiOut()
+      ? "需要钢琴 MIDI OUT 且当前页面已获得控制权"
+      : "用 PX-S7000 自身音源回放刚才的演奏";
+}
+
+function stopRecordingPlayback(sendPanic = true, resumePractice = true): void {
+  if (!recordingPlaybackActive) return;
+  recordingPlaybackActive = false;
+  recordingPlaybackClock.pause(performance.now());
+  if (sendPanic) device.panicMidi();
+  midiOutOwnedByThisPage = false;
+  recordingPlaybackNeedsControllerState = true;
+  playButton.disabled = chords.length === 0;
+  playButton.textContent = mode === "realtime" ? "播放" : "开始练习";
+  listenButton.disabled = chords.length === 0;
+  recordButton.disabled = false;
+  recordDownload.disabled = !hasRecording();
+  renderRecordingPlaybackButton();
+  renderRecordingSummary();
+  if (resumePractice) beginPracticeSession();
+}
+
+function startRecordingPlayback(): void {
+  if (!hasRecording()) return;
+  if (!canUseMidiOut()) {
+    recordResult.textContent = "回放需要钢琴 MIDI OUT；家庭 Wi-Fi 下请先在设置中解锁控制。";
+    renderRecordingPlaybackButton();
+    return;
+  }
+  clearLifecycleStatus();
+  cancelCountIn();
+  cancelFollowPlayback();
+  stopDemonstration(true, false);
+  clock.pause(performance.now());
+  metronome.cancel();
+  needsCountIn = true;
+  void finishPracticeSession();
+  const now = performance.now();
+  recordingPlaybackClock.reset(0);
+  recordingPlaybackClock.setSpeed(selectedTempo(), now);
+  recordingPlaybackClock.play(now);
+  recordingPlaybackScheduledThrough = 0;
+  recordingPlaybackNeedsControllerState = true;
+  recordingPlaybackActive = true;
+  playButton.disabled = true;
+  listenButton.disabled = true;
+  recordButton.disabled = true;
+  recordDownload.disabled = true;
+  renderRecordingPlaybackButton();
+}
+
+function scheduleRecordingPlayback(now: number): void {
+  if (!recordingPlaybackActive) return;
+  const speed = recordingPlaybackClock.speed;
+  const playbackSeconds = recordingPlaybackClock.time(now);
+  if (playbackSeconds >= recordingPlaybackDurationSeconds) {
+    stopRecordingPlayback(true, true);
+    renderRecordingSummary("回放完成 · ");
+    return;
+  }
+  recordResult.textContent = `回放 ${formatTime(playbackSeconds)} / ${formatTime(recordingPlaybackDurationSeconds)}`;
+  if (recordingPlaybackScheduledThrough > playbackSeconds + DEMONSTRATION_REFILL_REAL_SECONDS * speed) return;
+  const windowStart = Math.max(playbackSeconds, recordingPlaybackScheduledThrough);
+  const windowEnd = Math.min(
+    recordingPlaybackDurationSeconds + 0.01,
+    playbackSeconds + DEMONSTRATION_LOOKAHEAD_REAL_SECONDS * speed,
+  );
+  const events = recordingPlaybackPlanner.events(
+    windowStart,
+    windowEnd,
+    playbackSeconds,
+    speed,
+    recordingPlaybackNeedsControllerState,
+  );
+  if (events.length > 0) device.scheduleMidi(events);
+  recordingPlaybackScheduledThrough = windowEnd;
+  recordingPlaybackNeedsControllerState = false;
+}
+
+function renderDemonstrationButton(): void {
+  listenButton.dataset.active = String(demonstrationActive);
+  listenButton.setAttribute("aria-pressed", String(demonstrationActive));
+  listenButton.textContent = demonstrationActive
+    ? (canUseMidiOut() ? "停止示范" : "停止示范（静音预览）")
+    : "示范当前声部";
+}
+
+function stopDemonstration(sendPanic = true, resumePractice = true): void {
+  if (!demonstrationActive) return;
+  demonstrationActive = false;
+  clock.pause(performance.now());
+  if (sendPanic) device.panicMidi();
+  midiOutOwnedByThisPage = false;
+  demonstrationNeedsPedalState = true;
+  playButton.disabled = chords.length === 0;
+  recordButton.disabled = false;
+  playButton.textContent = mode === "realtime" ? "播放" : "开始练习";
+  renderDemonstrationButton();
+  renderRecordingPlaybackButton();
+  lastTargetSignature = "";
+  updateTarget(lastScoreSeconds);
+  if (resumePractice) beginPracticeSession();
+}
+
+function startDemonstration(): void {
+  if (!score || score.notes.length === 0) return;
+  clearLifecycleStatus();
+  cancelCountIn();
+  cancelFollowPlayback();
+  stopRecordingPlayback(true, false);
+  if (recorder.isRecording()) finishRecording();
+  void finishPracticeSession();
+  const end = rangeEnd();
+  const start = lastScoreSeconds >= end - 0.01
+    ? rangeStart()
+    : Math.max(rangeStart(), Math.min(end, lastScoreSeconds));
+  const now = performance.now();
+  clock.seek(start, now);
+  clock.play(now);
+  lastScoreSeconds = start;
+  demonstrationScheduledThrough = start;
+  demonstrationNeedsPedalState = true;
+  demonstrationActive = true;
+  playButton.disabled = true;
+  recordButton.disabled = true;
+  renderDemonstrationButton();
+  renderRecordingPlaybackButton();
+  lastTargetSignature = "";
+  updateTarget(start);
+}
+
+function scheduleDemonstration(scoreSeconds: number): void {
+  if (!demonstrationActive || !score || !clock.isRunning()) return;
+  const speed = selectedTempo();
+  if (demonstrationScheduledThrough > scoreSeconds + DEMONSTRATION_REFILL_REAL_SECONDS * speed) return;
+  const windowStart = Math.max(scoreSeconds, demonstrationScheduledThrough);
+  const windowEnd = Math.min(rangeEnd(), scoreSeconds + DEMONSTRATION_LOOKAHEAD_REAL_SECONDS * speed);
+  if (windowEnd <= windowStart + 1e-6) return;
+  const events = demonstrationPlanner.events(
+    windowStart,
+    windowEnd,
+    scoreSeconds,
+    speed,
+    hand,
+    demonstrationNeedsPedalState,
+  );
+  if (!canUseMidiOut()) {
+    demonstrationScheduledThrough = scoreSeconds;
+    demonstrationNeedsPedalState = true;
+    return;
+  }
+  if (events.length > 0) device.scheduleMidi(events);
+  demonstrationScheduledThrough = windowEnd;
+  demonstrationNeedsPedalState = false;
+}
+
 function cancelCountIn(): void {
   countInGeneration += 1;
   window.clearTimeout(countInTimer);
@@ -534,6 +729,8 @@ function suspendForBackground(): void {
     cancelFollowPlayback(false);
     if (plan.advanceCompletedFollowChord) advanceWaitMode();
   }
+  stopDemonstration(true, false);
+  stopRecordingPlayback(true, false);
 
   metronome.cancel();
   pressed.clear();
@@ -1124,7 +1321,8 @@ function completeWaitChord(): void {
 
 function updateTarget(scoreSeconds: number): void {
   const loop = selectedLoop();
-  const chord = mode === "realtime"
+  const timelineMode = mode === "realtime" || demonstrationActive;
+  const chord = timelineMode
     ? nextRealtimeChord(chords, scoreSeconds, leadMs, loop)
     : (followAdvancePending ? undefined : currentWaitChord());
   currentTarget = targetNotes(chord);
@@ -1132,7 +1330,7 @@ function updateTarget(scoreSeconds: number): void {
   if (signature !== lastTargetSignature) {
     device.setTargets(currentTarget);
     lastTargetSignature = signature;
-    if (mode !== "realtime") setWaitChord(chord);
+    if (!timelineMode) setWaitChord(chord);
   }
 }
 
@@ -1145,6 +1343,8 @@ function updateScoreLabel(): void {
 }
 
 function resetPractice(resetStats = true): void {
+  stopDemonstration(true, false);
+  stopRecordingPlayback(true, false);
   if (resetStats) void finishPracticeSession();
   articulationTracker.clearActive();
   cancelCountIn();
@@ -1164,6 +1364,8 @@ function resetPractice(resetStats = true): void {
   setWaitChord(currentWaitChord());
   updateTarget(start);
   playButton.textContent = mode === "realtime" ? "播放" : "开始练习";
+  listenButton.disabled = chords.length === 0;
+  renderDemonstrationButton();
   renderStats();
   if (resetStats) beginPracticeSession();
 }
@@ -1177,6 +1379,7 @@ function rebuildPractice(): void {
   renderTimingProfileStatus();
   renderer.setPracticeView(hand, selectedLoop());
   playButton.disabled = chords.length === 0;
+  listenButton.disabled = chords.length === 0;
   resetButton.disabled = chords.length === 0;
   updateScoreLabel();
   resetPractice(true);
@@ -1277,6 +1480,11 @@ function handleMidi(event: MidiInputEvent): void {
   if (event.note < 21 || event.note > 108) return;
   const capturedAt = event.capturedAt ?? performance.now();
   const capturedScoreTime = clock.time(capturedAt);
+  if (demonstrationActive || recordingPlaybackActive) {
+    if (event.state === "on") pressed.add(event.note);
+    else pressed.delete(event.note);
+    return;
+  }
   if (event.state === "on" && event.note === 60) storeCommissioning(observeMidi(commissioning, event));
   if (event.state === "on") {
     const analysisVelocity = event.highResolutionVelocity === undefined
@@ -1349,6 +1557,13 @@ function handleMidi(event: MidiInputEvent): void {
 function handleControl(event: MidiControlEvent): void {
   const capturedAt = event.capturedAt ?? performance.now();
   const capturedScoreTime = clock.time(capturedAt);
+  if (demonstrationActive || recordingPlaybackActive) {
+    if (event.controller === 64) {
+      const down = event.value >= 64;
+      setStatus(sustainStatus, down, down ? "延音踏板踩下" : "延音踏板松开");
+    }
+    return;
+  }
   recorder.handleControl(event, capturedAt);
   completeArticulations(articulationTracker.control(
     event.channel,
@@ -1390,12 +1605,13 @@ function finishTruncatedRecording(): void {
 function finishRecording(): void {
   lastRecording = recorder.stop(performance.now());
   lastRecordingControls = recorder.controlSnapshot();
-  const duration = recordingDuration(lastRecording, lastRecordingControls);
+  recordingPlaybackDurationSeconds = Math.max(0.05, recordingDuration(lastRecording, lastRecordingControls));
+  recordingPlaybackPlanner = new RecordingPlaybackPlanner(lastRecording, lastRecordingControls);
   recordButton.textContent = "录制演奏";
-  recordDownload.disabled = lastRecording.length === 0 && lastRecordingControls.length === 0;
-  recordResult.textContent = lastRecording.length === 0 && lastRecordingControls.length === 0
-    ? "没有收到 MIDI 事件"
-    : `${lastRecording.length} 音符 · ${lastRecordingControls.length} 控制 · ${formatTime(duration)}`;
+  recordDownload.disabled = !hasRecording();
+  recordResult.textContent = hasRecording() ? "" : "没有收到 MIDI 事件";
+  if (hasRecording()) renderRecordingSummary();
+  renderRecordingPlaybackButton();
 }
 
 recordButton.addEventListener("click", () => {
@@ -1406,7 +1622,10 @@ recordButton.addEventListener("click", () => {
   recorder.start(performance.now());
   lastRecording = [];
   lastRecordingControls = [];
+  recordingPlaybackDurationSeconds = 0;
+  recordingPlaybackPlanner = new RecordingPlaybackPlanner([]);
   recordButton.textContent = "停止录制";
+  recordPlaybackButton.disabled = true;
   recordDownload.disabled = true;
   recordResult.textContent = "正在录制…";
 });
@@ -1422,6 +1641,11 @@ recordDownload.addEventListener("click", () => {
   link.download = `${name}.mid`;
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+});
+
+recordPlaybackButton.addEventListener("click", () => {
+  if (recordingPlaybackActive) stopRecordingPlayback();
+  else startRecordingPlayback();
 });
 
 function parseScoreSource(buffer: ArrayBuffer, fileName: string): { parsed: ParsedScore; xml?: string } {
@@ -1514,6 +1738,7 @@ async function activateScore(
     : "根据历史错漏、拍点和左右手差异，自动安排最多三处弱点。";
   score = transposeScore(parsed, transposeSemitones);
   followPlanner = new FollowAccompanimentPlanner(score.notes);
+  demonstrationPlanner = new DemonstrationPlanner(score.notes, score.pedalEvents);
   scoreXml = xml;
   if (xml) {
     viewMode.value = studioEdition ? "split" : "sheet";
@@ -2017,6 +2242,11 @@ playButton.addEventListener("click", () => {
   }
 });
 
+listenButton.addEventListener("click", () => {
+  if (demonstrationActive) stopDemonstration();
+  else startDemonstration();
+});
+
 resetButton.addEventListener("click", () => {
   clearLifecycleStatus();
   resetPractice(true);
@@ -2077,6 +2307,7 @@ transposeInput.addEventListener("input", () => {
   if (!sourceScore) return;
   score = transposeScore(sourceScore, transposeSemitones);
   followPlanner = new FollowAccompanimentPlanner(score.notes);
+  demonstrationPlanner = new DemonstrationPlanner(score.notes, score.pedalEvents);
   renderer.setScore(score);
   if (scoreXml) sheetRenderer.setTranspose(transposeSemitones);
   rebuildPractice();
@@ -2377,12 +2608,16 @@ required<HTMLFormElement>("update-form").addEventListener("submit", async (event
 device.onConnection((connected) => {
   if (!connected) {
     cancelFollowPlayback(false);
+    stopDemonstration(false, false);
+    stopRecordingPlayback(false, false);
     midiOutOwnedByThisPage = false;
+    controlAuthorizedForPage = false;
     articulationTracker.reset();
   }
   setStatus(deviceStatus, connected, connected ? "ESP 已连接" : "ESP 未连接");
 });
 device.onStatus((status: DeviceStatus) => {
+  controlAuthorizedForPage = status.controlAuthorized === true;
   required("control-auth-status").textContent = status.controlSessionReady === false
     ? "正在建立安全控制会话…"
     : status.controlAuthorized
@@ -2394,14 +2629,21 @@ device.onStatus((status: DeviceStatus) => {
   midiOutBlocked = midiOutOwnedElsewhere;
   setStatus(
     midiOutStatus,
-    midiOutAvailable && !midiOutOwnedElsewhere,
+    canUseMidiOut(),
     !midiOutAvailable
       ? "钢琴伴奏不可用"
-      : (midiOutOwnedByThisPage ? "钢琴伴奏输出中" : (midiOutOwnedElsewhere ? "伴奏被其他页面占用" : "钢琴伴奏可用")),
+      : !controlAuthorizedForPage
+        ? "钢琴伴奏需先解锁控制"
+        : (midiOutOwnedByThisPage ? "钢琴伴奏输出中" : (midiOutOwnedElsewhere ? "伴奏被其他页面占用" : "钢琴伴奏可用")),
   );
+  if (recordingPlaybackActive && !canUseMidiOut()) stopRecordingPlayback(false, true);
+  if (demonstrationActive) renderDemonstrationButton();
+  renderRecordingPlaybackButton();
   setStatus(pianoStatus, status.piano, status.piano ? "钢琴 USB 已连接" : "钢琴未连接");
   if (pianoWasConnected && !status.piano) {
     cancelFollowPlayback(false);
+    stopDemonstration(false, false);
+    stopRecordingPlayback(false, false);
     pressed.clear();
     wrong.clear();
     waitMatcher.allNotesOff();
@@ -2473,6 +2715,9 @@ device.onMidiOutResult((result) => {
   } else if (result.ok) {
     setStatus(midiOutStatus, true, `钢琴伴奏输出中 · 队列 ${result.queued}`);
   }
+  if (demonstrationActive) renderDemonstrationButton();
+  if (recordingPlaybackActive && result.busy) stopRecordingPlayback(false, true);
+  renderRecordingPlaybackButton();
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") suspendForBackground();
@@ -2509,38 +2754,52 @@ void refreshPracticeHistory().catch((error: unknown) => {
 });
 
 function frame(now: number): void {
+  scheduleRecordingPlayback(now);
   let scoreSeconds = clock.time(now);
   if (score) {
     const loop = selectedLoop();
-    if (mode !== "realtime") {
+    if (!demonstrationActive && mode !== "realtime") {
       scoreSeconds = currentWaitChord()?.start ?? rangeEnd();
     } else if (clock.isRunning() && loop && scoreSeconds >= loop.end) {
-      recordMissedNotes(realtimeMatcher.advance(loop.end + realtimeMatcher.maximumLateSeconds() + 0.001));
-      analytics?.completePedalPass(practicePass, loop.end);
-      practicePass += 1;
+      if (demonstrationActive) {
+        device.panicMidi();
+        midiOutOwnedByThisPage = false;
+        demonstrationScheduledThrough = loop.start;
+        demonstrationNeedsPedalState = true;
+      } else {
+        recordMissedNotes(realtimeMatcher.advance(loop.end + realtimeMatcher.maximumLateSeconds() + 0.001));
+        analytics?.completePedalPass(practicePass, loop.end);
+        practicePass += 1;
+      }
       const span = loop.end - loop.start;
       scoreSeconds = loop.start + ((scoreSeconds - loop.start) % span);
       clock.seek(scoreSeconds, now);
-      realtimeMatcher.restartPass();
+      if (!demonstrationActive) realtimeMatcher.restartPass();
       articulationTracker.clearActive();
       metronome.reset(scoreSeconds);
       lastTargetSignature = "";
     } else if (scoreSeconds >= score.duration) {
-      recordMissedNotes(realtimeMatcher.advance(score.duration + realtimeMatcher.maximumLateSeconds() + 0.001));
-      analytics?.completePedalPass(practicePass, score.duration);
-      analytics?.setPedalProgress(practicePass, score.duration);
-      clock.pause(now);
       scoreSeconds = score.duration;
-      playButton.textContent = "重播";
-      metronome.cancel();
-      needsCountIn = true;
-      void finishPracticeSession();
+      lastScoreSeconds = scoreSeconds;
+      if (demonstrationActive) {
+        stopDemonstration(true, true);
+      } else {
+        recordMissedNotes(realtimeMatcher.advance(score.duration + realtimeMatcher.maximumLateSeconds() + 0.001));
+        analytics?.completePedalPass(practicePass, score.duration);
+        analytics?.setPedalProgress(practicePass, score.duration);
+        clock.pause(now);
+        playButton.textContent = "重播";
+        metronome.cancel();
+        needsCountIn = true;
+        void finishPracticeSession();
+      }
     }
     if (import.meta.env.DEV && testScoreSeekSeconds !== undefined) scoreSeconds = testScoreSeekSeconds;
-    if (mode === "realtime" && clock.isRunning()) {
+    if (!demonstrationActive && mode === "realtime" && clock.isRunning()) {
       recordMissedNotes(realtimeMatcher.advance(scoreSeconds));
       metronome.schedule(score.beatMap ?? [], scoreSeconds, clock.speed);
     }
+    if (demonstrationActive) scheduleDemonstration(scoreSeconds);
     lastScoreSeconds = scoreSeconds;
     analytics?.setPedalProgress(practicePass, scoreSeconds);
     updateTarget(scoreSeconds);
@@ -2554,7 +2813,7 @@ function frame(now: number): void {
   }
   if (viewMode.value !== "sheet" || !scoreXml) {
     renderer.setState(pressed, expected, wrong);
-    renderer.render(lastScoreSeconds, mode === "realtime" && clock.isRunning());
+    renderer.render(lastScoreSeconds, (mode === "realtime" || demonstrationActive) && clock.isRunning());
   }
   const network = `WebSocket ${device.latencyMs === undefined ? "--" : Math.round(device.latencyMs)} ms`;
   const synchronized = device.clockSyncAvailable === false
