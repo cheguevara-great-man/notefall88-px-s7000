@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 const webRoot = fileURLToPath(new URL(".", import.meta.url));
+const repositoryRoot = resolve(webRoot, "..");
 const studioRoot = resolve(webRoot, "../studio");
 const outputDirectory = resolve(webRoot, "../dist/studio");
 
@@ -30,6 +31,10 @@ export default defineConfig({
     },
     closeBundle() {
       mkdirSync(outputDirectory, { recursive: true });
+      const legalDirectory = resolve(outputDirectory, "legal");
+      mkdirSync(legalDirectory, { recursive: true });
+      copyFileSync(resolve(studioRoot, "LICENSE.md"), resolve(legalDirectory, "NOTEFALL-STUDIO-LICENSE.md"));
+      copyFileSync(resolve(repositoryRoot, "THIRD_PARTY_NOTICES.md"), resolve(legalDirectory, "THIRD_PARTY_NOTICES.md"));
       const serviceWorkerOutput = resolve(outputDirectory, "sw.js");
       copyFileSync(resolve(studioRoot, "public/sw.js"), serviceWorkerOutput);
       const precache = outputFiles(outputDirectory)

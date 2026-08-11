@@ -39,6 +39,7 @@ jobs:
       - run: npm run coverage
       - run: npm run build
       - run: npm run build:studio
+      - run: npm run verify:studio
       - run: npx playwright-cli install-browser chromium --with-deps
       - run: npm run smoke:browser
       - run: NOTEFALL_EDITION=studio npm run smoke:browser

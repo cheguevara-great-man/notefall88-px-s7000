@@ -11,6 +11,7 @@ flowchart LR
   E -->|"SPI DATA + CLOCK"| L["74AHCT125 + 176 像素单排灯带"]
   E <-->|"本地 Wi-Fi + WebSocket"| W["NoteFall Studio App / PWA / Core 网页"]
   F["MIDI / MusicXML / MXL"] --> W
+  A["MSCZ / MSCX / Guitar Pro / KAR"] -->|"Studio 离线 Worker 转 MusicXML"| W
   W --> V["五线谱 / 瀑布流 / 曲库 / 练习 / 录制 / 校准"]
 ```
 
@@ -39,13 +40,13 @@ flowchart LR
 
 ## 软件实现与许可证边界
 
-Piano Trainer Studio 是第一软件/产品参考，但采用 AGPL-3.0 且默认硬件拓扑不同。本仓库保持 MIT 独立实现，不 fork 或复制其主代码。MusicXML/MXL 已通过独立时间线解析器与 BSD-3-Clause 的 OSMD 接入；完整比较见 [PTS 采用决策](pts-adoption-decision.md)。
+Piano Trainer Studio 是第一软件/产品参考，但采用 AGPL-3.0 且默认硬件拓扑不同。本仓库不 fork 或复制其主代码；NoteFall 原创源码与 Core 保持 MIT。MusicXML/MXL 已通过独立时间线解析器与 BSD-3-Clause 的 OSMD 接入。Studio 另外从上游 npm 发行包独立引入 GPL `webmscore-webpack5` 用于离线格式转换；含该库的 Studio 组合发行物按 GPL-3.0 传递，不改变不含该库的 Core 许可证。完整比较见 [PTS 采用决策](pts-adoption-decision.md)和 [ADR-005](decisions/005-studio-score-converter.md)。
 
 ### Core / Studio 分层
 
 固件内置可离线使用的 **NoteFall Core**：USB Host、实时灯光、安全/诊断，以及足以完成日常练习的救援网页。独立的 **NoteFall Studio** 已建立自己的构建、PWA 清单、Android/iOS 原生平台工程、可配置 Core 地址，以及五线谱/瀑布流分屏。两者共享经过测试的 MusicXML、练习、曲库和协议源码，不复制两套业务引擎。
 
-Core 的“离线”是 ESP32 本地托管，不是 Service Worker 缓存。Studio PWA 的资源由自己的安全 origin 缓存；Android/iOS App 则把资源随安装包提供，并由原生平台工程声明局域网和明文私网访问策略。设备热点的 HTTP origin、安全上下文与持久存储边界见 [手机离线与本地数据](mobile-offline-and-storage.md)。
+Core 的“离线”是 ESP32 本地托管，不是 Service Worker 缓存。Studio PWA 的资源由自己的安全 origin 缓存，包括固定版本的 MuseScore/Guitar Pro WebAssembly 转换运行时；Android/iOS App 则把同样资源随安装包提供，并由原生平台工程声明局域网和明文私网访问策略。设备热点的 HTTP origin、安全上下文与持久存储边界见 [手机离线与本地数据](mobile-offline-and-storage.md)。
 
 Studio 仍通过同一语义协议连接 Core，重型资源由手机/平板/电脑存储，ESP 继续保留轻量救援网页。正式平板路线采用混合原生容器：OSMD 谱面保留 WebView；Android 瀑布流由硬件加速原生 View 使用单调时钟逐帧绘制，Web/PWA 与暂未有 Xcode 构建环境的 iOS 使用 Canvas/WebGL 回退。真正重写的是呈现/交互层，不是 MusicXML、评分、曲库、协议或固件。选型、性能门禁与局部原生化边界见 [ADR-004](decisions/004-studio-hybrid-native.md)。
 

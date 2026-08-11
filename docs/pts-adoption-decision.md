@@ -70,7 +70,7 @@ flowchart LR
 | 与现有硬件的匹配 | 默认 Web MIDI → 浏览器 → WLED；需重写输入、灯光和连接状态 | 原生就是 PX-S7000 → ESP32 → APA102/SK9822 |
 | iOS/Android | iOS MIDI 需 MIDIWeb，WLED 场景还可能需 PC/Mac helper | 移动浏览器只连 ESP WebSocket，不需要 Web MIDI/helper |
 | 实时灯光 | 浏览器生成 RGB 帧并经网络发往 WLED | ESP 直接处理实际按键；目标音符才经 Wi-Fi 提前下发 |
-| 部署资源 | PTS 重型资源通常运行/存储在手机、平板或电脑，不要求进入 WLED；若坚持 ESP 单机托管才受 LittleFS 限制 | Core 内置离线网页与 gzip OSMD；未来 Studio 可由预装 PWA、原生壳或桌面端承载重型资源 |
+| 部署资源 | PTS 重型资源通常运行/存储在手机、平板或电脑，不要求进入 WLED；若坚持 ESP 单机托管才受 LittleFS 限制 | Core 内置离线网页与 gzip OSMD；Studio 已由预装 PWA/Capacitor 原生容器承载重型转换资源 |
 | 工程结构 | Plain JS + 多个全局模块；核心/LED 大文件，适配会是侵入式改造 | TypeScript 模块、协议版本、单元测试和固件 CI 已建立 |
 | 长期维护 | 能获得上游修复，但每次合并都要处理自定义硬件分叉 | 需要自己实现功能，但边界更小、设备行为更确定 |
 | 最终用户步骤 | 可能需要浏览器 MIDI 权限、MIDIWeb 或 helper | 预期只需钢琴接 ESP、手机连设备 Wi-Fi 并打开页面 |
@@ -87,17 +87,17 @@ PTS 原本就不是把网页、OSMD、webmscore、曲库和练习引擎放进 WL
 |---|---:|---|
 | OSMD 压缩脚本 | 1,206,484 bytes | 已独立集成 1.9.9；生产 gzip 为约 306 kB，buildfs 与 390 px 手机渲染已通过 |
 | Tone.js | 349,169 bytes | 不需要；PX-S7000 自己发声 |
-| webmscore 目录 | 24,173,611 bytes | 不嵌入固件；后续可做可选电脑端转换包 |
+| webmscore 目录 | 24,173,611 bytes | 不嵌入固件；已作为 Studio 锁版本离线 Worker 转换包 |
 | PTS 自写 JS/CSS/HTML/helper | 约 15,720 非空行 | 只研究功能与边界，不复制 |
 
-因此当前 Core 采用“MusicXML/XML/MXL 原生导入 + MIDI 原生导入”。MuseScore/Guitar Pro 用户可先导出 MusicXML。若增加重型转换器，它应进入预安装的 Studio 层并离线缓存，不必进入 ESP；同时必须实测 iOS/Android 对本地私网和明文 WebSocket 的策略，必要时使用原生壳。
+因此 Core 仍采用“MusicXML/XML/MXL 原生导入 + MIDI 原生导入”。重型转换器已按这个边界进入预安装的 Studio 层：无 CDN、Service Worker 离线缓存、Capacitor 随包、转换后存 MusicXML，不进入 ESP。完整实现与 GPL 组合发行边界见 [ADR-005](decisions/005-studio-score-converter.md)。
 
 ## 分功能采用计划
 
 | PTS 已验证的能力 | NoteFall 做法 | 采用边界 |
 |---|---|---|
 | MusicXML/MXL + 谱面 | 已独立集成 OSMD（BSD-3-Clause）与自己的安全解压/时间线/谱面适配层 | 不复制 PTS 的 OSMD 包装和 trainer-core |
-| MIDI/MuseScore/Guitar Pro 转换 | MIDI 保留 `@tonejs/midi`；重型格式转换后置到可选桌面包 | 不把 24 MB webmscore 塞入 ESP |
+| MIDI/MuseScore/Guitar Pro 转换 | MIDI 保留 `@tonejs/midi`；Studio 用独立上游 GPL 发行包实现 MSCZ/MSCX/Guitar Pro/KAR 离线 Worker 转换 | 不复制 PTS 包装代码；不把 24 MB webmscore 塞入 ESP |
 | Realtime / Wait / Follow | 已在现有 TypeScript 引擎独立实现；Follow 将另一手相对时间事件交给 ESP 固定队列，再由 PX-S7000 自身音源播放 | 用测试定义节拍、同音重触发和降级行为，不复制状态机代码 |
 | 左右手/循环/变速/移调/得分 | 左右手、循环、25%–200% 五个百分点步进变速、±12 半音目标/OSMD 同步移调和得分已实现 | 目标灯、判分、瀑布流和谱面消费同一变换结果 |
 | IndexedDB 曲库/备份 | 已独立实现版本化 schema、文件夹、最近使用、内容去重和 SHA-256 可校验备份 | 借鉴产品需求，不复制对象结构或 UI 代码 |
@@ -122,7 +122,7 @@ PTS 原本就不是把网页、OSMD、webmscore、曲库和练习引擎放进 WL
 3. **已完成数字验收**：OSMD、MusicXML/MXL 安全解压、统一时间线、gzip 固件资源，以及桌面/390 px 手机浏览器渲染。
 4. **已完成数字验收**：标准反复、次数、多结尾、D.C./D.S./Fine/Coda 已展开为统一播放顺序并映射回 OSMD 书写小节；下一步用 MuseScore、Dorico/Finale 和网络 MXL 建立真实兼容性语料。
 5. **已完成数字验收**：逐键微调、同步移调和 Follow Me 已完成；伴奏选择 PX-S7000 USB MIDI OUT，包含端点能力探测、固件本地排程、全音符关闭、疑似输出镜像诊断及无 OUT 端点降级。Casio 官方实现把键盘发送和外部接收分属 Performance Controller / C 组 Sound Generator，因此不使用会误吞真实齐奏的回声启发式；端点与镜像计数仍列入实机验收。
-6. **后续独立决策**：对比 Studio/PWA/原生壳与独立 AGPL PTS Studio；webmscore 不能成为钢琴前日常练习的必需联网步骤。
+6. **已完成数字验收**：Studio PWA/原生壳已内置无 CDN 的 webmscore Worker，真实 MSCX 自动转换、五线谱渲染和三音符时间线通过；Core 构建不含该运行时。
 
 ## 参考资料
 

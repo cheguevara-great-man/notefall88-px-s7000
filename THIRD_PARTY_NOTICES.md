@@ -91,6 +91,31 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 ```
 
+## NoteFall Studio advanced score converter
+
+NoteFall Studio PWA and Android/iOS distributions bundle
+`webmscore-webpack5` 0.21.0-a, published under the GNU GPL. It runs in a Web
+Worker and converts MuseScore, Guitar Pro, and KAR files to MusicXML. It is not
+linked into or distributed with the ESP32-hosted NoteFall Core web bundle.
+
+- Upstream source: <https://github.com/LibreScore/webmscore>
+- npm tarball: <https://registry.npmjs.org/webmscore-webpack5/-/webmscore-webpack5-0.21.0-a.tgz>
+- npm integrity: `sha512-AI1e+knofehVOwQT9FJHhuNQcOvpz+EfzzfC+U2ANTrj2KgC9kZe6/Ukmm/xCL/ojyBoC0hSb8iq3ZqVJgRYRg==`
+- Copied runtime files: `webmscore.mjs`, `webmscore.lib.data`,
+  `webmscore.lib.mem.wasm`, and `webmscore.lib.wasm`
+- Complete GPL-3.0 text in every Studio distribution:
+  `legal/GPL-3.0.txt`
+- NoteFall corresponding source and build instructions: this public repository,
+  especially `web/src/score-converter.ts`,
+  `web/scripts/sync-studio-vendor.mjs`, and
+  `docs/decisions/005-studio-score-converter.md`
+
+Because the Studio application loads and communicates with this GPL runtime as
+part of one distributed application, the combined Studio PWA/App distribution
+is conveyed under GPL-3.0. NoteFall-authored source remains independently
+available under MIT; Core remains MIT because its build neither includes nor
+loads this runtime. See `studio/LICENSE.md` for the distribution boundary.
+
 ## Firmware and engineering dependencies
 
 - `arduinoWebSockets` 2.7.2 — LGPL-2.1; source and license are distributed by the fixed PlatformIO package. Binary distributors must preserve the LGPL notice and applicable relinking/reverse-engineering rights. [Upstream source](https://github.com/Links2004/arduinoWebSockets) and [LGPL-2.1 text](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html).

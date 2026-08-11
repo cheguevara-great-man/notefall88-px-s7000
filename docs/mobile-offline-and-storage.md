@@ -8,7 +8,7 @@ NoteFall Core 的完整 HTML、压缩 JavaScript、CSS 和乐谱渲染资源都�
 
 ## 哪些数据保存在手机
 
-- 曲库：当前页面 origin 下的 IndexedDB；
+- 曲库：当前页面 origin 下的 IndexedDB；Studio 高级格式会保存规范化 MusicXML，原生 MIDI 则同时保存原事件文件与用于五线谱显示的 MusicXML 伴侣；
 - 练习历史：独立 IndexedDB，最多 500 次，每次最多 20,000 个判定事件；
 - 常用练习选项：localStorage；
 - ESP 的亮度、灯位和 Wi-Fi 配置：设备 NVS，不在浏览器备份中。

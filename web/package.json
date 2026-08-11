@@ -6,9 +6,12 @@
   "scripts": {
     "audit:musicxml": "vite-node scripts/audit-musicxml-corpus.ts",
     "dev": "vite --host 0.0.0.0",
+    "predev:studio": "node scripts/sync-studio-vendor.mjs",
     "dev:studio": "vite --config vite.studio.config.ts --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "prebuild:studio": "node scripts/sync-studio-vendor.mjs",
     "build:studio": "tsc -b && vite build --config vite.studio.config.ts",
+    "verify:studio": "node scripts/verify-studio-dist.mjs",
     "smoke:browser": "node scripts/browser-smoke.mjs",
     "test": "vitest",
     "coverage": "vitest run --coverage"
@@ -17,7 +20,8 @@
     "@tonejs/midi": "2.0.28",
     "@xmldom/xmldom": "0.9.10",
     "fflate": "0.8.2",
-    "opensheetmusicdisplay": "1.9.9"
+    "opensheetmusicdisplay": "1.9.9",
+    "webmscore-webpack5": "0.21.0-a"
   },
   "devDependencies": {
     "@playwright/cli": "0.1.17",

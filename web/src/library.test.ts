@@ -60,6 +60,38 @@ describe("score library", () => {
     expect(await db.listScores()).toHaveLength(1);
   });
 
+  it("persists and backs up a Studio-generated MIDI notation companion", async () => {
+    const notation = '<?xml version="1.0"?><score-partwise version="4.0"></score-partwise>';
+    const source = library();
+    const saved = await source.saveScore(bytes("midi-with-sheet"), parsed, "piece.mid", null, notation);
+    expect(await source.getScore(saved.score.id, false)).toMatchObject({ notationXml: notation });
+
+    const destination = library();
+    await destination.importBackup(await source.exportBackup());
+    expect((await destination.listScores())[0]).toMatchObject({
+      fileName: "piece.mid",
+      notationXml: notation,
+      notationBytes: new TextEncoder().encode(notation).byteLength,
+    });
+  });
+
+  it("upgrades an existing duplicate with a notation companion", async () => {
+    const db = library();
+    const source = bytes("same-midi");
+    const first = await db.saveScore(source, parsed, "piece.mid");
+    const notation = '<score-partwise version="4.0"></score-partwise>';
+    const duplicate = await db.saveScore(source, parsed, "piece.mid", null, notation);
+    expect(first.duplicate).toBe(false);
+    expect(duplicate.duplicate).toBe(true);
+    expect((await db.getScore(first.score.id, false))?.notationXml).toBe(notation);
+  });
+
+  it("rejects an invalid notation companion", async () => {
+    const db = library();
+    await expect(db.saveScore(bytes("midi"), parsed, "piece.mid", null, "not xml"))
+      .rejects.toThrow(/伴随文件/);
+  });
+
   it("serializes concurrent saves so a hash is inserted only once", async () => {
     const db = library();
     const results = await Promise.all([

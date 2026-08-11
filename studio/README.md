@@ -1,11 +1,12 @@
 # NoteFall Studio
 
-NoteFall Studio 是独立于 ESP32 LittleFS 的手机、平板和电脑端发行物。它与 NoteFall Core 共享经过测试的 MusicXML/MIDI、练习、曲库、分析和 WebSocket 协议源码，但拥有独立构建、PWA 清单、离线缓存、Core 地址设置和面向横屏平板的五线谱/瀑布流双视图。
+NoteFall Studio 是独立于 ESP32 LittleFS 的手机、平板和电脑端发行物。它与 NoteFall Core 共享经过测试的 MusicXML/MIDI、练习、曲库、分析和 WebSocket 协议源码，但拥有独立构建、PWA 清单、离线缓存、Core 地址设置和面向横屏平板的五线谱/瀑布流双视图。Studio 另外内置 Worker 隔离的离线 MuseScore、Guitar Pro 和 KAR 转换；首次导入转为 MusicXML 后存入曲库，后续打开不再加载转换引擎。
 
 ```powershell
 cd web
 npm.cmd ci
 npm.cmd run build:studio
+npm.cmd run verify:studio
 npm.cmd run dev:studio
 ```
 
@@ -26,9 +27,17 @@ npm.cmd run dev:studio
 cd web
 npm ci
 npm run build:studio
+npm run verify:studio
 cd ..\studio
 npm ci
 npm run sync
 ```
 
 Android 使用 JDK 21 与 Android SDK 36，可用 `android/gradlew.bat assembleDebug` 构建；它已注册 `NativeWaterfall` 插件，使用硬件加速 Android View 绘制瀑布流。iOS 工程必须在 macOS/Xcode 上签名构建，目前使用 Canvas/WebGL 回退。生成的 App 只加载随包资源，不加载远程站点。架构理由和性能门禁见 `docs/decisions/004-studio-hybrid-native.md`。
+
+## 许可证
+
+Core 固件和内置网页仍按 MIT 发行。Studio 安装包/PWA 因随包分发 GPL
+`webmscore-webpack5` 转换运行时，组合发行物按 GPL-3.0 传递。详细边界见
+[`LICENSE.md`](LICENSE.md) 和 `docs/decisions/005-studio-score-converter.md`；完整 GPL
+正文会作为 `legal/GPL-3.0.txt` 随 PWA 和 App 离线分发。

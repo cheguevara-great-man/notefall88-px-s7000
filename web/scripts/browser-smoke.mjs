@@ -14,10 +14,37 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const viteCli = join(WEB, "node_modules", "vite", "bin", "vite.js");
 const playwrightCli = join(WEB, "node_modules", "@playwright", "cli", "playwright-cli.js");
 
+if (EDITION === "studio") {
+  const synced = spawnSync(process.execPath, [join(WEB, "scripts", "sync-studio-vendor.mjs")], {
+    cwd: WEB,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (synced.status !== 0) throw new Error(`Studio vendor sync failed\n${synced.stdout}\n${synced.stderr}`);
+}
+
 mkdirSync(ARTIFACTS, { recursive: true });
 const longScorePath = join(ARTIFACTS, "long-follow-study.musicxml");
 const dynamicsScorePath = join(ARTIFACTS, "dynamics-visual-probe.musicxml");
 const repeatCursorScorePath = join(ARTIFACTS, "repeat-cursor-probe.musicxml");
+const midiNotationPath = join(ARTIFACTS, "notefall-midi-sheet-test.mid");
+const midiTrack = Buffer.from([
+  0x00, 0xff, 0x03, 0x18, ...Buffer.from("NoteFall MIDI Sheet Test", "ascii"),
+  0x00, 0xff, 0x51, 0x03, 0x07, 0xa1, 0x20,
+  0x00, 0xff, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08,
+  0x00, 0x90, 0x3c, 0x64, 0x83, 0x60, 0x80, 0x3c, 0x00,
+  0x00, 0x90, 0x40, 0x64, 0x83, 0x60, 0x80, 0x40, 0x00,
+  0x00, 0x90, 0x43, 0x64, 0x83, 0x60, 0x80, 0x43, 0x00,
+  0x00, 0xff, 0x2f, 0x00,
+]);
+const midiTrackLength = Buffer.alloc(4);
+midiTrackLength.writeUInt32BE(midiTrack.length);
+writeFileSync(midiNotationPath, Buffer.concat([
+  Buffer.from([0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x01, 0xe0]),
+  Buffer.from([0x4d, 0x54, 0x72, 0x6b]),
+  midiTrackLength,
+  midiTrack,
+]));
 writeFileSync(repeatCursorScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Repeat Cursor Probe</work-title></work><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><direction><sound tempo="60"/></direction><direction><direction-type><pedal type="start" line="yes"/></direction-type></direction><direction><direction-type><pedal type="stop" line="yes"/></direction-type><offset>2</offset></direction><barline location="left"><repeat direction="forward"/></barline>${["C", "D", "E", "F"].map((step) => `<note><pitch><step>${step}</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("")}</measure><measure number="2">${["G", "A", "B", "C"].map((step, index) => `<note><pitch><step>${step}</step><octave>${index === 3 ? 5 : 4}</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`).join("")}<barline location="right"><repeat direction="backward" times="2"/></barline></measure></part></score-partwise>`);
 writeFileSync(dynamicsScorePath, `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>Dynamics Visual Probe</work-title></work><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><staves>2</staves><time><beats>4</beats><beat-type>4</beat-type></time><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes><direction><sound tempo="60"/></direction><forward><duration>2</duration></forward><direction><direction-type><dynamics><p/></dynamics></direction-type><staff>1</staff></direction><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note><backup><duration>1</duration></backup><direction><direction-type><dynamics><fff/></dynamics></direction-type><staff>2</staff></direction><note><pitch><step>C</step><octave>6</octave></pitch><duration>1</duration><voice>2</voice><type>quarter</type><staff>2</staff></note></measure></part></score-partwise>`);
 const longMeasures = Array.from({ length: 48 }, (_, index) => {
@@ -187,6 +214,71 @@ try {
 
   page = snapshot();
   const importRef = refFor(page, /generic \[ref=(e\d+)\][^\n]*: 导入乐谱/, "score import control");
+  let studioConversion = null;
+  let studioMidiNotation = null;
+  if (EDITION === "studio") {
+    const advancedAccept = evaluate(`() => JSON.stringify(document.querySelector('#midi-file')?.getAttribute('accept') ?? '')`);
+    assert(advancedAccept.includes('.mscz') && advancedAccept.includes('.gp5'), `Studio advanced formats are absent: ${advancedAccept}`);
+    command(["click", importRef]);
+    command(["upload", join(WEB, "test-fixtures", "notefall-minimal.mscx")]);
+    await waitForCondition(
+      `() => JSON.stringify(
+        document.querySelector('#score-name')?.textContent === 'NoteFall Converter Test · 3 音符'
+        && Boolean(document.querySelector('#sheet-view svg'))
+      )`,
+      "offline MSCX conversion and rendering did not finish before the deadline",
+      600,
+    );
+    studioConversion = evaluate(`() => JSON.stringify({
+      score: document.querySelector('#score-name')?.textContent,
+      resources: performance.getEntriesByType('resource')
+        .map((entry) => entry.name)
+        .filter((name) => name.includes('webmscore')),
+    })`);
+    // Worker-internal WASM fetches have their own Resource Timing context;
+    // the page can directly observe the local worker module entry only.
+    assert(studioConversion.resources.length >= 1, `bundled webmscore runtime was not loaded: ${JSON.stringify(studioConversion)}`);
+    assert(studioConversion.resources.every((url) => url.startsWith(`${BASE_URL}/vendor/webmscore-0.21.0-a/`)),
+      `Studio conversion escaped to a public CDN: ${JSON.stringify(studioConversion)}`);
+
+    command(["click", importRef]);
+    command(["upload", midiNotationPath]);
+    await waitForCondition(
+      `() => JSON.stringify(
+        document.querySelector('#score-name')?.textContent === 'NoteFall MIDI Sheet Test · 3 音符'
+        && Boolean(document.querySelector('#sheet-view svg'))
+      )`,
+      "native MIDI notation companion did not render before the deadline",
+      600,
+    );
+    studioMidiNotation = evaluate(`async () => {
+      const scores = await new Promise((resolve, reject) => {
+        const request = indexedDB.open('notefall88-library');
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const tx = request.result.transaction('scores', 'readonly');
+          const all = tx.objectStore('scores').getAll();
+          all.onerror = () => reject(all.error);
+          all.onsuccess = () => resolve(all.result);
+        };
+      });
+      const stored = scores.find((score) => score.fileName === 'notefall-midi-sheet-test.mid');
+      return JSON.stringify({
+        score: document.querySelector('#score-name')?.textContent,
+        view: document.querySelector('#view-mode')?.value,
+        format: stored?.format,
+        sourceBytes: stored?.sourceBytes,
+        notationBytes: stored?.notationBytes,
+        notationRoot: stored?.notationXml?.includes('<score-partwise'),
+      });
+    }`);
+    assert(studioMidiNotation.format === 'midi'
+      && studioMidiNotation.sourceBytes > 0
+      && studioMidiNotation.notationBytes > 0
+      && studioMidiNotation.notationRoot
+      && studioMidiNotation.view === 'split',
+    `MIDI source/notation dual-track persistence failed: ${JSON.stringify(studioMidiNotation)}`);
+  }
   command(["click", importRef]);
   command(["upload", join(WEB, "test-fixtures", "parser-etude.musicxml")]);
   await waitForCondition(
@@ -813,6 +905,8 @@ try {
     measureHeat,
     sheetFeedback,
     phraseMapSamples,
+    studioConversion,
+    studioMidiNotation,
     artifacts: ARTIFACTS,
   }, null, 2));
 } finally {

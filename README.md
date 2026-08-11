@@ -52,6 +52,8 @@ MusicXML 目标时间线会按常见反复、多结尾和标准 D.C./D.S./Fine/C
 
 手机离线使用由 ESP32 自己托管完整网页保证，不虚假依赖在局域网 HTTP 上通常不可注册的 Service Worker。浏览器曲库提供配额/持久化诊断和可校验备份；安全上下文、origin 隔离及 iOS/Android 验收边界见 [手机离线与本地数据](docs/mobile-offline-and-storage.md)。Studio 已把 3:2 横屏大平板作为正式目标，Xiaomi Pad 7 Ultra 的布局策略、首屏琴盘约束和自动化视口验收见 [Studio 平板布局](docs/studio-tablet-layout.md)。
 
+Studio 还能在平板本地导入 MSCZ/MSCX、GP/GP3/GP4/GP5/GPX/GTP/PTB 和 KAR：锁定版本的 WebAssembly 在独立 Worker 中转为 MusicXML，不依赖 CDN，不进入 ESP32，完成后立即释放约 20 MB 运行时。转换后的标准 MusicXML 进曲库，二次打开无需重新转换。真实 MSCX 端到端浏览器门禁会同时验证三个音符的练习时间线和 OSMD 五线谱。
+
 内置安装向导把断电接线/保险丝/无损材料/三点灯位/机械稳定等人工确认，与 ESP 连接、PX-S7000 USB 枚举、MIDI IN 端点和真实中央 C Note On 自动证据合并；未齐全时始终显示“硬件尚未验收”，并可导出不含密码的 JSON 报告。详见 [引导式验收说明](docs/commissioning.md)。
 
 ## 硬件基线
@@ -104,6 +106,7 @@ npm.cmd ci
 npm.cmd test -- --run
 npm.cmd run build
 npm.cmd run build:studio
+npm.cmd run verify:studio
 npx.cmd playwright-cli install-browser chromium
 npm.cmd run smoke:browser
 npx.cmd playwright-cli install-browser webkit
@@ -127,4 +130,4 @@ python scripts/render_cad.py
 
 软件、映射、CAD 和固件可以数字验证；Casio 官方文档确认 PX-S7000 的 USB-B 可双向发送/接收 MIDI 并驱动琴内音源，且把键盘发送的 Performance Controller 与外部接收的 C 组 Sound Generator 分开。固件不会依据时间相似性删除真实输入，只把疑似输出镜像计入诊断；具体实机的端点地址与镜像计数仍需验收。实际灯位偏移、温升和琴漆材料相容性也必须在实物上完成最终确认。网页校准允许反向灯带、修正全局像素偏移，并为个别琴键做 ±4 像素微调，不需要重新写固件。
 
-项目采用 MIT 许可证。现有项目的硬件拓扑、通信方式、功能、优缺点和采用边界见 [开源项目技术调研](docs/open-source-review.md)；为什么把 AGPL-3.0 的 Piano Trainer Studio 提升为第一软件参考但不直接 fork，见 [PTS 采用决策](docs/pts-adoption-decision.md)。组合能力的逐项领先性证据见 [竞争能力审计](docs/competitive-benchmark.md)，候选版与硬件验证版的严格边界见 [发布门禁](docs/release-readiness.md)。
+NoteFall 原创源码和 Core 发行物采用 MIT 许可证。包含 GPL `webmscore-webpack5` 运行时的 Studio PWA/Android/iOS 组合发行物按 GPL-3.0 传递，完整正文、对应源码和固定完整性会随包提供；边界见 [ADR-005](docs/decisions/005-studio-score-converter.md)。现有项目的硬件拓扑、通信方式、功能、优缺点和采用边界见 [开源项目技术调研](docs/open-source-review.md)；为什么把 AGPL-3.0 的 Piano Trainer Studio 提升为第一软件参考但不直接 fork，见 [PTS 采用决策](docs/pts-adoption-decision.md)。组合能力的逐项领先性证据见 [竞争能力审计](docs/competitive-benchmark.md)，候选版与硬件验证版的严格边界见 [发布门禁](docs/release-readiness.md)。

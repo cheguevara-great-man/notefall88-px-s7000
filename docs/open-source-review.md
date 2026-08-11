@@ -41,7 +41,7 @@ flowchart LR
 | PianoLux ESP32 | [`2a9d10c`](https://github.com/serifpersia/pianolux-esp32/tree/2a9d10c3c744) | MIT | 约 5,700 |
 | ESP32_Host_MIDI | [`dea1578`](https://github.com/sauloverissimo/ESP32_Host_MIDI/tree/dea1578d596a)（v7.2.0） | MIT | 核心约 5,100；含示例/测试约 12,700 |
 | Openthesia | [`04d6e37`](https://github.com/ImAxel0/Openthesia/tree/04d6e378f178) | GPL-3.0 | 约 7,600 |
-| NoteFall 88 当前工程基线 | 本仓库 | MIT | 超过 8,500 行非空代码与测试；296 项自动测试（63 Python/工程 + 233 Web，含固件共用纯 C++ MIDI/USB 描述符核心的主机编译执行），显式 Web 模块覆盖率门限进入 CI，另有 1016 文件 MusicXML/MXL 固定语料审计、ESP/浏览器单调时钟同步、逐和弦局部拍速自适应判定与快速同音防串匹配、目标力度基准/轮廓、物理松键/CC64 发声时值、和弦展开/双手同步、MusicXML 踏板提前提示/时机/半踏深度评分与专项关卡、48 小节真浏览器自动翻谱、逐音/反复安全谱面光标、可点击的小节热力带、循证弱点巡回、跨曲目间隔复习队列、全曲指纹、跨双手和弦星座、目标力度与早/晚反馈 Canvas 像素门禁；控制面采用 SoftAP 自动授权、STA 会话再认证与默认密码验收门禁 |
+| NoteFall 88 当前工程基线 | 本仓库 | MIT Core；Studio 组合发行物 GPL-3.0 | 超过 8,500 行非空原创代码与测试；306 项自动测试（63 Python/工程 + 243 Web，含固件共用纯 C++ MIDI/USB 描述符核心的主机编译执行），显式 Web 模块覆盖率门限进入 CI，另有 1016 文件 MusicXML/MXL 固定语料审计、Studio 本地 Worker 高级格式转换和 MIDI 五线谱伴侣、ESP/浏览器单调时钟同步、逐和弦局部拍速自适应判定与快速同音防串匹配、目标力度基准/轮廓、物理松键/CC64 发声时值、和弦展开/双手同步、MusicXML 踏板提前提示/时机/半踏深度评分与专项关卡、48 小节真浏览器自动翻谱、逐音/反复安全谱面光标、可点击的小节热力带、循证弱点巡回、跨曲目间隔复习队列、全曲指纹、跨双手和弦星座、目标力度与早/晚反馈 Canvas 像素门禁；控制面采用 SoftAP 自动授权、STA 会话再认证与默认密码验收门禁 |
 
 ¹ 这是用相同规则排除依赖目录、构建产物和压缩文件后的物理非空行近似值。翻译表、生成代码、示例和测试都会显著改变数字，所以代码行数只能说明项目体量，不能代表功能质量。
 
@@ -317,7 +317,7 @@ flowchart LR
 
 PTS 默认要求浏览器自己收到钢琴 MIDI：桌面浏览器使用 Web MIDI；iPhone/iPad 因 Safari/Chrome 不提供 Web MIDI，需要 MIDIWeb。WLED 默认走浏览器 HTTP JSON，低延迟 DDP 需要 PC/Mac helper；官方说明还指出 iOS 的 WLED 使用场景需要 helper。NoteFall 88 则让 PX-S7000 直接接 ESP32-S3，实体按键反馈不经过浏览器或 Wi-Fi，ESP32 再把标准化按键事件发给任意手机/平板页面，因此移动端不需要 Web MIDI 权限。
 
-PTS 的完整发布包本来也不以塞进 WLED 为目标：网页、OSMD、webmscore、曲库和练习引擎通常运行/存储在手机、平板或电脑，WLED 主要收像素帧。审计快照中的 webmscore 资源约 24.2 MB、OSMD 压缩脚本约 1.2 MB，只说明它们不能原样随 NoteFall Core 烧进 2.875 MiB LittleFS，不能作为拒绝 PTS 前端路线的单独理由。当前 Core 已把 OSMD gzip 到约 306 kB 并通过 buildfs；未来 webmscore 可进入预安装 PWA、原生 App 或电脑 Studio，而不占 ESP Flash。
+PTS 的完整发布包本来也不以塞进 WLED 为目标：网页、OSMD、webmscore、曲库和练习引擎通常运行/存储在手机、平板或电脑，WLED 主要收像素帧。审计快照中的 webmscore 资源约 24.2 MB、OSMD 压缩脚本约 1.2 MB，只说明它们不能原样随 NoteFall Core 烧进 2.875 MiB LittleFS，不能作为拒绝 PTS 前端路线的单独理由。Core 已把 OSMD gzip 到约 306 kB 并通过 buildfs；webmscore 现已进入预安装 Studio PWA/原生 App 的离线 Worker，而不占 ESP Flash。
 
 #### 许可证边界与采用结论
 
@@ -364,7 +364,7 @@ NoteFall 88 因此采用两层映射：
 | 键位映射 | 参数化真实键位中心 + 少量现场校准 | 改进现有项目常见的线性偏移模型 |
 | 软件形态 | ESP32 托管响应式 Web/PWA 核心；需要商店安装时再用 Capacitor 封装 | 一份代码覆盖手机、平板和电脑；ESP 作为 MIDI 网关后，iOS 不需要 Web MIDI/MIDIWeb |
 | 软件参考与许可证 | PTS 为第一软件参考；MIT 独立实现，不 fork/复制 AGPL 主代码 | fork 能较快获得成熟功能，但会引入 AGPL 发布义务和 MIDI/灯控拓扑重构；资源可由外部 Studio 承载，不是决定性反对项 |
-| 谱面与格式 | 已独立引入 BSD-3-Clause OSMD、MusicXML/MXL 安全解压和统一时间线；MIDI 继续直接解析 | PTS 验证 MusicXML-first 产品路线；Core 只嵌入日常必需资源，重型转换器可放 Studio |
+| 谱面与格式 | 已独立引入 BSD-3-Clause OSMD、MusicXML/MXL 安全解压和统一时间线；MIDI 继续直接解析；Studio 已用独立上游 GPL 包离线转换 MSCZ/MSCX/Guitar Pro/KAR | PTS 验证 MusicXML-first 产品路线；Core 只嵌入日常必需资源，重型转换器在 Studio Worker，不复制 PTS 代码 |
 | 练习引擎 | 统一时间线，谱面、屏幕瀑布流和实体灯带使用不同渲染器 | 学习 PTS/Openthesia 的公开行为和状态边界，不复制 AGPL/GPL 代码 |
 | 首版传输范围 | 只启用 USB MIDI；BLE/RTP/OSC 等留作未来插件 | ESP32_Host_MIDI 的广度有参考价值，但不是首版需求 |
 

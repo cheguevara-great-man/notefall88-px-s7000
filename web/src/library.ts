@@ -5,6 +5,7 @@ const DB_VERSION = 1;
 const FOLDER_STORE = "folders";
 const SCORE_STORE = "scores";
 const MAX_BACKUP_SOURCE_BYTES = 32 * 1024 * 1024;
+const MAX_NOTATION_XML_BYTES = 64 * 1024 * 1024;
 const MAX_BACKUP_TOTAL_SOURCE_BYTES = 128 * 1024 * 1024;
 const MAX_BACKUP_FOLDERS = 500;
 const MAX_BACKUP_SCORES = 1000;
@@ -26,6 +27,9 @@ export interface LibraryScore {
   format: "midi" | "musicxml";
   folderId: string | null;
   source: ArrayBuffer;
+  /** Optional Studio-generated notation companion for a native MIDI source. */
+  notationXml?: string;
+  notationBytes?: number;
   sourceBytes: number;
   sha256: string;
   noteCount: number;
@@ -161,6 +165,16 @@ function boundedText(value: unknown, fallback: string, maximum: number, label: s
   return result;
 }
 
+function validateNotationXml(value: unknown): { xml?: string; bytes: number } {
+  if (value === undefined || value === null || value === "") return { bytes: 0 };
+  if (typeof value !== "string" || !/<score-(?:partwise|timewise)\b/i.test(value)) {
+    throw new Error("乐谱谱面伴随文件不是有效的 MusicXML");
+  }
+  const bytes = new TextEncoder().encode(value).byteLength;
+  if (bytes > MAX_NOTATION_XML_BYTES) throw new Error("乐谱谱面伴随文件超过 64 MB 安全上限");
+  return { xml: value, bytes };
+}
+
 export class ScoreLibrary {
   private database?: Promise<IDBDatabase>;
 
@@ -225,8 +239,10 @@ export class ScoreLibrary {
     parsed: ParsedScore,
     fileName: string,
     folderId: string | null = null,
+    notationXml?: string,
   ): Promise<{ score: LibraryScore; duplicate: boolean }> {
     if (source.byteLength > MAX_BACKUP_SOURCE_BYTES) throw new Error("乐谱文件超过 32 MB 安全上限");
+    const notation = validateNotationXml(notationXml);
     const digest = sha256Hex(source);
     const db = await this.open();
     // Use one write transaction for the duplicate check and insertion. Write
@@ -239,6 +255,12 @@ export class ScoreLibrary {
       store.index("by_sha256").get(digest) as IDBRequest<LibraryScore | undefined>,
     );
     if (existing) {
+      if (notation.xml && !existing.notationXml) {
+        existing.notationXml = notation.xml;
+        existing.notationBytes = notation.bytes;
+        existing.updatedAt = Date.now();
+        store.put(existing);
+      }
       await done;
       return { score: existing, duplicate: true };
     }
@@ -251,6 +273,8 @@ export class ScoreLibrary {
       format: parsed.format === "musicxml" ? "musicxml" : "midi",
       folderId,
       source: source.slice(0),
+      notationXml: notation.xml,
+      notationBytes: notation.xml ? notation.bytes : undefined,
       sourceBytes: source.byteLength,
       sha256: digest,
       noteCount: parsed.notes.length,
@@ -355,14 +379,15 @@ export class ScoreLibrary {
         throw new Error("备份中的乐谱引用了不存在的文件夹");
       }
       const source = base64ToBuffer(rawScore.sourceBase64);
-      totalSourceBytes += source.byteLength;
+      const notation = validateNotationXml(rawScore.notationXml);
+      totalSourceBytes += source.byteLength + notation.bytes;
       if (totalSourceBytes > MAX_BACKUP_TOTAL_SOURCE_BYTES) {
         throw new Error("备份乐谱总容量超过 128 MB 安全上限");
       }
       if (sha256Hex(source) !== rawScore.sha256.toLowerCase()) {
         throw new Error(`乐谱“${rawScore.title ?? "未命名"}”校验失败`);
       }
-      return { rawScore, source };
+      return { rawScore, source, notation };
     });
 
     // Complete validation and planning before the first write. Folders and
@@ -388,7 +413,7 @@ export class ScoreLibrary {
     const hashes = new Set(existingScores.map((score) => score.sha256));
     const scoresToAdd: LibraryScore[] = [];
     let duplicatesSkipped = 0;
-    for (const { rawScore, source } of preparedScores) {
+    for (const { rawScore, source, notation } of preparedScores) {
       const digest = rawScore.sha256.toLowerCase();
       if (hashes.has(digest)) {
         duplicatesSkipped += 1;
@@ -410,6 +435,8 @@ export class ScoreLibrary {
         folderId: rawScore.folderId === null || rawScore.folderId === undefined
           ? null : folderMap.get(String(rawScore.folderId)) ?? null,
         source: source.slice(0),
+        notationXml: notation.xml,
+        notationBytes: notation.xml ? notation.bytes : undefined,
         sourceBytes: source.byteLength,
         sha256: digest,
         noteCount: Math.floor(finiteNumber(rawScore.noteCount, 0)),

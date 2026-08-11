@@ -39,6 +39,7 @@ import { measureLoopRange, measureNavigation, measurePerformance } from "./measu
 import { practiceTrend } from "./trend";
 import { MetronomePlayer } from "./metronome";
 import { parseMusicXmlFile } from "./musicxml";
+import { convertScoreToMusicXml, normalizeScoreSource, studioScoreAcceptList } from "./score-converter";
 import { ScoreLibrary, sha256Hex } from "./library";
 import type { LibraryFolder, LibraryScore } from "./library";
 import { planBackgroundSuspension } from "./lifecycle";
@@ -126,6 +127,10 @@ if (studioEdition) {
 }
 
 const fileInput = required<HTMLInputElement>("midi-file");
+if (studioEdition) {
+  fileInput.accept = `${fileInput.accept},${studioScoreAcceptList()}`;
+  fileInput.title = "MIDI / MusicXML / MuseScore / Guitar Pro（离线转换）";
+}
 const playButton = required<HTMLButtonElement>("play-button");
 const resetButton = required<HTMLButtonElement>("reset-button");
 const recordButton = required<HTMLButtonElement>("record-button");
@@ -1428,7 +1433,76 @@ function parseScoreSource(buffer: ArrayBuffer, fileName: string): { parsed: Pars
   throw new Error("支持 MIDI、MusicXML、XML 和 MXL 文件");
 }
 
-async function activateScore(parsed: ParsedScore, xml: string | undefined, fingerprint: string): Promise<void> {
+async function prepareScoreSource(
+  buffer: ArrayBuffer,
+  fileName: string,
+  knownNotationXml?: string,
+): Promise<{
+  buffer: ArrayBuffer;
+  fileName: string;
+  parsed: ParsedScore;
+  xml?: string;
+  sheetScore?: ParsedScore;
+  notationXml?: string;
+  warning?: string;
+}> {
+  const normalized = await normalizeScoreSource(
+    buffer,
+    fileName,
+    studioEdition,
+    (message) => { scoreName.textContent = message; },
+  );
+  const primary = parseScoreSource(normalized.buffer, normalized.fileName);
+  if (!studioEdition || primary.parsed.format !== "midi") return { ...normalized, ...primary };
+
+  try {
+    let notationXml = knownNotationXml;
+    let notationName = fileName.replace(/\.(mid|midi)$/i, ".musicxml");
+    if (!notationXml) {
+      const converted = await convertScoreToMusicXml(
+        buffer.slice(0),
+        fileName,
+        (message) => { scoreName.textContent = message.replace("建立练习时间线", "建立 MIDI 五线谱"); },
+      );
+      notationXml = converted.xml;
+      notationName = converted.fileName;
+    }
+    const notationBytes = new TextEncoder().encode(notationXml);
+    const notation = parseMusicXmlFile(
+      notationBytes.buffer.slice(notationBytes.byteOffset, notationBytes.byteOffset + notationBytes.byteLength),
+      notationName,
+    );
+    return {
+      ...normalized,
+      ...primary,
+      // Preserve the native MIDI notes/tempo map as the scoring truth while
+      // borrowing measure boundaries from the generated notation for loops
+      // and navigation. The renderer receives the full notation score below.
+      parsed: {
+        ...primary.parsed,
+        measureStarts: notation.score.measureStarts,
+        measureQuarterStarts: notation.score.measureQuarterStarts,
+        measureMap: notation.score.measureMap,
+      },
+      xml: notation.xml,
+      sheetScore: notation.score,
+      notationXml: notation.xml,
+    };
+  } catch (error) {
+    return {
+      ...normalized,
+      ...primary,
+      warning: `MIDI 五线谱生成失败，已保留精确瀑布流：${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+async function activateScore(
+  parsed: ParsedScore,
+  xml: string | undefined,
+  fingerprint: string,
+  sheetScore?: ParsedScore,
+): Promise<void> {
   clearLifecycleStatus();
   lastMeasureNavigationSignature = "";
   measureLoopAnchor = undefined;
@@ -1446,7 +1520,7 @@ async function activateScore(parsed: ParsedScore, xml: string | undefined, finge
     // OSMD must render into a visible, non-zero-width container. Rendering
     // while the sheet panel is still hidden can cause pathological layout.
     updateViewMode();
-    await sheetRenderer.load(xml, score, transposeSemitones);
+    await sheetRenderer.load(xml, sheetScore ?? score, transposeSemitones);
   } else {
     sheetRenderer.clear();
     viewMode.value = "waterfall";
@@ -1463,11 +1537,16 @@ async function loadScoreBuffer(
   fileName: string,
   saveToLibrary: boolean,
   knownFingerprint?: string,
+  knownNotationXml?: string,
 ): Promise<void> {
-  const { parsed, xml } = parseScoreSource(buffer, fileName);
-  const saved = saveToLibrary ? await library.saveScore(buffer, parsed, fileName) : undefined;
-  const fingerprint = saved?.score.sha256 ?? knownFingerprint ?? sha256Hex(buffer);
-  await activateScore(parsed, xml, fingerprint);
+  const prepared = await prepareScoreSource(buffer, fileName, knownNotationXml);
+  const saved = saveToLibrary
+    ? await library.saveScore(prepared.buffer, prepared.parsed, prepared.fileName, null, prepared.notationXml)
+    : undefined;
+  const fingerprint = saved?.score.sha256 ?? knownFingerprint ?? sha256Hex(prepared.buffer);
+  const { parsed, xml } = prepared;
+  await activateScore(parsed, xml, fingerprint, prepared.sheetScore);
+  if (prepared.warning) scoreName.title = prepared.warning;
 }
 
 fileInput.addEventListener("change", async () => {
@@ -1475,18 +1554,39 @@ fileInput.addEventListener("change", async () => {
   if (files.length === 0) return;
   try {
     scoreName.textContent = "正在解析乐谱…";
-    let first: { parsed: ParsedScore; xml?: string; fingerprint: string } | undefined;
+    let first: {
+      parsed: ParsedScore;
+      xml?: string;
+      sheetScore?: ParsedScore;
+      warning?: string;
+      fingerprint: string;
+    } | undefined;
     let added = 0;
     let duplicates = 0;
     for (const file of files) {
       const buffer = await file.arrayBuffer();
-      const parsed = parseScoreSource(buffer, file.name);
-      const saved = await library.saveScore(buffer, parsed.parsed, file.name);
-      if (!first) first = { ...parsed, fingerprint: saved.score.sha256 };
+      const prepared = await prepareScoreSource(buffer, file.name);
+      const saved = await library.saveScore(
+        prepared.buffer,
+        prepared.parsed,
+        prepared.fileName,
+        null,
+        prepared.notationXml,
+      );
+      if (!first) first = {
+        parsed: prepared.parsed,
+        xml: prepared.xml,
+        sheetScore: prepared.sheetScore,
+        warning: prepared.warning,
+        fingerprint: saved.score.sha256,
+      };
       if (saved.duplicate) duplicates += 1;
       else added += 1;
     }
-    if (first) await activateScore(first.parsed, first.xml, first.fingerprint);
+    if (first) {
+      await activateScore(first.parsed, first.xml, first.fingerprint, first.sheetScore);
+      scoreName.title = first.warning ?? "";
+    }
     await refreshLibrary();
     if (files.length > 1) librarySummary.textContent = `批量导入完成：新增 ${added}，重复 ${duplicates}`;
   } catch (error) {
@@ -1789,7 +1889,7 @@ libraryList.addEventListener("click", async (event) => {
     if (button.dataset.action === "open") {
       const stored = await library.getScore(id);
       if (!stored) throw new Error("乐谱不存在");
-      await loadScoreBuffer(stored.source, stored.fileName, false, stored.sha256);
+      await loadScoreBuffer(stored.source, stored.fileName, false, stored.sha256, stored.notationXml);
       libraryPanel.hidden = true;
     } else if (button.dataset.action === "rename") {
       const stored = libraryScores.find((item) => item.id === id);
@@ -1826,7 +1926,7 @@ practiceQueue.addEventListener("click", async (event) => {
   try {
     const stored = await library.getScore(id);
     if (!stored) throw new Error("乐谱不存在");
-    await loadScoreBuffer(stored.source, stored.fileName, false, stored.sha256);
+    await loadScoreBuffer(stored.source, stored.fileName, false, stored.sha256, stored.notationXml);
     libraryPanel.hidden = true;
     practicePanel.hidden = false;
   } catch (error) {
