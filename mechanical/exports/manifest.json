@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
-  "config_sha256": "1b592abc8a026c69819de15b59524793624b71c4c939e04b92cb99147ac7942d",
-  "layout_sha256": "b5254aa8a40624f2b9f8ec1fd39bd18f64f34ffe4d9bc192521cba025cc26ee2",
+  "config_sha256": "ad0c5f82a819b57cc165234f9b7312928ccb1193c94a242e592908cf76d57e9a",
+  "layout_sha256": "ce6bb2c99f6ce7b27b6ab41c82098346124533e947fe866a476b815d920c1b57",
   "power_budget_sha256": "a5c93fd293503f49b839a4525cc167763322489e32c4b58a12879f43b9b7cdc8",
   "layout": {
     "notes": 88,
     "pixels": 176,
-    "max_abs_mapping_error_mm": 3.444444444444457
+    "max_abs_mapping_error_mm": 3.407777777777767
   },
   "keyboard_mount": {
     "type": "vertical_exposed",

@@ -58,19 +58,46 @@ def build_layout(config: dict[str, Any]) -> dict[str, Any]:
     keybed_span = float(piano["keybed_span_mm"])
     pixel_count = int(led["pixel_count"])
     led_pitch = 1000.0 / float(led["pixels_per_m"])
-    strip_span = pixel_count * led_pitch
+    segment_counts = [int(value) for value in led.get("segment_pixel_counts", [pixel_count])]
+    splice_extra_gaps = [float(value) for value in led.get("splice_extra_gap_mm", [])]
+    if not segment_counts or any(value <= 0 for value in segment_counts):
+        raise ValueError("LED segment counts must all be positive")
+    if sum(segment_counts) != pixel_count:
+        raise ValueError("LED segment counts must add up to pixel_count")
+    if len(splice_extra_gaps) != len(segment_counts) - 1:
+        raise ValueError("splice_extra_gap_mm must contain one value per splice")
+    if any(value < 0 or value > led_pitch * 3 for value in splice_extra_gaps):
+        raise ValueError("LED splice extra gap is outside the supported physical range")
+    splice_after_pixels: list[int] = []
+    cumulative = 0
+    for count in segment_counts[:-1]:
+        cumulative += count
+        splice_after_pixels.append(cumulative)
+    strip_span = pixel_count * led_pitch + sum(splice_extra_gaps)
     strip_left = (keybed_span - strip_span) / 2.0
-    led_centers = [strip_left + (index + 0.5) * led_pitch for index in range(pixel_count)]
+    led_centers = []
+    for index in range(pixel_count):
+        extra_before = sum(
+            gap for boundary, gap in zip(splice_after_pixels, splice_extra_gaps)
+            if index >= boundary
+        )
+        led_centers.append(strip_left + (index + 0.5) * led_pitch + extra_before)
+    center_gaps = [right - left for left, right in zip(led_centers, led_centers[1:])]
     keys = key_centers(config)
     mapping = [min(range(pixel_count), key=lambda i: abs(led_centers[i] - x)) for x in keys]
     errors = [led_centers[pixel] - key_x for pixel, key_x in zip(mapping, keys)]
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "first_midi_note": int(piano["first_midi_note"]),
         "last_midi_note": int(piano["last_midi_note"]),
         "note_count": len(keys),
         "pixel_count": pixel_count,
         "led_pitch_mm": led_pitch,
+        "segment_pixel_counts": segment_counts,
+        "splice_after_pixel_counts": splice_after_pixels,
+        "splice_extra_gap_mm": splice_extra_gaps,
+        "splice_gap_source": led.get("splice_gap_source", "configured"),
+        "maximum_led_center_gap_mm": max(center_gaps, default=led_pitch),
         "strip_span_mm": strip_span,
         "keybed_span_mm": keybed_span,
         "key_centers_mm": keys,
@@ -184,9 +211,9 @@ def generate_into(
 ) -> dict[str, Any]:
     config = load_config()
     layout = build_layout(config)
-    led_pitch = float(layout["led_pitch_mm"])
-    if layout["max_abs_mapping_error_mm"] > led_pitch / 2.0 + 1e-6:
-        raise RuntimeError("note-to-pixel mapping exceeds half an LED pitch")
+    maximum_center_gap = float(layout["maximum_led_center_gap_mm"])
+    if layout["max_abs_mapping_error_mm"] > maximum_center_gap / 2.0 + 1e-6:
+        raise RuntimeError("note-to-pixel mapping exceeds half the largest physical LED gap")
     if len(set(layout["pixel_by_note"])) != 88:
         raise RuntimeError("two piano keys map to the same primary pixel")
 

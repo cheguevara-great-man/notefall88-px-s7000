@@ -13,7 +13,7 @@
   <path d="M240 180 C340 245 430 235 550 220" class="gnd"/><text x="365" y="242" class="pin">公共 GND</text>
   <path d="M860 130 H960" class="usb"/><text x="865" y="118" class="pin">USB/OTG口 + OTG Y线 + 打印机线</text>
   <rect x="420" y="335" width="230" height="120" rx="12" class="box"/><text x="463" y="373" class="h">Micro-Fit 4P</text><text x="450" y="405" class="pin">1 红 +5V　2 黑 GND</text><text x="450" y="432" class="pin">3 绿 DATA　4 蓝 CLOCK</text>
-  <rect x="760" y="315" width="570" height="160" rx="12" class="box"/><text x="940" y="353" class="h">灯带输入端</text><text x="805" y="389" class="t">176 像素 / 约 1.222 m / 发光面朝演奏者</text><text x="805" y="420" class="s">1000 µF：正接 5V，负极条纹接 GND</text><text x="805" y="450" class="s">箭头从 DIN/CIN 指向右侧；连接器不承受拉力</text>
+  <rect x="760" y="315" width="570" height="160" rx="12" class="box"/><text x="940" y="353" class="h">灯带输入端</text><text x="805" y="389" class="t">176 像素 / 实物约 1.230 m / 发光面朝演奏者</text><text x="805" y="420" class="s">1000 µF：正接 5V，负极条纹接 GND</text><text x="805" y="450" class="s">当前四线输入在物理右端、箭头向左；连接器不承受拉力</text>
   <path d="M650 365 H760" class="power"/><path d="M650 392 H760" class="gnd"/><path d="M650 418 H760" class="data"/><path d="M650 440 H760" class="clock"/>
   <path d="M600 260 V335" class="power"/><path d="M625 260 V335" class="gnd"/><path d="M675 260 V335" class="data"/><path d="M705 260 V335" class="clock"/>
   <rect x="970" y="560" width="190" height="95" rx="12" class="box"/><text x="1022" y="600" class="h">XT30 2P</text><text x="1000" y="630" class="pin">红 +5V / 黑 GND</text>
