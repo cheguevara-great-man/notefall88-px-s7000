@@ -373,8 +373,9 @@ public class NativeWaterfallPlugin extends Plugin {
 
         void addFeedback(String kind, int note, Double timingMs) {
             if (note < 21 || note > 108) return;
-            String safeKind = "wrong".equals(kind) || "missed".equals(kind) ? kind : "hit";
-            Double safeTiming = "hit".equals(safeKind) && timingMs != null && Double.isFinite(timingMs)
+            boolean releaseKind = "release-good".equals(kind) || "release-early".equals(kind);
+            String safeKind = "wrong".equals(kind) || "missed".equals(kind) || releaseKind ? kind : "hit";
+            Double safeTiming = ("hit".equals(safeKind) || releaseKind) && timingMs != null && Double.isFinite(timingMs)
                 ? timingMs : null;
             long now = SystemClock.elapsedRealtime();
             for (int index = feedback.size() - 1; index >= 0; index -= 1) {
@@ -554,8 +555,12 @@ public class NativeWaterfallPlugin extends Plugin {
                 boolean timed = "hit".equals(item.kind) && item.timingMs != null;
                 boolean early = timed && item.timingMs < -25;
                 boolean late = timed && item.timingMs > 25;
+                boolean releaseGood = "release-good".equals(item.kind);
+                boolean releaseEarly = "release-early".equals(item.kind);
                 int color = early ? Color.rgb(114, 199, 255)
                     : late ? Color.rgb(255, 189, 107)
+                    : releaseGood ? Color.rgb(84, 223, 193)
+                    : releaseEarly ? Color.rgb(255, 159, 90)
                     : "hit".equals(item.kind)
                     ? themeColor(CORRECT, Color.rgb(184, 244, 109), Color.rgb(125, 255, 90))
                     : "wrong".equals(item.kind)
@@ -570,6 +575,7 @@ public class NativeWaterfallPlugin extends Plugin {
                 paint.setFakeBoldText(true);
                 paint.setTextAlign(Paint.Align.CENTER);
                 String symbol = early ? "↑" : late ? "↓" : timed ? "●"
+                    : releaseGood ? "↔" : releaseEarly ? "↘"
                     : "hit".equals(item.kind) ? "✓" : "wrong".equals(item.kind) ? "×" : "!";
                 canvas.drawText(symbol, x, y, paint);
                 if (timed) {
@@ -590,6 +596,15 @@ public class NativeWaterfallPlugin extends Plugin {
                         paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
                         canvas.drawText(label, x, y - 16 * density, paint);
                     }
+                }
+                if ((releaseGood || releaseEarly) && item.timingMs != null
+                    && key.width * width >= 26 * getResources().getDisplayMetrics().density) {
+                    String label = releaseEarly
+                        ? "短 " + Math.max(0, Math.min(999, Math.round(item.timingMs))) + "%"
+                        : "时值";
+                    paint.setAlpha((int) ((1f - progress) * 230));
+                    paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
+                    canvas.drawText(label, x, y - 16 * getResources().getDisplayMetrics().density, paint);
                 }
                 stroke.setColor(color);
                 stroke.setAlpha((int) ((1f - progress) * 140));

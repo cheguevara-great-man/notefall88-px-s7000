@@ -97,6 +97,7 @@ interface QuarterNote {
   voice: string;
   tieStart: boolean;
   tieStop: boolean;
+  articulationGate?: number;
 }
 
 interface TempoEvent {
@@ -136,6 +137,14 @@ interface RepeatFrame {
   times: number;
   alternativeEnd?: number;
   forwardIndex?: number;
+}
+
+function articulationGate(note: XmlElement): number | undefined {
+  if (descendants(note, "staccatissimo").length > 0) return 0.25;
+  if (descendants(note, "staccato").length > 0) return 0.5;
+  if (descendants(note, "detached-legato").length > 0) return 0.65;
+  if (descendants(note, "tenuto").length > 0) return 0.95;
+  return undefined;
 }
 
 export interface MusicXmlScore {
@@ -647,6 +656,7 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
           voice: text(child(event, "voice")) || "1",
           tieStart: ties.includes("start"),
           tieStop: ties.includes("stop"),
+          articulationGate: articulationGate(event),
         });
       }
       if (!isChord && !isGrace) cursor += rawDuration;
@@ -794,6 +804,7 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
     end: Math.max(toSeconds(note.start) + 0.03, toSeconds(note.end)),
     velocity: note.velocity,
     hand: note.hand,
+    articulationGate: note.tieStart || note.tieStop ? 1 : note.articulationGate,
     scoreQuarterStart: note.start,
     scoreQuarterEnd: note.end,
   })).sort((a, b) => a.start - b.start || a.note - b.note);

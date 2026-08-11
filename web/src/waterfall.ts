@@ -11,7 +11,7 @@ import type { VisualTheme } from "./visual-theme";
 import { buildChordGuides } from "./chord-guide";
 import type { ChordGuide } from "./chord-guide";
 
-export type WaterfallFeedbackKind = "hit" | "wrong" | "missed";
+export type WaterfallFeedbackKind = "hit" | "wrong" | "missed" | "release-good" | "release-early";
 
 interface WaterfallFeedback {
   kind: WaterfallFeedbackKind;
@@ -311,15 +311,18 @@ export class WaterfallRenderer {
       const x = (key.x + key.width / 2) * width;
       const y = keyboardTop - 18 - progress * 44;
       const cue = item.kind === "hit" ? timingCue(item.timingMs) : undefined;
+      const release = item.kind === "release-good" || item.kind === "release-early";
       const color = cue?.band === "early" ? "#72c7ff"
         : cue?.band === "late" ? "#ffbd6b"
+          : item.kind === "release-good" ? "#54dfc1"
+            : item.kind === "release-early" ? "#ff9f5a"
           : item.kind === "hit" ? palette.correct : item.kind === "wrong" ? palette.wrong : "#ffd24c";
       ctx.save();
       ctx.globalAlpha = (1 - progress) * 0.95;
       ctx.fillStyle = color;
       ctx.font = "800 20px system-ui";
       ctx.textAlign = "center";
-      ctx.fillText(cue?.symbol ?? (item.kind === "hit" ? "✓" : item.kind === "wrong" ? "×" : "!"), x, y);
+      ctx.fillText(cue?.symbol ?? (item.kind === "release-good" ? "↔" : item.kind === "release-early" ? "↘" : item.kind === "hit" ? "✓" : item.kind === "wrong" ? "×" : "!"), x, y);
       if (cue) {
         const markerY = keyboardTop - 24 + cue.offset * 12;
         ctx.globalAlpha = (1 - progress) * 0.72;
@@ -338,6 +341,12 @@ export class WaterfallRenderer {
           ctx.font = "700 10px system-ui";
           ctx.fillText(cue.label, x, y - 16);
         }
+      }
+      if (release && key.width * width >= 26) {
+        const coverage = Number.isFinite(item.timingMs) ? Math.max(0, Math.min(999, Math.round(item.timingMs!))) : undefined;
+        ctx.globalAlpha = (1 - progress) * 0.9;
+        ctx.font = "700 10px system-ui";
+        ctx.fillText(item.kind === "release-early" && coverage !== undefined ? `短 ${coverage}%` : "时值", x, y - 16);
       }
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;

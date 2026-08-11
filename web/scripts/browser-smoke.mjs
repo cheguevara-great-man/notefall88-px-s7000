@@ -425,6 +425,7 @@ try {
     [40, 60, 80, 100].forEach((targetVelocity, index) => emit({
       kind: 'hit', note: 60 + index, hand: 'right', velocity: targetVelocity + 10,
       targetVelocity, scoreTime: .6 + index, timingMs: 12,
+      targetDurationMs: 500, keyDurationMs: 500, soundingDurationMs: 500, sustained: false,
     }));
     window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { seconds: 4.3 } }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -439,6 +440,8 @@ try {
       overviewHeight: document.querySelector('#measure-overview')?.getBoundingClientRect().height ?? 0,
       weakPill: document.querySelector('.measure-pill[data-occurrence="1"]')?.dataset.tone,
       expression: document.querySelector('#insight-velocity')?.textContent,
+      articulation: document.querySelector('#insight-articulation')?.textContent,
+      pedal: document.querySelector('#insight-pedal')?.textContent,
     };
     window.dispatchEvent(new CustomEvent('notefall:test-score-seek', { detail: { clear: true } }));
     return JSON.stringify(result);
@@ -450,6 +453,9 @@ try {
     `measure heat ribbon did not emphasize the current weak measure: ${JSON.stringify(measureHeat)}`);
   assert(measureHeat.expression?.includes('轮廓 100%') && measureHeat.expression?.includes('基准 +10'),
     `relative dynamics insight did not separate contour and touch offset: ${JSON.stringify(measureHeat)}`);
+  assert(measureHeat.articulation?.includes('覆盖 100%') && measureHeat.articulation?.includes('释放 100%')
+      && measureHeat.pedal?.includes('未检测到踏板延音'),
+    `pedal-aware articulation insight did not render: ${JSON.stringify(measureHeat)}`);
   evaluate(`() => { document.querySelector('#reset-button')?.click(); return JSON.stringify(true); }`);
   await waitForCondition(
     `() => JSON.stringify(!document.querySelector('#circuit-start')?.disabled)`,
@@ -628,6 +634,33 @@ try {
   }`);
   assert(timingPixels.available && timingPixels.earlyBlue >= 5 && timingPixels.lateOrange >= 5,
     `early/late timing cues are not visible beside their keys: ${JSON.stringify(timingPixels)}`);
+  const releasePixels = evaluate(`async () => {
+    window.dispatchEvent(new CustomEvent('notefall:test-feedback', { detail: { kind: 'release-good', note: 48, timingMs: 100 } }));
+    window.dispatchEvent(new CustomEvent('notefall:test-feedback', { detail: { kind: 'release-early', note: 96, timingMs: 40 } }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const canvas = document.querySelector('#waterfall');
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return JSON.stringify({ available: false });
+    const keyboardTop = Math.floor(canvas.height * .78);
+    const countTone = (whiteIndex, tone) => {
+      const center = Math.round((whiteIndex + .5) / 52 * canvas.width);
+      const radius = Math.max(5, Math.floor(canvas.width / 52 * .38));
+      const pixels = context.getImageData(center - radius, keyboardTop - 90, radius * 2, 90);
+      let count = 0;
+      for (let offset = 0; offset < pixels.data.length; offset += 4) {
+        const red = pixels.data[offset];
+        const green = pixels.data[offset + 1];
+        const blue = pixels.data[offset + 2];
+        if (tone === 'good'
+          ? green > red + 55 && blue > red + 40
+          : red > blue + 70 && green > blue + 25) count += 1;
+      }
+      return count;
+    };
+    return JSON.stringify({ available: true, releaseGood: countTone(16, 'good'), releaseEarly: countTone(44, 'early') });
+  }`);
+  assert(releasePixels.available && releasePixels.releaseGood >= 5 && releasePixels.releaseEarly >= 5,
+    `release coverage cues are not visibly distinct: ${JSON.stringify(releasePixels)}`);
   command(["screenshot"]);
 
   command(["resize", "1600", "1068"]);
@@ -745,6 +778,7 @@ try {
     dynamicsPixels: dynamicsSamples,
     chordGuidePixels,
     timingPixels,
+    releasePixels,
     score: "Long Follow Study",
     notes: 240,
     longScoreFollow: { before: followBefore, after: followAfter },

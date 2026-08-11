@@ -1,4 +1,6 @@
 import type { Hand, HandSelection, PracticeMode, TimingProfile } from "./types";
+import { evaluateArticulation } from "./articulation";
+import type { ArticulationCompletion } from "./articulation";
 import { evaluateDynamics } from "./expression";
 import { storageFailureMessage } from "./storage";
 
@@ -8,7 +10,19 @@ const MAX_STORED_SESSIONS = 500;
 const MAX_EVENTS_PER_SESSION = 20_000;
 
 export type PracticeEvent =
-  | { kind: "hit"; note: number; hand?: Hand; velocity: number; targetVelocity?: number; scoreTime: number; timingMs?: number }
+  | {
+      kind: "hit";
+      note: number;
+      hand?: Hand;
+      velocity: number;
+      targetVelocity?: number;
+      scoreTime: number;
+      timingMs?: number;
+      targetDurationMs?: number;
+      keyDurationMs?: number;
+      soundingDurationMs?: number;
+      sustained?: boolean;
+    }
   | { kind: "wrong"; note: number; velocity: number; scoreTime: number }
   | { kind: "missed"; note: number; hand?: Hand; scoreTime: number };
 
@@ -47,6 +61,16 @@ export interface SessionSummary {
   velocityBias?: number;
   meanAbsVelocityError?: number;
   dynamicsScore?: number;
+  articulationSamples?: number;
+  unpedaledArticulationSamples?: number;
+  pedalExtendedSamples?: number;
+  earlyReleaseSamples?: number;
+  durationCoverageScore?: number;
+  releasePrecisionScore?: number;
+  earlyReleaseRate?: number;
+  meanKeyDurationRatio?: number;
+  meanSoundingDurationRatio?: number;
+  meanPedalExtensionMs?: number;
   bestStreak: number;
   problemNotes: ProblemNote[];
 }
@@ -100,6 +124,17 @@ export function summarizePractice(events: PracticeEvent[]): SessionSummary {
   const dynamics = evaluateDynamics(hits.flatMap((event) => (
     event.targetVelocity === undefined ? [] : [{ actual: event.velocity, target: event.targetVelocity }]
   )));
+  const articulation = evaluateArticulation(hits.flatMap((event) => (
+    event.targetDurationMs === undefined || event.keyDurationMs === undefined
+      || event.soundingDurationMs === undefined || event.sustained === undefined
+      ? []
+      : [{
+          targetDurationMs: event.targetDurationMs,
+          keyDurationMs: event.keyDurationMs,
+          soundingDurationMs: event.soundingDurationMs,
+          sustained: event.sustained,
+        }]
+  )));
 
   let streak = 0;
   let bestStreak = 0;
@@ -147,6 +182,21 @@ export function summarizePractice(events: PracticeEvent[]): SessionSummary {
       meanAbsVelocityError: round(dynamics.meanAbsError),
       dynamicsScore: dynamics.score === undefined ? undefined : round(dynamics.score),
     } : {}),
+    ...(articulation ? {
+      articulationSamples: articulation.samples,
+      unpedaledArticulationSamples: articulation.unpedaledSamples,
+      pedalExtendedSamples: articulation.pedalExtendedSamples,
+      earlyReleaseSamples: articulation.earlyReleaseSamples,
+      durationCoverageScore: articulation.durationCoverageScore === undefined
+        ? undefined : round(articulation.durationCoverageScore),
+      releasePrecisionScore: articulation.releasePrecisionScore === undefined
+        ? undefined : round(articulation.releasePrecisionScore),
+      earlyReleaseRate: round(articulation.earlyReleaseRate),
+      meanKeyDurationRatio: round(articulation.meanKeyDurationRatio * 100),
+      meanSoundingDurationRatio: round(articulation.meanSoundingDurationRatio * 100),
+      meanPedalExtensionMs: articulation.meanPedalExtensionMs === undefined
+        ? undefined : round(articulation.meanPedalExtensionMs),
+    } : {}),
     bestStreak,
     problemNotes,
   };
@@ -171,12 +221,27 @@ export class PracticeAnalytics {
     this.startedAt = startedAt;
   }
 
-  record(event: PracticeEvent): void {
+  record(event: PracticeEvent): number | undefined {
     if (this.events.length >= MAX_EVENTS_PER_SESSION) {
       this.droppedEvents += 1;
-      return;
+      return undefined;
     }
     this.events.push({ ...event });
+    return this.events.length - 1;
+  }
+
+  completeArticulation(completion: ArticulationCompletion): boolean {
+    const event = this.events[completion.token];
+    if (!event || event.kind !== "hit") return false;
+    if (!(completion.targetDurationMs >= 60)
+        || !Number.isFinite(completion.keyDurationMs) || completion.keyDurationMs < 0
+        || !Number.isFinite(completion.soundingDurationMs)
+        || completion.soundingDurationMs + 0.001 < completion.keyDurationMs) return false;
+    event.targetDurationMs = completion.targetDurationMs;
+    event.keyDurationMs = completion.keyDurationMs;
+    event.soundingDurationMs = completion.soundingDurationMs;
+    event.sustained = completion.sustained;
+    return true;
   }
 
   hasEvents(): boolean {

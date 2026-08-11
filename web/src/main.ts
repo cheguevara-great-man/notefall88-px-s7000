@@ -2,6 +2,8 @@ import "./style.css";
 
 import { PracticeAnalytics, PracticeSessionStore } from "./analytics";
 import type { PracticeEvent, PracticeSession } from "./analytics";
+import { ArticulationTracker } from "./articulation";
+import type { ArticulationCompletion } from "./articulation";
 import { buildPracticeReview, reviewBucketTone } from "./review";
 import { recommendPractice } from "./coach";
 import type { PracticeRecommendation } from "./coach";
@@ -212,6 +214,7 @@ const waitHitBuffer = new WaitHitBuffer();
 const practiceScore = new PracticeScore();
 const realtimeMatcher = new RealtimeMatcher(practiceScore);
 const recorder = new PerformanceRecorder();
+const articulationTracker = new ArticulationTracker();
 const library = new ScoreLibrary();
 const sessionStore = new PracticeSessionStore();
 const metronome = new MetronomePlayer();
@@ -527,6 +530,7 @@ function suspendForBackground(): void {
   wrong.clear();
   waitMatcher.allNotesOff();
   waitHitBuffer.clear();
+  articulationTracker.clearActive();
   currentTarget = [];
   device.setTargets([]);
   device.blackout();
@@ -601,6 +605,7 @@ function sessionContext() {
 }
 
 function beginPracticeSession(): void {
+  articulationTracker.clearActive();
   analytics = score && chords.length > 0 ? new PracticeAnalytics(sessionContext()) : undefined;
   completedReviewEvents = [];
   completedReviewFingerprint = undefined;
@@ -612,6 +617,7 @@ function beginPracticeSession(): void {
 async function finishPracticeSession(): Promise<PracticeSession | undefined> {
   const completed = analytics?.finish();
   analytics = undefined;
+  articulationTracker.clearActive();
   if (!completed) return undefined;
   completedReviewEvents = completed.events;
   completedReviewFingerprint = completed.context.scoreFingerprint;
@@ -627,25 +633,42 @@ async function finishPracticeSession(): Promise<PracticeSession | undefined> {
   return completed;
 }
 
-function recordPracticeEvent(event: PracticeEvent): void {
+function recordPracticeEvent(event: PracticeEvent): number | undefined {
   selectedReviewSession = undefined;
   if (!analytics && score && chords.length > 0) analytics = new PracticeAnalytics(sessionContext());
-  analytics?.record(event);
+  const token = analytics?.record(event);
   renderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
   sheetRenderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
   reviewRevision += 1;
+  return token;
+}
+
+function completeArticulations(completions: ArticulationCompletion[]): void {
+  let changed = false;
+  for (const completion of completions) {
+    const accepted = analytics?.completeArticulation(completion) === true;
+    changed = accepted || changed;
+    if (accepted) {
+      const coverage = completion.soundingDurationMs / completion.targetDurationMs * 100;
+      renderer.pushFeedback(coverage < 80 ? "release-early" : "release-good", completion.note, coverage);
+    }
+  }
+  if (changed) reviewRevision += 1;
 }
 
 if (import.meta.env.DEV) {
   window.addEventListener("notefall:test-feedback", (rawEvent) => {
     const detail = (rawEvent as CustomEvent<{
-      kind?: "hit" | "wrong" | "missed";
+      kind?: "hit" | "wrong" | "missed" | "release-good" | "release-early";
       note?: number;
       timingMs?: number;
     }>).detail;
     if (!detail || !Number.isInteger(detail.note)) return;
-    renderer.pushFeedback(detail.kind ?? "hit", detail.note!, detail.timingMs);
-    sheetRenderer.pushFeedback(detail.kind ?? "hit", detail.note!, detail.timingMs);
+    const kind = detail.kind ?? "hit";
+    renderer.pushFeedback(kind, detail.note!, detail.timingMs);
+    if (kind === "hit" || kind === "wrong" || kind === "missed") {
+      sheetRenderer.pushFeedback(kind, detail.note!, detail.timingMs);
+    }
   });
   window.addEventListener("notefall:test-score-seek", (rawEvent) => {
     const detail = (rawEvent as CustomEvent<{ seconds?: number; clear?: boolean }>).detail;
@@ -690,6 +713,18 @@ function renderInsights(): void {
       : summary?.velocityMean === undefined
         ? "--"
         : `实弹 ${summary.velocityMean.toFixed(0)} ± ${summary.velocityStdDev?.toFixed(0) ?? "0"}`;
+  required("insight-articulation").textContent = summary?.durationCoverageScore !== undefined
+    ? `覆盖 ${summary.durationCoverageScore.toFixed(0)}%${summary.releasePrecisionScore === undefined
+      ? " · 释放样本不足"
+      : ` · 释放 ${summary.releasePrecisionScore.toFixed(0)}%`}`
+    : summary?.articulationSamples
+      ? `${summary.articulationSamples} 个完整松键样本`
+      : "--";
+  required("insight-pedal").textContent = summary?.articulationSamples
+    ? summary.pedalExtendedSamples
+      ? `${summary.pedalExtendedSamples}/${summary.articulationSamples} 音由踏板延长 · 平均 +${summary.meanPedalExtensionMs?.toFixed(0) ?? "0"} ms`
+      : "未检测到踏板延音"
+    : "--";
   required("insight-streak").textContent = String(summary?.bestStreak ?? 0);
   const problems = summary?.problemNotes ?? [];
   required("insight-problems").textContent = problems.length === 0
@@ -722,13 +757,20 @@ function renderPracticeReview(): void {
     segment.className = "review-segment";
     segment.dataset.tone = reviewBucketTone(bucket);
     const dynamicsWarning = (bucket.meanAbsDynamicsError ?? 0) >= 16;
-    segment.dataset.marker = errors > 0 ? `−${errors}` : dynamicsWarning ? "◇" : bucket.hits > 0 ? `+${bucket.hits}` : "";
+    segment.dataset.marker = errors > 0
+      ? `−${errors}`
+      : bucket.earlyReleaseSamples > 0
+        ? `↘${bucket.earlyReleaseSamples}`
+        : dynamicsWarning ? "◇" : bucket.hits > 0 ? `+${bucket.hits}` : "";
     segment.dataset.start = String(bucket.start);
     segment.dataset.end = String(bucket.end);
     segment.disabled = !compatibleHistoricReview;
     const timing = bucket.timingBiasMs === undefined ? "" : ` · ${Math.abs(bucket.timingBiasMs)}ms${bucket.timingBiasMs < 0 ? "早" : "晚"}`;
     const dynamics = bucket.meanAbsDynamicsError === undefined ? "" : ` · 力度轮廓偏差 ${bucket.meanAbsDynamicsError}`;
-    segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}${dynamics}`;
+    const articulation = bucket.meanDurationCoverage === undefined
+      ? ""
+      : ` · 时值覆盖 ${bucket.meanDurationCoverage}%${bucket.earlyReleaseSamples > 0 ? `，提前收音 ${bucket.earlyReleaseSamples}` : ""}`;
+    segment.title = `${formatTime(bucket.start)}–${formatTime(bucket.end)}：命中 ${bucket.hits}，多余键 ${bucket.wrong}，漏音 ${bucket.missed}${timing}${dynamics}${articulation}`;
     return segment;
   }));
   reviewKeys.replaceChildren(...review.keys.map((key) => {
@@ -776,7 +818,10 @@ function renderPracticeHistory(): void {
       title.textContent = session.context.scoreName;
       const result = document.createElement("span");
       const dynamics = session.summary.dynamicsScore === undefined ? "" : ` · 力度 ${session.summary.dynamicsScore.toFixed(0)}%`;
-      result.textContent = `${session.summary.accuracy.toFixed(0)}% · 命中 ${session.summary.hits} · 错漏 ${session.summary.wrong + session.summary.missed}${dynamics}`;
+      const articulation = session.summary.durationCoverageScore === undefined
+        ? ""
+        : ` · 时值 ${session.summary.durationCoverageScore.toFixed(0)}%`;
+      result.textContent = `${session.summary.accuracy.toFixed(0)}% · 命中 ${session.summary.hits} · 错漏 ${session.summary.wrong + session.summary.missed}${dynamics}${articulation}`;
       const detail = document.createElement("small");
       const modeLabel = session.context.mode === "realtime" ? "实时" : session.context.mode === "follow" ? "跟随我" : "等我弹";
       const timing = session.summary.meanAbsTimingMs === undefined ? "无节奏判定" : `平均偏差 ${session.summary.meanAbsTimingMs.toFixed(0)} ms`;
@@ -817,7 +862,11 @@ function renderPracticeTrend(): void {
     bar.dataset.latest = String(index === trend.points.length - 1);
     const timing = point.timingMs === undefined ? "无节奏判定" : `平均偏差 ${point.timingMs.toFixed(0)} ms`;
     const dynamics = point.dynamicsScore === undefined ? "" : ` · 力度轮廓 ${point.dynamicsScore.toFixed(0)}%`;
-    bar.title = `${new Date(point.endedAt).toLocaleString("zh-CN")}：${point.accuracy.toFixed(0)}% · ${timing}${dynamics} · ${point.events} 事件`;
+    const articulation = point.durationCoverageScore === undefined
+      ? ""
+      : ` · 时值覆盖 ${point.durationCoverageScore.toFixed(0)}%${point.releasePrecisionScore === undefined
+        ? "" : ` / 释放 ${point.releasePrecisionScore.toFixed(0)}%`}`;
+    bar.title = `${new Date(point.endedAt).toLocaleString("zh-CN")}：${point.accuracy.toFixed(0)}% · ${timing}${dynamics}${articulation} · ${point.events} 事件`;
     bar.setAttribute("aria-label", bar.title);
     return bar;
   }));
@@ -830,8 +879,11 @@ function renderPracticeTrend(): void {
   const accuracyDelta = trend.accuracyDelta === undefined ? "还需至少两次可比练习" : `${trend.accuracyDelta >= 0 ? "+" : ""}${trend.accuracyDelta.toFixed(1)}%`;
   const timingDelta = trend.timingDeltaMs === undefined ? "节奏样本不足" : `${trend.timingDeltaMs >= 0 ? "+" : ""}${trend.timingDeltaMs.toFixed(0)} ms`;
   const dynamicsDelta = trend.dynamicsDelta === undefined ? "力度样本不足" : `${trend.dynamicsDelta >= 0 ? "+" : ""}${trend.dynamicsDelta.toFixed(1)}%`;
+  const articulationDelta = trend.durationCoverageDelta === undefined
+    ? "时值样本不足"
+    : `${trend.durationCoverageDelta >= 0 ? "+" : ""}${trend.durationCoverageDelta.toFixed(1)}%`;
   trendCaption.textContent = `${trend.points.length} 次 · 最新 ${latest.accuracy.toFixed(0)}% · 准确率趋势 ${accuracyDelta}`;
-  trendDetail.textContent = `前后窗口对比：准确率 ${accuracyDelta}；绝对节奏偏差改善 ${timingDelta}；力度轮廓 ${dynamicsDelta}。共 ${trend.totalEvents} 个判定事件。`;
+  trendDetail.textContent = `前后窗口对比：准确率 ${accuracyDelta}；绝对节奏偏差改善 ${timingDelta}；力度轮廓 ${dynamicsDelta}；时值覆盖 ${articulationDelta}。共 ${trend.totalEvents} 个判定事件。`;
 }
 
 function renderCoach(): void {
@@ -858,7 +910,11 @@ function renderCoach(): void {
   const dynamics = recommendation.evidence.dynamicsScore === undefined
     ? ""
     : ` · 力度轮廓 ${recommendation.evidence.dynamicsScore.toFixed(0)}%`;
-  required("coach-evidence").textContent = `${recommendation.evidence.sessions} 次 / ${recommendation.evidence.events} 事件 · 历史准确率 ${recommendation.evidence.accuracy.toFixed(1)}%${dynamics} · 置信度 ${confidence}`;
+  const articulation = recommendation.evidence.durationCoverageScore === undefined
+    ? ""
+    : ` · 时值覆盖 ${recommendation.evidence.durationCoverageScore.toFixed(0)}%${recommendation.evidence.releasePrecisionScore === undefined
+      ? "" : ` / 释放 ${recommendation.evidence.releasePrecisionScore.toFixed(0)}%`}`;
+  required("coach-evidence").textContent = `${recommendation.evidence.sessions} 次 / ${recommendation.evidence.events} 事件 · 历史准确率 ${recommendation.evidence.accuracy.toFixed(1)}%${dynamics}${articulation} · 置信度 ${confidence}`;
   renderPracticeCircuit();
 }
 
@@ -903,7 +959,9 @@ function renderPracticeCircuit(): void {
     title.textContent = missionLabel(mission);
     const target = document.createElement("small");
     const timing = mission.targetTimingMs === undefined ? "" : ` · 平均拍点 ≤ ${mission.targetTimingMs} ms`;
-    target.textContent = `目标 ${mission.targetAccuracy}%${timing} · 连续 ${mission.requiredPasses} 次 · 已 ${mission.consecutivePasses} 次`;
+    const dynamics = mission.targetDynamicsScore === undefined ? "" : ` · 力度轮廓 ≥ ${mission.targetDynamicsScore}%`;
+    const articulation = mission.targetDurationCoverage === undefined ? "" : ` · 时值覆盖 ≥ ${mission.targetDurationCoverage}%`;
+    target.textContent = `目标 ${mission.targetAccuracy}%${timing}${dynamics}${articulation} · 连续 ${mission.requiredPasses} 次 · 已 ${mission.consecutivePasses} 次`;
     const reason = document.createElement("p");
     reason.textContent = mission.reason;
     copy.append(title, target, reason);
@@ -997,6 +1055,7 @@ function updateScoreLabel(): void {
 
 function resetPractice(resetStats = true): void {
   if (resetStats) void finishPracticeSession();
+  articulationTracker.clearActive();
   cancelCountIn();
   cancelFollowPlayback();
   const start = rangeStart();
@@ -1156,7 +1215,7 @@ function handleMidi(event: MidiInputEvent): void {
       const result = realtimeMatcher.noteOn(event.note, capturedScoreTime);
       recordMissedNotes(result.missed);
       if (result.newlyMatched) {
-        recordPracticeEvent({
+        const token = recordPracticeEvent({
           kind: "hit",
           note: event.note,
           hand: result.matched?.hand,
@@ -1165,12 +1224,23 @@ function handleMidi(event: MidiInputEvent): void {
           scoreTime: result.matched?.start ?? lastScoreSeconds,
           timingMs: result.timingMs,
         });
+        if (token !== undefined && result.matched) {
+          completeArticulations(articulationTracker.noteOn({
+            token,
+            note: event.note,
+            channel: event.channel,
+            atMs: capturedAt,
+            targetDurationMs: (result.matched.end - result.matched.start)
+              * (result.matched.articulationGate ?? 1) / selectedTempo() * 1_000,
+          }));
+        }
       } else if (!result.correct) {
         recordPracticeEvent({ kind: "wrong", note: event.note, velocity: analysisVelocity, scoreTime: capturedScoreTime });
       }
       if (!result.correct) wrong.add(event.note);
     }
   } else {
+    completeArticulations(articulationTracker.noteOff(event.note, event.channel, capturedAt));
     pressed.delete(event.note);
     wrong.delete(event.note);
     if (waitMatcher.expectedNotes().has(event.note)) waitHitBuffer.release(event.note);
@@ -1185,7 +1255,14 @@ function handleMidi(event: MidiInputEvent): void {
 }
 
 function handleControl(event: MidiControlEvent): void {
-  recorder.handleControl(event, event.capturedAt ?? performance.now());
+  const capturedAt = event.capturedAt ?? performance.now();
+  recorder.handleControl(event, capturedAt);
+  completeArticulations(articulationTracker.control(
+    event.channel,
+    event.controller,
+    event.value,
+    capturedAt,
+  ));
   finishTruncatedRecording();
   if (event.controller === 64) {
     const down = event.value >= 64;
@@ -2051,6 +2128,7 @@ device.onConnection((connected) => {
   if (!connected) {
     cancelFollowPlayback(false);
     midiOutOwnedByThisPage = false;
+    articulationTracker.reset();
   }
   setStatus(deviceStatus, connected, connected ? "ESP 已连接" : "ESP 未连接");
 });
@@ -2079,6 +2157,7 @@ device.onStatus((status: DeviceStatus) => {
     waitMatcher.allNotesOff();
     waitHitBuffer.clear();
     recorder.allNotesOff(performance.now());
+    articulationTracker.reset();
     setStatus(sustainStatus, false, "延音踏板松开");
   }
   pianoWasConnected = status.piano;
@@ -2191,6 +2270,7 @@ function frame(now: number): void {
       scoreSeconds = loop.start + ((scoreSeconds - loop.start) % span);
       clock.seek(scoreSeconds, now);
       realtimeMatcher.restartPass();
+      articulationTracker.clearActive();
       metronome.reset(scoreSeconds);
       lastTargetSignature = "";
     } else if (scoreSeconds >= score.duration) {

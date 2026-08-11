@@ -6,6 +6,8 @@ export interface PracticeTrendPoint {
   accuracy: number;
   timingMs?: number;
   dynamicsScore?: number;
+  durationCoverageScore?: number;
+  releasePrecisionScore?: number;
   events: number;
 }
 
@@ -15,6 +17,7 @@ export interface PracticeTrend {
   accuracyDelta?: number;
   timingDeltaMs?: number;
   dynamicsDelta?: number;
+  durationCoverageDelta?: number;
 }
 
 function mean(values: number[]): number | undefined {
@@ -34,6 +37,8 @@ export function practiceTrend(sessions: PracticeSession[], maximum = 12): Practi
     accuracy: Math.max(0, Math.min(100, session.summary.accuracy)),
     timingMs: session.summary.meanAbsTimingMs,
     dynamicsScore: session.summary.dynamicsScore,
+    durationCoverageScore: session.summary.durationCoverageScore,
+    releasePrecisionScore: session.summary.releasePrecisionScore,
     events: session.summary.hits + session.summary.wrong + session.summary.missed,
   }));
   const window = Math.min(3, Math.floor(points.length / 2));
@@ -45,6 +50,8 @@ export function practiceTrend(sessions: PracticeSession[], maximum = 12): Practi
   const lateTiming = mean(late.flatMap((point) => point.timingMs === undefined ? [] : [point.timingMs]));
   const earlyDynamics = mean(early.flatMap((point) => point.dynamicsScore === undefined ? [] : [point.dynamicsScore]));
   const lateDynamics = mean(late.flatMap((point) => point.dynamicsScore === undefined ? [] : [point.dynamicsScore]));
+  const earlyCoverage = mean(early.flatMap((point) => point.durationCoverageScore === undefined ? [] : [point.durationCoverageScore]));
+  const lateCoverage = mean(late.flatMap((point) => point.durationCoverageScore === undefined ? [] : [point.durationCoverageScore]));
   return {
     points,
     totalEvents: points.reduce((sum, point) => sum + point.events, 0),
@@ -52,5 +59,6 @@ export function practiceTrend(sessions: PracticeSession[], maximum = 12): Practi
     // Lower absolute timing error is better, so positive means improvement.
     timingDeltaMs: earlyTiming === undefined || lateTiming === undefined ? undefined : earlyTiming - lateTiming,
     dynamicsDelta: earlyDynamics === undefined || lateDynamics === undefined ? undefined : lateDynamics - earlyDynamics,
+    durationCoverageDelta: earlyCoverage === undefined || lateCoverage === undefined ? undefined : lateCoverage - earlyCoverage,
   };
 }

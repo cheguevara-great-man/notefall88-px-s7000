@@ -14,6 +14,8 @@ export interface ScoreNote {
   end: number;
   velocity: number;
   hand: Hand;
+  /** Expected sounding gate relative to the written duration (MusicXML articulation). */
+  articulationGate?: number;
   /** Expanded playback position in quarter notes; available for MusicXML. */
   scoreQuarterStart?: number;
   scoreQuarterEnd?: number;

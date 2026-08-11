@@ -1,3 +1,4 @@
+import { summarizePractice } from "./analytics";
 import type { PracticeEvent, PracticeSession } from "./analytics";
 import { MAX_TEMPO, MIN_TEMPO, normalizeTempo } from "./tempo";
 import type { HandSelection, ParsedScore, PracticeMode } from "./types";
@@ -18,6 +19,8 @@ export interface PracticeMission {
   tempo: number;
   targetAccuracy: number;
   targetTimingMs?: number;
+  targetDynamicsScore?: number;
+  targetDurationCoverage?: number;
   minimumEvents: number;
   requiredPasses: number;
   consecutivePasses: number;
@@ -42,6 +45,8 @@ export interface MissionAssessment {
   outcome: "invalid" | "retry" | "streak" | "advanced" | "completed";
   accuracy?: number;
   timingMs?: number;
+  dynamicsScore?: number;
+  durationCoverageScore?: number;
   message: string;
 }
 
@@ -56,6 +61,10 @@ interface Bucket {
   leftErrors: number;
   rightHits: number;
   rightErrors: number;
+  dynamicsTotal: number;
+  dynamicsWeight: number;
+  articulationTotal: number;
+  articulationWeight: number;
 }
 
 function round(value: number, digits = 3): number {
@@ -100,6 +109,10 @@ function emptyBucket(): Bucket {
     leftErrors: 0,
     rightHits: 0,
     rightErrors: 0,
+    dynamicsTotal: 0,
+    dynamicsWeight: 0,
+    articulationTotal: 0,
+    articulationWeight: 0,
   };
 }
 
@@ -128,8 +141,16 @@ function severityOf(bucket: Bucket): number {
   const weightedErrorRate = Math.min(1, (bucket.wrong + bucket.missed * 1.45) / attempts);
   const timing = bucket.timingWeight > 0 ? bucket.timingTotal / bucket.timingWeight : 0;
   const timingPenalty = Math.min(1, timing / 220);
+  const dynamicsPenalty = bucket.dynamicsWeight > 0 ? bucket.dynamicsTotal / bucket.dynamicsWeight : 0;
+  const articulationPenalty = bucket.articulationWeight > 0
+    ? bucket.articulationTotal / bucket.articulationWeight : 0;
   const confidence = 0.72 + Math.min(0.28, bucket.rawEvents / 30);
-  return round(Math.min(1, (weightedErrorRate * 0.78 + timingPenalty * 0.22) * confidence));
+  return round(Math.min(1, (
+    weightedErrorRate * 0.62
+      + timingPenalty * 0.16
+      + dynamicsPenalty * 0.1
+      + articulationPenalty * 0.12
+  ) * confidence));
 }
 
 function missionRange(starts: number[], center: number): { from: number; through: number } {
@@ -184,9 +205,22 @@ function buildMission(
   const expected = expectedEvents(score, start, end, hand);
   const targetAccuracy = severity >= 0.58 ? 85 : severity >= 0.34 ? 90 : 94;
   const targetTimingMs = mode === "realtime" ? (severity >= 0.28 ? 120 : 90) : undefined;
+  const dynamicsPenalty = bucket.dynamicsWeight > 0 ? bucket.dynamicsTotal / bucket.dynamicsWeight : 0;
+  const articulationPenalty = bucket.articulationWeight > 0
+    ? bucket.articulationTotal / bucket.articulationWeight : 0;
+  const targetDynamicsScore = bucket.dynamicsWeight >= 4 && dynamicsPenalty >= 0.3 ? 70 : undefined;
+  const targetDurationCoverage = bucket.articulationWeight >= 4 && articulationPenalty >= 0.2 ? 85 : undefined;
   const timing = bucket.timingWeight > 0 ? bucket.timingTotal / bucket.timingWeight : undefined;
   const reason = `${rangeLabel(measures)} 的加权薄弱度 ${Math.round(severity * 100)}%`
-    + `${bucket.missed > bucket.wrong ? "，漏音是主要问题" : bucket.wrong > 0 ? "，多余按键需要先清理" : "，重点收紧拍点"}`
+    + `${bucket.missed > bucket.wrong
+      ? "，漏音是主要问题"
+      : bucket.wrong > 0
+        ? "，多余按键需要先清理"
+        : targetDurationCoverage !== undefined
+          ? "，提前收音使谱面时值没有完整覆盖"
+          : targetDynamicsScore !== undefined
+            ? "，谱面强弱轮廓需要更清楚"
+            : "，重点收紧拍点"}`
     + `${timing === undefined ? "" : `（平均偏差约 ${Math.round(timing)} ms）`}`;
   return {
     id: `mission-${ordinal}-${from}-${through}`,
@@ -200,6 +234,8 @@ function buildMission(
     tempo: missionTempo(baseTempo, severity),
     targetAccuracy,
     targetTimingMs,
+    targetDynamicsScore,
+    targetDurationCoverage,
     minimumEvents: Math.max(3, Math.min(20_000, expected)),
     requiredPasses: 2,
     consecutivePasses: 0,
@@ -258,6 +294,21 @@ export function buildPracticeCircuit(
           bucket.timingTotal += Math.abs(event.timingMs!) * weight;
           bucket.timingWeight += weight;
         }
+        if (event.targetVelocity !== undefined && Number.isFinite(event.targetVelocity)) {
+          const residual = Math.abs((event.velocity - event.targetVelocity) - (session.summary.velocityBias ?? 0));
+          const penalty = Math.min(1, residual / 24);
+          bucket.dynamicsTotal += penalty * weight;
+          bucket.dynamicsWeight += weight;
+          if (event.hand) bucket[event.hand === "left" ? "leftErrors" : "rightErrors"] += penalty * weight;
+        }
+        if (event.targetDurationMs !== undefined && event.soundingDurationMs !== undefined
+            && event.targetDurationMs >= 60 && event.soundingDurationMs >= 0) {
+          const coverage = Math.max(0, Math.min(1, event.soundingDurationMs / event.targetDurationMs));
+          const penalty = coverage < 0.8 ? 1 : Math.max(0, (0.95 - coverage) / 0.15);
+          bucket.articulationTotal += penalty * weight;
+          bucket.articulationWeight += weight;
+          if (event.hand) bucket[event.hand === "left" ? "leftErrors" : "rightErrors"] += penalty * weight;
+        }
       } else if (event.kind === "wrong") bucket.wrong += weight;
       else bucket.missed += weight;
       addHandEvidence(bucket, event, weight);
@@ -266,7 +317,7 @@ export function buildPracticeCircuit(
 
   const ranked = buckets
     .map((bucket, occurrence) => ({ bucket, occurrence, severity: severityOf(bucket) }))
-    .filter((candidate) => candidate.bucket.rawEvents >= 2 && candidate.severity >= 0.08)
+    .filter((candidate) => candidate.bucket.rawEvents >= 2 && candidate.severity >= 0.05)
     .sort((a, b) => b.severity - a.severity || b.bucket.missed - a.bucket.missed || a.occurrence - b.occurrence);
   const selected: typeof ranked = [];
   for (const candidate of ranked) {
@@ -338,7 +389,14 @@ export function assessPracticeMission(circuit: PracticeCircuit, session: Practic
   const timingMs = timings.length > 0 ? round(timings.reduce((sum, value) => sum + Math.abs(value), 0) / timings.length, 1) : undefined;
   const timingPassed = mission.targetTimingMs === undefined
     || (timings.length >= Math.min(3, mission.minimumEvents) && timingMs !== undefined && timingMs <= mission.targetTimingMs);
-  const passed = accuracy >= mission.targetAccuracy && timingPassed;
+  const expressive = summarizePractice(events);
+  const dynamicsScore = expressive.dynamicsScore;
+  const durationCoverageScore = expressive.durationCoverageScore;
+  const dynamicsPassed = mission.targetDynamicsScore === undefined
+    || (dynamicsScore !== undefined && dynamicsScore >= mission.targetDynamicsScore);
+  const durationPassed = mission.targetDurationCoverage === undefined
+    || (durationCoverageScore !== undefined && durationCoverageScore >= mission.targetDurationCoverage);
+  const passed = accuracy >= mission.targetAccuracy && timingPassed && dynamicsPassed && durationPassed;
   const missions = circuit.missions.map((item, index) => index === circuit.activeIndex
     ? {
       ...item,
@@ -351,11 +409,23 @@ export function assessPracticeMission(circuit: PracticeCircuit, session: Practic
   const activeIndex = mastered ? circuit.activeIndex + 1 : circuit.activeIndex;
   const completed = activeIndex >= missions.length;
   const updated: PracticeCircuit = { ...circuit, missions, activeIndex, completed };
-  const metrics = `${accuracy.toFixed(1)}%${mission.targetTimingMs === undefined ? "" : ` / ${timingMs === undefined ? "无节奏样本" : `${Math.round(timingMs)} ms`}`}`;
+  const metrics = `${accuracy.toFixed(1)}%${mission.targetTimingMs === undefined ? "" : ` / ${timingMs === undefined ? "无节奏样本" : `${Math.round(timingMs)} ms`}`}`
+    + `${mission.targetDynamicsScore === undefined ? "" : ` / 力度 ${dynamicsScore === undefined ? "无样本" : `${Math.round(dynamicsScore)}%`}`}`
+    + `${mission.targetDurationCoverage === undefined ? "" : ` / 时值 ${durationCoverageScore === undefined ? "无样本" : `${Math.round(durationCoverageScore)}%`}`}`;
   if (!passed) {
     const accuracyHint = accuracy < mission.targetAccuracy ? `准确率需达到 ${mission.targetAccuracy}%` : "准确率已达标";
     const timingHint = mission.targetTimingMs === undefined ? "" : `，平均拍点需在 ${mission.targetTimingMs} ms 内`;
-    return { circuit: updated, outcome: "retry", accuracy, timingMs, message: `本轮 ${metrics}：${accuracyHint}${timingHint}，连续达标计数已重置。` };
+    const dynamicsHint = mission.targetDynamicsScore === undefined ? "" : `，力度轮廓需达到 ${mission.targetDynamicsScore}%`;
+    const durationHint = mission.targetDurationCoverage === undefined ? "" : `，时值覆盖需达到 ${mission.targetDurationCoverage}%`;
+    return {
+      circuit: updated,
+      outcome: "retry",
+      accuracy,
+      timingMs,
+      dynamicsScore,
+      durationCoverageScore,
+      message: `本轮 ${metrics}：${accuracyHint}${timingHint}${dynamicsHint}${durationHint}，连续达标计数已重置。`,
+    };
   }
   if (!mastered) {
     return {
@@ -363,11 +433,19 @@ export function assessPracticeMission(circuit: PracticeCircuit, session: Practic
       outcome: "streak",
       accuracy,
       timingMs,
+      dynamicsScore,
+      durationCoverageScore,
       message: `本轮 ${metrics} 达标；再连续通过 ${updatedMission.requiredPasses - updatedMission.consecutivePasses} 次即可进阶。`,
     };
   }
-  if (completed) return { circuit: updated, outcome: "completed", accuracy, timingMs, message: `本轮 ${metrics} 达标，全部弱点关卡已完成。` };
-  return { circuit: updated, outcome: "advanced", accuracy, timingMs, message: `本轮 ${metrics} 达标，已自动进入下一处弱点。` };
+  if (completed) return {
+    circuit: updated, outcome: "completed", accuracy, timingMs, dynamicsScore, durationCoverageScore,
+    message: `本轮 ${metrics} 达标，全部弱点关卡已完成。`,
+  };
+  return {
+    circuit: updated, outcome: "advanced", accuracy, timingMs, dynamicsScore, durationCoverageScore,
+    message: `本轮 ${metrics} 达标，已自动进入下一处弱点。`,
+  };
 }
 
 function validStoredMission(value: unknown): value is PracticeMission {
@@ -383,6 +461,10 @@ function validStoredMission(value: unknown): value is PracticeMission {
     && (mission.mode === "wait" || mission.mode === "realtime")
     && Number.isFinite(mission.tempo)
     && Number.isFinite(mission.targetAccuracy)
+    && (mission.targetDynamicsScore === undefined
+      || (Number.isFinite(mission.targetDynamicsScore) && mission.targetDynamicsScore! >= 0 && mission.targetDynamicsScore! <= 100))
+    && (mission.targetDurationCoverage === undefined
+      || (Number.isFinite(mission.targetDurationCoverage) && mission.targetDurationCoverage! >= 0 && mission.targetDurationCoverage! <= 100))
     && Number.isInteger(mission.minimumEvents)
     && mission.minimumEvents! >= 3
     && Number.isInteger(mission.requiredPasses)

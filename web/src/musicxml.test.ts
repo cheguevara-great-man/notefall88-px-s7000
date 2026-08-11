@@ -73,6 +73,21 @@ describe("MusicXML parser", () => {
     expect(parseMusicXmlFile(buffer, "piece.mxl").score.notes).toHaveLength(4);
   });
 
+  it("preserves written duration while exposing common articulation gates", () => {
+    const score = parseMusicXml(`<?xml version="1.0"?>
+      <score-partwise version="4.0">
+        <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+        <part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes>
+          <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><notations><articulations><staccato/></articulations></notations></note>
+          <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><notations><articulations><staccatissimo/></articulations></notations></note>
+          <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><notations><articulations><detached-legato/></articulations></notations></note>
+          <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><notations><articulations><tenuto/></articulations></notations></note>
+        </measure></part>
+      </score-partwise>`, "articulations.musicxml");
+    expect(score.notes.map((note) => note.articulationGate)).toEqual([0.5, 0.25, 0.65, 0.95]);
+    expect(score.notes.map((note) => note.end - note.start)).toEqual([0.5, 0.5, 0.5, 0.5]);
+  });
+
   it("honors metronome units, additive/composite meters, dynamics and silent cues", () => {
     const score = parseMusicXml(fixture("meter-tempo-dynamics.musicxml"), "fixture.xml");
     expect(score.notes.map((note) => [note.note, note.velocity, note.hand])).toEqual([

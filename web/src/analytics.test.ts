@@ -73,6 +73,41 @@ describe("practice analytics", () => {
     });
   });
 
+  it("enriches a hit after key and pedal release without adding a fake attempt", () => {
+    const analytics = new PracticeAnalytics({ scoreName: "Release", mode: "realtime", hand: "both", tempo: 1, transpose: 0 });
+    const tokens = [60, 62, 64, 65].map((note, index) => analytics.record({
+      kind: "hit",
+      note,
+      velocity: 80,
+      scoreTime: index * 0.5,
+      timingMs: 0,
+    }));
+    tokens.forEach((token) => expect(analytics.completeArticulation({
+      token: token!,
+      note: 60,
+      targetDurationMs: 500,
+      keyDurationMs: 500,
+      soundingDurationMs: 500,
+      sustained: false,
+    })).toBe(true));
+    expect(analytics.snapshot()).toMatchObject({
+      hits: 4,
+      articulationSamples: 4,
+      durationCoverageScore: 100,
+      releasePrecisionScore: 100,
+      earlyReleaseRate: 0,
+    });
+    expect(analytics.eventsSnapshot()).toHaveLength(4);
+    expect(analytics.completeArticulation({
+      token: 99,
+      note: 60,
+      targetDurationMs: 500,
+      keyDurationMs: 500,
+      soundingDurationMs: 500,
+      sustained: false,
+    })).toBe(false);
+  });
+
   it("finishes only non-empty sessions with immutable context", () => {
     const context = {
       scoreName: "Etude",

@@ -92,6 +92,76 @@ describe("adaptive weak-passage circuit", () => {
     });
   });
 
+  it("turns repeated early releases into a measurable passage mission", () => {
+    const clipped = Array.from({ length: 8 }, (_, index): PracticeEvent => ({
+      kind: "hit",
+      note: 60 + index % 4,
+      hand: "right",
+      velocity: 80,
+      scoreTime: 8.2 + index * 0.4,
+      timingMs: 20,
+      targetDurationMs: 500,
+      keyDurationMs: 200,
+      soundingDurationMs: 200,
+      sustained: false,
+    }));
+    const circuit = buildPracticeCircuit([makeSession(clipped)], score, fingerprint)!;
+    const mission = circuit.missions[0];
+    expect(mission).toMatchObject({
+      hand: "right",
+      mode: "realtime",
+      targetDurationCoverage: 85,
+    });
+    expect(mission.reason).toContain("提前收音");
+
+    const context = {
+      mode: mission.mode,
+      hand: mission.hand,
+      tempo: mission.tempo,
+      loop: { start: mission.start, end: mission.end },
+    };
+    const attempt = Array.from({ length: mission.minimumEvents }, (_, index): PracticeEvent => ({
+      kind: "hit",
+      note: 60 + index % 4,
+      hand: "right",
+      velocity: 80,
+      scoreTime: mission.start + 0.1 + index * (mission.end - mission.start - 0.2) / mission.minimumEvents,
+      timingMs: 20,
+      targetDurationMs: 500,
+      keyDurationMs: 200,
+      soundingDurationMs: 200,
+      sustained: false,
+    }));
+    const assessment = assessPracticeMission(circuit, makeSession(attempt, context));
+    expect(assessment).toMatchObject({
+      outcome: "retry",
+      accuracy: 100,
+      durationCoverageScore: 40,
+    });
+    expect(assessment.message).toContain("时值覆盖需达到 85%");
+  });
+
+  it("can target a locally flattened dynamics contour without confusing touch bias", () => {
+    const flattened = [40, 60, 80, 100, 40, 60, 80, 100].map((targetVelocity, index): PracticeEvent => ({
+      kind: "hit",
+      note: 60 + index % 4,
+      hand: "right",
+      velocity: 70,
+      targetVelocity,
+      scoreTime: 4.2 + index * 0.4,
+      timingMs: 20,
+    }));
+    const history = makeSession(flattened);
+    history.summary.velocityBias = 0;
+    const circuit = buildPracticeCircuit([history], score, fingerprint)!;
+    expect(circuit.missions[0]).toMatchObject({
+      hand: "right",
+      mode: "realtime",
+      targetDynamicsScore: 70,
+    });
+    expect(circuit.missions[0].reason).toContain("强弱轮廓");
+  });
+
   it("requires compatible settings, enough evidence and consecutive passes before advancing", () => {
     const weak = [
       { kind: "missed" as const, note: 48, hand: "left" as const, scoreTime: 4.5 },

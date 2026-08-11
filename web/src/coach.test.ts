@@ -96,6 +96,28 @@ describe("practice coach", () => {
     expect(recommendation.reason).toContain("力度轮廓 25%");
   });
 
+  it("does not increase tempo while notes are being released too early", () => {
+    const events = Array.from({ length: 12 }, (_, index) => ({
+      kind: "hit" as const,
+      note: 60 + index % 4,
+      hand: "right" as const,
+      velocity: 80,
+      scoreTime: index,
+      timingMs: 20,
+    }));
+    const clipped = session("Articulation", 2_000, events, 1);
+    clipped.summary.meanAbsTimingMs = 20;
+    clipped.summary.durationCoverageScore = 58;
+    clipped.summary.releasePrecisionScore = 42;
+    const recommendation = recommendPractice([clipped], "Articulation", 15)!;
+    expect(recommendation).toMatchObject({
+      tempo: 0.95,
+      evidence: { durationCoverageScore: 58, releasePrecisionScore: 42 },
+    });
+    expect(recommendation.reason).toContain("时值覆盖 58%");
+    expect(recommendation.reason).toContain("无踏板释放 42%");
+  });
+
   it("does not infer a recommendation from another score", () => {
     expect(recommendPractice([session("Other", 1, [{ kind: "wrong", note: 60, velocity: 90, scoreTime: 0 }])], "Current", 10))
       .toBeUndefined();

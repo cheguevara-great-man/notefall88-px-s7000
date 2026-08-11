@@ -18,19 +18,32 @@ export interface PracticeRecommendation {
     accuracy: number;
     errorsInLoop: number;
     dynamicsScore?: number;
+    durationCoverageScore?: number;
+    releasePrecisionScore?: number;
   };
 }
 
-function recommendedTempo(current: number, accuracy: number, timingMs?: number, dynamicsScore?: number): number {
+function recommendedTempo(
+  current: number,
+  accuracy: number,
+  timingMs?: number,
+  dynamicsScore?: number,
+  durationCoverageScore?: number,
+  releasePrecisionScore?: number,
+): number {
   const normalized = normalizeTempo(current);
   const delta = accuracy < 70
     ? -0.15
     : (accuracy < 88 || (timingMs !== undefined && timingMs > 120))
       ? -0.1
-      : (dynamicsScore !== undefined && dynamicsScore < 60)
+      : ((dynamicsScore !== undefined && dynamicsScore < 60)
+          || (durationCoverageScore !== undefined && durationCoverageScore < 75)
+          || (releasePrecisionScore !== undefined && releasePrecisionScore < 60))
         ? -0.05
         : (accuracy >= 96 && (timingMs === undefined || timingMs < 65)
-          && (dynamicsScore === undefined || dynamicsScore >= 80)) ? 0.05 : 0;
+          && (dynamicsScore === undefined || dynamicsScore >= 80)
+          && (durationCoverageScore === undefined || durationCoverageScore >= 90)
+          && (releasePrecisionScore === undefined || releasePrecisionScore >= 75)) ? 0.05 : 0;
   return normalizeTempo(Math.max(MIN_TEMPO, Math.min(MAX_TEMPO, normalized + delta)));
 }
 
@@ -127,7 +140,26 @@ export function recommendPractice(
   const dynamics = dynamicsValues.length > 0
     ? dynamicsValues.reduce((sum, value) => sum + value, 0) / dynamicsValues.length
     : undefined;
-  const tempo = recommendedTempo(latest.context.tempo, accuracy, timing, dynamics);
+  const coverageValues = sessions
+    .map((session) => session.summary.durationCoverageScore)
+    .filter((value): value is number => value !== undefined);
+  const durationCoverage = coverageValues.length > 0
+    ? coverageValues.reduce((sum, value) => sum + value, 0) / coverageValues.length
+    : undefined;
+  const releaseValues = sessions
+    .map((session) => session.summary.releasePrecisionScore)
+    .filter((value): value is number => value !== undefined);
+  const releasePrecision = releaseValues.length > 0
+    ? releaseValues.reduce((sum, value) => sum + value, 0) / releaseValues.length
+    : undefined;
+  const tempo = recommendedTempo(
+    latest.context.tempo,
+    accuracy,
+    timing,
+    dynamics,
+    durationCoverage,
+    releasePrecision,
+  );
   const hand = chooseHand(sessions);
   const loop = hardestWindow(sessions, scoreDuration);
   const mode: PracticeMode = accuracy < 70 ? "wait" : "realtime";
@@ -137,12 +169,21 @@ export function recommendPractice(
   if (tempo < latest.context.tempo) reasonParts.push(
     dynamics !== undefined && dynamics < 60 && accuracy >= 88 && (timing === undefined || timing <= 120)
       ? `先降到 ${Math.round(tempo * 100)}% 打磨力度层次`
+      : ((durationCoverage !== undefined && durationCoverage < 75)
+          || (releasePrecision !== undefined && releasePrecision < 60))
+        ? `先降到 ${Math.round(tempo * 100)}% 修正提前收音与指尖释放`
       : `先降到 ${Math.round(tempo * 100)}% 稳定准确度`,
   );
   else if (tempo > latest.context.tempo) reasonParts.push(`表现稳定，可提升到 ${Math.round(tempo * 100)}%`);
   if (mode === "wait") reasonParts.push("先用等我弹消除音高错误");
   else if (timing !== undefined && timing > 120) reasonParts.push("用实时模式收紧拍点");
   if (dynamics !== undefined && dynamics < 60) reasonParts.push(`力度轮廓 ${Math.round(dynamics)}%，放慢后夸大谱面强弱层次`);
+  if (durationCoverage !== undefined && durationCoverage < 75) {
+    reasonParts.push(`时值覆盖 ${Math.round(durationCoverage)}%，先确保声音延续到谱面目标末端`);
+  }
+  if (releasePrecision !== undefined && releasePrecision < 60) {
+    reasonParts.push(`无踏板释放 ${Math.round(releasePrecision)}%，单独练习整齐松键`);
+  }
   if (reasonParts.length === 0) reasonParts.push("保持当前设置，继续巩固一致性");
 
   return {
@@ -159,6 +200,8 @@ export function recommendPractice(
       accuracy,
       errorsInLoop: loop?.errors ?? errors,
       dynamicsScore: dynamics,
+      durationCoverageScore: durationCoverage,
+      releasePrecisionScore: releasePrecision,
     },
   };
 }

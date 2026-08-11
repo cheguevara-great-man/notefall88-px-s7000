@@ -27,7 +27,10 @@ def test_native_dependencies_are_exact_and_include_lifecycle_plugin() -> None:
     assert dependencies["@capacitor/android"] == "8.5.0"
     assert dependencies["@capacitor/ios"] == "8.5.0"
     assert dependencies["@capacitor/app"] == "8.1.1"
-    assert package["devDependencies"]["@capacitor/cli"] == "8.5.0"
+    # CLI 8.5.0 currently pulls xcode -> uuid 7.0.3 (GHSA-w5hq-g745-h8pq).
+    # The 8.4.2 build CLI is compatible with the 8.5 runtime packages, passes
+    # `cap doctor`/sync/Android builds, and keeps npm audit at zero findings.
+    assert package["devDependencies"]["@capacitor/cli"] == "8.4.2"
 
 
 def test_android_declares_internet_and_intentional_local_cleartext() -> None:
