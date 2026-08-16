@@ -28,12 +28,15 @@ import {
 } from "./commissioning";
 import type { CommissioningState } from "./commissioning";
 import {
+  calibrationProfile,
   clampPianoNote,
   FIRST_PIANO_NOTE,
   normalizeKeyOffsets,
+  parseCalibrationProfile,
   pianoNoteName,
 } from "./calibration";
 import { DeviceLink } from "./device";
+import { PX_S7000_FIELD_OFFSETS } from "./field-calibration";
 import { DemonstrationPlanner } from "./demonstration";
 import { parseMidiFile } from "./midi";
 import { measureLoopRange, measureNavigation, measurePerformance } from "./measure-navigation";
@@ -2621,6 +2624,52 @@ required("key-test").addEventListener("click", () => device.testNote(Number(keyN
 required("key-reset").addEventListener("click", () => {
   keyOffset.value = "0";
   keyOffset.dispatchEvent(new Event("input"));
+});
+required("calibration-export").addEventListener("click", () => {
+  const profile = calibrationProfile(keyOffsets, new Date().toISOString(), "device-export");
+  const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `notefall88-calibration-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  required("calibration-transfer-status").textContent = "88键校准备份已导出。";
+});
+const calibrationImportFile = required<HTMLInputElement>("calibration-import-file");
+required("calibration-import").addEventListener("click", () => calibrationImportFile.click());
+async function writeCalibrationOffsets(offsets: readonly number[], success: string): Promise<void> {
+  const status = required("calibration-transfer-status");
+  status.textContent = "正在写入88键校准，请保持页面和ESP连接……";
+  for (let index = 0; index < offsets.length; index += 1) {
+    device.setKeyOffset(FIRST_PIANO_NOTE + index, offsets[index]);
+    if (index % 4 === 3) await new Promise<void>((resolve) => window.setTimeout(resolve, 35));
+  }
+  keyOffsets = normalizeKeyOffsets(offsets);
+  updateKeyCalibration();
+  status.textContent = success;
+}
+required("calibration-field-preset").addEventListener("click", async () => {
+  await writeCalibrationOffsets(
+    PX_S7000_FIELD_OFFSETS,
+    "本机实测建议已写入；请从左到右快速弹奏全键盘复核。",
+  );
+});
+calibrationImportFile.addEventListener("change", async () => {
+  const file = calibrationImportFile.files?.[0];
+  if (!file) return;
+  const status = required("calibration-transfer-status");
+  try {
+    const profile = parseCalibrationProfile(JSON.parse(await file.text()));
+    await writeCalibrationOffsets(
+      profile.offsets,
+      "88键校准已写入ESP32并保存；请快速弹奏全键盘复核。",
+    );
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : "无法导入校准文件";
+  } finally {
+    calibrationImportFile.value = "";
+  }
 });
 required<HTMLFormElement>("wifi-form").addEventListener("submit", async (event) => {
   event.preventDefault();

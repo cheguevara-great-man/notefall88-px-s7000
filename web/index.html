@@ -321,6 +321,13 @@
           <button id="key-next">下一键</button>
           <button id="key-reset">当前键归零</button>
         </div>
+        <div class="button-row">
+          <button id="calibration-field-preset" type="button" class="primary">应用本机实测建议</button>
+          <button id="calibration-export" type="button">导出88键校准</button>
+          <button id="calibration-import" type="button">导入88键校准</button>
+          <input id="calibration-import-file" class="visually-hidden" type="file" accept=".json,application/json" />
+        </div>
+        <div id="calibration-transfer-status" class="library-summary">校准保存在ESP32；建议完成后另存一份备份。</div>
         <hr />
         <h3>加入家庭 Wi-Fi（可选）</h3>
         <p>只能在连接 <code>NoteFall-88</code> 热点时修改；还需在下方“设备维护”输入当前热点密码。</p>

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "product": "NoteFall 88",
+  "firstMidiNote": 21,
+  "lastMidiNote": 108,
+  "offsets": [
+    0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 0,
+    0, 0, 1, -1, 0, 0, 0, 0, 0, 0, 1, 0,
+    1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 2, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2,
+    2, 2, 2, 2
+  ],
+  "exportedAt": "2026-08-16T00:00:00.000+08:00",
+  "source": "PX-S7000 installed strip: measured white-key samples plus C3/C5/C#5/C6/C7/C8 anchors; monotonic unique-pixel fit"
+}
