@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install --only-binary=:all: -r requirements-dev.txt
+      - run: "pip install --only-binary=:all: -r requirements-dev.txt"
       - run: pip check
       - run: python scripts/generate.py --check
       - run: python -m pytest
