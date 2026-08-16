@@ -91,6 +91,7 @@ std::atomic<bool> pianoConnected{false};
 bool mdnsStarted = false;
 bool restartRequested = false;
 bool preferencesReady = false;
+uint8_t previousApStationCount = 0;
 esp_reset_reason_t bootResetReason = ESP_RST_UNKNOWN;
 uint8_t webClients = 0;
 uint8_t brightness = kDefaultGlobalBrightness;
@@ -1174,6 +1175,21 @@ void startNetwork() {
   websocket.onEvent(webSocketEvent);
 }
 
+void recoverHttpAfterAccessPointDeparture() {
+  const uint8_t stationCount = WiFi.softAPgetStationNum();
+  if (previousApStationCount > 0 && stationCount == 0) {
+    // Arduino WebServer::close() does not clear its current client. When a
+    // browser leaves the SoftAP, that stale client can keep handleClient()
+    // waiting forever and starve otherwise valid requests arriving on STA.
+    // Stop the shared socket explicitly before reopening the listener.
+    WiFiClient staleClient = http.client();
+    staleClient.stop();
+    http.stop();
+    http.begin();
+  }
+  previousApStationCount = stationCount;
+}
+
 }  // namespace
 
 void setup() {
@@ -1243,6 +1259,7 @@ void loop() {
   }
   flushBrowserMidi();
   processScheduledMidi();
+  recoverHttpAfterAccessPointDeparture();
   http.handleClient();
   websocket.loop();
 

@@ -211,6 +211,19 @@ def test_status_diagnostics_remain_within_a_small_websocket_frame_budget() -> No
     assert conservative_bytes < 4096
 
 
+def test_softap_departure_closes_stale_http_client_before_sta_requests() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    recovery = source[
+        source.index("void recoverHttpAfterAccessPointDeparture") : source.index("}  // namespace")
+    ]
+    assert "previousApStationCount > 0 && stationCount == 0" in recovery
+    assert "WiFiClient staleClient = http.client()" in recovery
+    assert recovery.index("staleClient.stop()") < recovery.index("http.stop()")
+    assert recovery.index("http.stop()") < recovery.index("http.begin()")
+    loop = source[source.index("void loop()") :]
+    assert loop.index("recoverHttpAfterAccessPointDeparture()") < loop.index("http.handleClient()")
+
+
 def test_usb_interface_selection_uses_the_native_executed_descriptor_core() -> None:
     source = (ROOT / "firmware" / "src" / "UsbMidiHost.cpp").read_text(encoding="utf-8")
     assert '#include "usb_midi_descriptor.h"' in source
