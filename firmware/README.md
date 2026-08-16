@@ -33,11 +33,11 @@ cd ..
 
 ## 实机诊断
 
-网页“灯带校准 → 设备诊断”显示 USB VID/PID、MIDI IN/OUT 端点与包长、双向累计包数、OUT 排程深度、输入队列丢包/CIN 坏包/传输错误、疑似输出镜像、USB 回调到 SPI 完成的内部延迟、ESP/浏览器拒绝消息、网页 MIDI 丢弃、连接次数、空闲堆、PSRAM、NVS、上次复位原因和 Wi-Fi RSSI。合法但不消费的 SysEx、时钟和 Active Sensing 会被忽略而不计为坏包；疑似镜像只计数，绝不吞掉无法与真实弹奏区分的输入。N8R8 启动时会检查 OPI PSRAM；网页应显示约 8 MiB 总量。正常连续弹奏和跟随伴奏时输入侧 `丢包 / 坏包 / 传输错误`、输出侧 `丢包 / 错误`、网页 MIDI 丢弃和两侧拒绝数都应保持 0，并且不得出现 `brownout`、`panic` 或 `watchdog` 复位。
+网页“灯带校准 → 设备诊断”显示 USB VID/PID、MIDI IN/OUT 端点与包长、双向累计包数、IN/OUT 队列当前深度与峰值、OUT 排程深度、输入队列丢包/CIN 坏包/传输错误、疑似输出镜像、USB 回调到实时任务及 SPI 完成的两段内部延迟、SPI 帧耗时、实时任务心跳/栈余量/看门狗、ESP/浏览器拒绝消息、网页 MIDI 队列峰值/丢弃/重同步、连接次数、空闲堆、PSRAM、NVS、上次复位原因和 Wi-Fi RSSI。合法但不消费的 SysEx、时钟和 Active Sensing 会被忽略而不计为坏包；疑似镜像只计数，绝不吞掉无法与真实弹奏区分的输入。N8R8 启动时会检查 OPI PSRAM；网页应显示约 8 MiB 总量。正常连续弹奏和跟随伴奏时输入侧 `丢包 / 坏包 / 传输错误`、输出侧 `丢包 / 错误`、网页 MIDI 丢弃和两侧拒绝数都应保持 0，并且不得出现 `brownout`、`panic` 或 `watchdog` 复位。
 
-`firmware/include/midi_core.h` 与 `usb_midi_descriptor.h` 是目标固件实际使用且不依赖 Arduino 的实时核心。`python -m pytest tests/test_firmware_core_native.py` 会以主机 `g++` 的严格警告选项编译并执行 MIDI 包、CC88、计时、真实灯位和 USB MIDIStreaming 描述符选择；这不是另写的模拟器。随后仍必须用 PlatformIO 的 Xtensa 工具链构建完整固件。
+`firmware/include/midi_core.h`、`realtime_core.h` 与 `usb_midi_descriptor.h` 是目标固件实际使用且不依赖 Arduino 的实时核心。`python -m pytest tests/test_firmware_core_native.py` 会以主机 `g++` 的严格警告选项编译并执行 MIDI 包、CC88、计时、真实灯位、固定容量环形队列、饱和延迟统计和 USB MIDIStreaming 描述符选择；这不是另写的模拟器。随后仍必须用 PlatformIO 的 Xtensa 工具链构建完整固件。
 
-USB Host 传输回调运行在专用 FreeRTOS 任务：IN 回调只打微秒时间戳、写入固定长度环形队列和原子诊断计数，OUT 由另一固定队列批量提交且同一端点最多一个在途传输。`poll()` 在 Arduino 主任务中合并同批 MIDI，先完成一帧灯带 SPI，再从 64 项固定网页事件队列广播；网络库不会从 USB 任务中被调用，也不会排在实体灯帧之前。网页只传相对时间事件，固件以 `millis()` 排程；网页失联会执行 16 通道 Sustain Off 与 All Notes Off。
+USB Host daemon 与 MIDI client 使用两个专用 FreeRTOS 任务，client 最长 5 ms 事件等待不再排在 daemon 的 20 ms 等待之后。IN 回调只打微秒时间戳并写入固定长度环形队列；整个 USB transfer（同批和弦）入队后只唤醒一次优先级更高、固定在 Core 0 的实时任务，既保留单帧和弦又不会被持续输入饿死。实时任务先完成灯带帧，再由 Core 1 的 Arduino 主任务从独立 128 项网页队列限量广播。网络、JSON 和 OTA 不进入实时任务，Wi-Fi 拥塞不会阻塞实体灯；网页队列极端溢出时以既有全通道 CC64/66/67/123 + 当前按键事件重同步，避免漏掉 Note Off 或踏板释放后永久挂键。APA102 的 719 字节帧用单次硬件 SPI 批量操作发送，RGB 顺序、5-bit 全局亮度和 8 MHz 线速不变；状态未改变时不再重复发送原有的 100 fps 空帧。网页只传相对时间事件，固件以 `millis()` 排程；钢琴 USB 断开会立即清空目标、按键和测试灯，并由实时任务提交熄灯帧；网页失联会执行 16 通道 Sustain Off 与 All Notes Off。
 
 生产网页的 JS/CSS 只保存 `.gz` 文件。Arduino-ESP32 `WebServer` 在请求原始 `.js`/`.css` URL 时自动选择同名 `.gz` 并发送正确的 `Content-Encoding: gzip`；`index.html` 保持未压缩，确保根路由和救援提示始终可读。
 

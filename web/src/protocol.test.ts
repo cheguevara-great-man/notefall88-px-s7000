@@ -21,10 +21,37 @@ const status = {
   usbMalformed: 4,
   usbLastError: "connected USB device has no MIDI streaming IN endpoint",
   webAuthRejected: 2,
+  usbInputQueueDepth: 3,
+  usbInputQueueHighWater: 17,
+  usbOutputQueueDepth: 4,
+  usbOutputQueueHighWater: 19,
+  usbLargestInputBatch: 8,
+  usbInputResubmitRetries: 1,
+  usbClientWatchdog: true,
+  usbDaemonWatchdog: true,
+  webMidiResyncs: 2,
+  webMidiQueueDepth: 5,
+  webMidiQueueHighWater: 23,
+  midiDispatchLatencyLastUs: 120,
+  midiDispatchLatencyAvgUs: 95,
+  midiDispatchLatencyMaxUs: 440,
+  midiDispatchLatencySamples: 100,
   ledInputLatencyLastUs: 840,
   ledInputLatencyAvgUs: 790,
   ledInputLatencyMaxUs: 1210,
   ledInputLatencySamples: 40,
+  ledFrames: 9_000,
+  ledFramesSkipped: 24_000,
+  ledSpiLastUs: 900,
+  ledSpiMaxUs: 1_200,
+  ledFrameBytes: 712,
+  realtimeReady: true,
+  realtimeWatchdog: true,
+  realtimeHeartbeatAgeMs: 4,
+  realtimeWakeups: 50_000,
+  realtimeStackFreeBytes: 3_072,
+  mainLoopLastUs: 410,
+  mainLoopMaxUs: 2_300,
 };
 
 describe("device protocol decoder", () => {
@@ -39,7 +66,57 @@ describe("device protocol decoder", () => {
     expect(result.message.value.controlAuthorized).toBe(true);
     expect(result.message.value.controlToken).toBe("boot-token-0123456789");
     expect(result.message.value.webAuthRejected).toBe(2);
+    expect(result.message.value).toMatchObject({
+      usbInputQueueDepth: 3,
+      usbInputQueueHighWater: 17,
+      usbOutputQueueDepth: 4,
+      usbOutputQueueHighWater: 19,
+      usbLargestInputBatch: 8,
+      usbInputResubmitRetries: 1,
+      usbClientWatchdog: true,
+      usbDaemonWatchdog: true,
+      webMidiResyncs: 2,
+      webMidiQueueDepth: 5,
+      webMidiQueueHighWater: 23,
+      midiDispatchLatencyLastUs: 120,
+      midiDispatchLatencyAvgUs: 95,
+      midiDispatchLatencyMaxUs: 440,
+      midiDispatchLatencySamples: 100,
+      ledFrames: 9_000,
+      ledFramesSkipped: 24_000,
+      ledSpiLastUs: 900,
+      ledSpiMaxUs: 1_200,
+      ledFrameBytes: 712,
+      realtimeReady: true,
+      realtimeWatchdog: true,
+      realtimeHeartbeatAgeMs: 4,
+      realtimeWakeups: 50_000,
+      realtimeStackFreeBytes: 3_072,
+      mainLoopLastUs: 410,
+      mainLoopMaxUs: 2_300,
+    });
     expect(result.message.value.ledInputLatencyAvgUs).toBe(790);
+  });
+
+  it("keeps realtime diagnostics optional for older firmware", () => {
+    const legacy = { ...status } as Record<string, unknown>;
+    for (const key of [
+      "usbInputQueueDepth", "usbInputQueueHighWater", "usbOutputQueueDepth", "usbOutputQueueHighWater",
+      "usbLargestInputBatch", "usbInputResubmitRetries", "usbClientWatchdog", "usbDaemonWatchdog",
+      "webMidiResyncs", "webMidiQueueDepth", "webMidiQueueHighWater",
+      "midiDispatchLatencyLastUs", "midiDispatchLatencyAvgUs", "midiDispatchLatencyMaxUs",
+      "midiDispatchLatencySamples", "ledFrames", "ledFramesSkipped", "ledSpiLastUs", "ledSpiMaxUs",
+      "ledFrameBytes", "realtimeReady", "realtimeWatchdog", "realtimeHeartbeatAgeMs", "realtimeWakeups",
+      "realtimeStackFreeBytes", "mainLoopLastUs", "mainLoopMaxUs",
+    ]) delete legacy[key];
+    const result = decodeDeviceMessage(JSON.stringify(legacy));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.message.kind !== "status") return;
+    expect(result.message.value.usbInputQueueDepth).toBeUndefined();
+    expect(result.message.value.midiDispatchLatencyAvgUs).toBeUndefined();
+    expect(result.message.value.ledSpiMaxUs).toBeUndefined();
+    expect(result.message.value.realtimeReady).toBeUndefined();
+    expect(result.message.value.mainLoopMaxUs).toBeUndefined();
   });
 
   it("decodes bounded MIDI, control, result and pong messages", () => {
@@ -91,6 +168,12 @@ describe("device protocol decoder", () => {
       JSON.stringify({ ...status, clients: 1.5 }),
       JSON.stringify({ ...status, brightness: 5 }),
       JSON.stringify({ ...status, offset: 9 }),
+      JSON.stringify({ ...status, usbInputQueueDepth: -1 }),
+      JSON.stringify({ ...status, webMidiQueueHighWater: 1.5 }),
+      JSON.stringify({ ...status, midiDispatchLatencyMaxUs: -1 }),
+      JSON.stringify({ ...status, ledSpiLastUs: Number.MAX_SAFE_INTEGER }),
+      JSON.stringify({ ...status, realtimeReady: 1 }),
+      JSON.stringify({ ...status, mainLoopMaxUs: -1 }),
       JSON.stringify({ t: "midi", s: "on", ch: 0, n: 60, v: 90, ts: 1 }),
       JSON.stringify({ t: "midi", s: "on", ch: 1, n: 128, v: 90, ts: 1 }),
       JSON.stringify({ t: "midi", s: "on", ch: 1, n: 60, v: 90, vh: 16_384, ts: 1 }),

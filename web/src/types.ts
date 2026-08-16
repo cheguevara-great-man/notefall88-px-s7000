@@ -94,15 +94,42 @@ export interface DeviceStatus {
   usbOutDropped?: number;
   usbOutErrors?: number;
   usbOutQueued?: number;
+  usbInputQueueDepth?: number;
+  usbInputQueueHighWater?: number;
+  usbOutputQueueDepth?: number;
+  usbOutputQueueHighWater?: number;
+  usbLargestInputBatch?: number;
+  usbInputResubmitRetries?: number;
+  usbClientWatchdog?: boolean;
+  usbDaemonWatchdog?: boolean;
   usbOutputMirrorCandidates?: number;
   usbOutOwned?: boolean;
   webRejected?: number;
   webAuthRejected?: number;
   webMidiDropped?: number;
+  webMidiResyncs?: number;
+  webMidiQueueDepth?: number;
+  webMidiQueueHighWater?: number;
+  midiDispatchLatencyLastUs?: number;
+  midiDispatchLatencyAvgUs?: number;
+  midiDispatchLatencyMaxUs?: number;
+  midiDispatchLatencySamples?: number;
   ledInputLatencyLastUs?: number;
   ledInputLatencyAvgUs?: number;
   ledInputLatencyMaxUs?: number;
   ledInputLatencySamples?: number;
+  ledFrames?: number;
+  ledFramesSkipped?: number;
+  ledSpiLastUs?: number;
+  ledSpiMaxUs?: number;
+  ledFrameBytes?: number;
+  realtimeReady?: boolean;
+  realtimeWatchdog?: boolean;
+  realtimeHeartbeatAgeMs?: number;
+  realtimeWakeups?: number;
+  realtimeStackFreeBytes?: number;
+  mainLoopLastUs?: number;
+  mainLoopMaxUs?: number;
 }
 
 export interface MidiOutEvent {

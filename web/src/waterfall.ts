@@ -1,10 +1,10 @@
-import { pianoKeys } from "./layout";
+import { canvasRasterSize, pianoKeys } from "./layout";
 import { buildDynamicsProfile, normalizedDynamics } from "./dynamics";
 import type { DynamicsProfile } from "./dynamics";
 import { buildPhraseMap, phraseMapProgress } from "./phrase-map";
 import type { PhraseMap } from "./phrase-map";
 import type { LoopRange } from "./practice";
-import type { HandSelection, ParsedScore } from "./types";
+import type { BeatMarker, HandSelection, ParsedScore, ScoreNote } from "./types";
 import { timingCue } from "./timing-feedback";
 import { visualPalette } from "./visual-theme";
 import type { VisualTheme } from "./visual-theme";
@@ -22,10 +22,51 @@ interface WaterfallFeedback {
   createdAt: number;
 }
 
+function lowerBound<T>(items: readonly T[], value: number, numberOf: (item: T) => number): number {
+  let low = 0;
+  let high = items.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (numberOf(items[middle]) < value) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+/** Returns only notes that can intersect the visible roll, including held notes. */
+export function visibleScoreNotes(
+  notesByStart: readonly ScoreNote[],
+  scoreTime: number,
+  previewSeconds: number,
+  maximumDuration: number,
+): ScoreNote[] {
+  const first = lowerBound(notesByStart, scoreTime - maximumDuration - 0.08, (note) => note.start);
+  const afterLast = lowerBound(notesByStart, scoreTime + previewSeconds + 1e-6, (note) => note.start);
+  const visible: ScoreNote[] = [];
+  for (let index = first; index < afterLast; index += 1) {
+    const note = notesByStart[index];
+    if (note.end >= scoreTime - 0.08) visible.push(note);
+  }
+  return visible;
+}
+
+function timedWindow<T>(
+  items: readonly T[],
+  start: number,
+  end: number,
+  timeOf: (item: T) => number,
+): readonly T[] {
+  return items.slice(lowerBound(items, start, timeOf), lowerBound(items, end + 1e-6, timeOf));
+}
+
 export class WaterfallRenderer {
   private context: CanvasRenderingContext2D;
   private readonly keys = pianoKeys();
+  private readonly keyByNote = new Map(this.keys.map((key) => [key.note, key]));
   private score?: ParsedScore;
+  private scoreNotes: ScoreNote[] = [];
+  private maximumNoteDuration = 0;
+  private beatMarkers: BeatMarker[] = [];
   private phraseMap: PhraseMap = buildPhraseMap([], 0);
   private dynamicsProfile: DynamicsProfile = buildDynamicsProfile([]);
   private pressed = new Set<number>();
@@ -38,19 +79,28 @@ export class WaterfallRenderer {
   private feedback: WaterfallFeedback[] = [];
   private chordGuides: ChordGuide[] = [];
   private pedalCues: PedalCue[] = [];
+  private logicalWidth = 320;
+  private logicalHeight = 300;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
-    const context = canvas.getContext("2d");
+    const context = canvas.getContext("2d", { alpha: false, desynchronized: true });
     if (!context) throw new Error("Canvas 2D is unavailable");
     this.context = context;
+    canvas.setAttribute("role", "img");
   }
 
   setScore(score: ParsedScore | undefined): void {
     this.score = score;
+    this.scoreNotes = [...(score?.notes ?? [])].sort((left, right) => left.start - right.start || left.note - right.note);
+    this.maximumNoteDuration = this.scoreNotes.reduce(
+      (maximum, note) => Math.max(maximum, Math.max(0.06, note.end - note.start)),
+      0,
+    );
+    this.beatMarkers = [...(score?.beatMap ?? [])].sort((left, right) => left.time - right.time);
     this.phraseMap = buildPhraseMap(score?.notes ?? [], score?.duration ?? 0);
     this.dynamicsProfile = buildDynamicsProfile(score?.notes ?? []);
-    this.chordGuides = buildChordGuides(score?.notes ?? []);
-    this.pedalCues = buildPedalCues(score?.pedalEvents);
+    this.chordGuides = buildChordGuides(score?.notes ?? []).sort((left, right) => left.start - right.start);
+    this.pedalCues = buildPedalCues(score?.pedalEvents).sort((left, right) => left.time - right.time);
     this.canvas.dataset.pedalCueTotal = String(this.pedalCues.length);
   }
 
@@ -87,18 +137,21 @@ export class WaterfallRenderer {
 
   resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    const width = Math.max(320, Math.round(rect.width * ratio));
-    const height = Math.max(300, Math.round(rect.height * ratio));
-    if (this.canvas.width !== width || this.canvas.height !== height) {
-      this.canvas.width = width;
-      this.canvas.height = height;
+    const raster = canvasRasterSize(rect.width, rect.height, window.devicePixelRatio || 1);
+    this.logicalWidth = raster.cssWidth;
+    this.logicalHeight = raster.cssHeight;
+    if (this.canvas.width !== raster.pixelWidth || this.canvas.height !== raster.pixelHeight) {
+      this.canvas.width = raster.pixelWidth;
+      this.canvas.height = raster.pixelHeight;
     }
+    this.context.setTransform(raster.scale, 0, 0, raster.scale, 0, 0);
+    this.canvas.dataset.rasterScale = raster.scale.toFixed(2);
   }
 
   render(scoreTime: number, _running = false): void {
     this.resize();
-    const { width, height } = this.canvas;
+    const width = this.logicalWidth;
+    const height = this.logicalHeight;
     const keyboardHeight = height * 0.22;
     const keyboardTop = height - keyboardHeight;
     const rollHeight = keyboardTop;
@@ -117,23 +170,37 @@ export class WaterfallRenderer {
     this.drawTimeline(scoreTime, keyboardTop, rollHeight, visibleSeconds, width);
 
     if (this.score) {
-      for (const note of this.score.notes) {
+      const visibleNotes = visibleScoreNotes(
+        this.scoreNotes,
+        scoreTime,
+        visibleSeconds,
+        this.maximumNoteDuration,
+      );
+      const denseFrame = visibleNotes.length > 160;
+      this.canvas.dataset.visibleNotes = String(visibleNotes.length);
+      for (const note of visibleNotes) {
         const delta = note.start - scoreTime;
-        if (delta < -0.35 || delta > visibleSeconds) continue;
         const duration = Math.max(0.06, note.end - note.start);
-        const key = this.keys.find((item) => item.note === note.note);
+        const key = this.keyByNote.get(note.note);
         if (!key) continue;
         const x = key.x * width + 1;
         const noteWidth = Math.max(3, key.width * width - 2);
-        const bottom = keyboardTop - (delta / visibleSeconds) * rollHeight;
-        const noteHeight = Math.max(5, (duration / visibleSeconds) * rollHeight);
-        const y = bottom - noteHeight;
+        const rawBottom = keyboardTop - (delta / visibleSeconds) * rollHeight;
+        const rawHeight = Math.max(5, (duration / visibleSeconds) * rollHeight);
+        const bottom = Math.min(keyboardTop, rawBottom);
+        const y = Math.max(0, rawBottom - rawHeight);
+        const noteHeight = Math.max(2, bottom - y);
+        if (noteHeight <= 2 && note.end < scoreTime) continue;
         const color = note.hand === "left" ? palette.left : palette.right;
         const dynamics = normalizedDynamics(note.velocity, this.dynamicsProfile);
         const selected = this.hand === "both" || this.hand === note.hand;
-        const fill = ctx.createLinearGradient(0, y, 0, bottom);
-        fill.addColorStop(0, color);
-        fill.addColorStop(1, note.hand === "left" ? palette.leftShade : palette.rightShade);
+        let fill: string | CanvasGradient = color;
+        if (!denseFrame) {
+          const noteGradient = ctx.createLinearGradient(0, y, 0, bottom);
+          noteGradient.addColorStop(0, color);
+          noteGradient.addColorStop(1, note.hand === "left" ? palette.leftShade : palette.rightShade);
+          fill = noteGradient;
+        }
         ctx.fillStyle = fill;
         ctx.globalAlpha = selected ? 0.62 + dynamics * 0.34 : 0.16;
         if (delta >= 0 && delta < 0.85 && ctx.globalAlpha > 0.5 && bottom < keyboardTop) {
@@ -160,13 +227,19 @@ export class WaterfallRenderer {
           ctx.globalAlpha = selected ? 0.62 + dynamics * 0.34 : 0.16;
           ctx.fillStyle = fill;
         }
-        ctx.beginPath();
-        ctx.roundRect(x, y, noteWidth, noteHeight, Math.min(5, noteWidth / 3));
-        ctx.fill();
+        if (denseFrame) {
+          ctx.fillRect(x, y, noteWidth, noteHeight);
+        } else {
+          ctx.beginPath();
+          ctx.roundRect(x, y, noteWidth, noteHeight, Math.min(5, noteWidth / 3));
+          ctx.fill();
+        }
         if (noteWidth >= 7) {
           ctx.globalAlpha *= 0.2 + dynamics * 0.46;
           ctx.fillStyle = "#ffffff";
-          ctx.fillRect(x + 1, y + 2, Math.max(1, noteWidth * (0.1 + dynamics * 0.14)), Math.max(2, noteHeight - 4));
+          const signatureWidth = Math.max(1, noteWidth * (0.1 + dynamics * 0.14));
+          const signatureX = note.hand === "left" ? x + 1 : x + noteWidth - signatureWidth - 1;
+          ctx.fillRect(signatureX, y + 2, signatureWidth, Math.max(2, noteHeight - 4));
         }
         ctx.globalAlpha = selected ? 0.42 + dynamics * 0.53 : 0.08;
         ctx.fillStyle = "#ffffff";
@@ -198,10 +271,7 @@ export class WaterfallRenderer {
     rollHeight: number,
     width: number,
   ): void {
-    const visible = this.pedalCues.filter((cue) => {
-      const delta = cue.time - scoreTime;
-      return delta >= -0.12 && delta <= visibleSeconds;
-    });
+    const visible = timedWindow(this.pedalCues, scoreTime - 0.12, scoreTime + visibleSeconds, (cue) => cue.time);
     this.canvas.dataset.pedalCues = String(visible.length);
     if (visible.length === 0) return;
     const ctx = this.context;
@@ -256,13 +326,13 @@ export class WaterfallRenderer {
     const ctx = this.context;
     const horizon = Math.min(1.8, visibleSeconds);
     let drawn = 0;
-    for (const guide of this.chordGuides) {
+    const visibleGuides = timedWindow(this.chordGuides, scoreTime - 0.06, scoreTime + horizon, (guide) => guide.start);
+    for (const guide of visibleGuides) {
       const delta = guide.start - scoreTime;
-      if (delta < -0.06 || delta > horizon) continue;
       const notes = guide.notes.filter((note) => this.hand === "both" || note.hand === this.hand);
       if (notes.length < 2) continue;
       const points = notes.flatMap((note) => {
-        const key = this.keys.find((candidate) => candidate.note === note.note);
+        const key = this.keyByNote.get(note.note);
         return key ? [{ x: (key.x + key.width / 2) * width, hand: note.hand }] : [];
       });
       if (points.length < 2) continue;
@@ -366,7 +436,7 @@ export class WaterfallRenderer {
     const ctx = this.context;
     this.feedback = this.feedback.filter((item) => now - item.createdAt < 900);
     for (const item of this.feedback) {
-      const key = this.keys.find((candidate) => candidate.note === item.note);
+      const key = this.keyByNote.get(item.note);
       if (!key) continue;
       const progress = Math.max(0, Math.min(1, (now - item.createdAt) / 900));
       const x = (key.x + key.width / 2) * width;
@@ -457,7 +527,7 @@ export class WaterfallRenderer {
 
   private drawTimeline(scoreTime: number, keyboardTop: number, rollHeight: number, visibleSeconds: number, width: number): void {
     const ctx = this.context;
-    const beats = this.score?.beatMap ?? [];
+    const beats = this.beatMarkers;
     if (beats.length === 0) {
       ctx.strokeStyle = "rgba(255,255,255,.055)";
       ctx.lineWidth = 1;
@@ -467,9 +537,9 @@ export class WaterfallRenderer {
       }
       return;
     }
-    for (const marker of beats) {
+    const visibleBeats = timedWindow(beats, scoreTime - 0.15, scoreTime + visibleSeconds, (marker) => marker.time);
+    for (const marker of visibleBeats) {
       const delta = marker.time - scoreTime;
-      if (delta < -0.15 || delta > visibleSeconds) continue;
       const y = keyboardTop - (delta / visibleSeconds) * rollHeight;
       ctx.strokeStyle = marker.accent ? "rgba(139,167,255,.38)" : "rgba(255,255,255,.09)";
       ctx.lineWidth = marker.accent ? 1.5 : 1;

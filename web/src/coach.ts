@@ -1,4 +1,10 @@
 import type { PracticeSession } from "./analytics";
+import {
+  buildPracticeEvidence,
+  selectPracticeSessions,
+  weightedSummaryMetric,
+} from "./practice-evidence";
+import type { LearningTrend } from "./practice-evidence";
 import type { HandSelection, PracticeMode } from "./types";
 import { MAX_TEMPO, MIN_TEMPO, normalizeTempo } from "./tempo";
 
@@ -16,6 +22,12 @@ export interface PracticeRecommendation {
     sessions: number;
     events: number;
     accuracy: number;
+    accuracyLower95: number;
+    accuracyUpper95: number;
+    trend: LearningTrend;
+    trendDelta?: number;
+    sessionConsistency?: number;
+    droppedEvents: number;
     errorsInLoop: number;
     dynamicsScore?: number;
     durationCoverageScore?: number;
@@ -35,6 +47,7 @@ function recommendedTempo(
   releasePrecisionScore?: number,
   coordinationScore?: number,
   pedalScore?: number,
+  allowIncrease = true,
 ): number {
   const normalized = normalizeTempo(current);
   const delta = accuracy < 70
@@ -47,7 +60,7 @@ function recommendedTempo(
           || (coordinationScore !== undefined && coordinationScore < 65)
           || (pedalScore !== undefined && pedalScore < 65))
         ? -0.05
-        : (accuracy >= 96 && (timingMs === undefined || timingMs < 65)
+        : (allowIncrease && accuracy >= 96 && (timingMs === undefined || timingMs < 65)
           && (dynamicsScore === undefined || dynamicsScore >= 80)
           && (durationCoverageScore === undefined || durationCoverageScore >= 90)
           && (releasePrecisionScore === undefined || releasePrecisionScore >= 75)
@@ -94,16 +107,23 @@ function hardestWindow(
     let attempts = 0;
     let errorTimeSum = 0;
     let errorEvents = 0;
+    let observedSessions = 0;
+    let errorSessions = 0;
     for (const session of sessions) {
+      let sessionAttempts = 0;
+      let sessionErrors = 0;
       for (const event of session.events) {
         if (event.scoreTime < start || event.scoreTime >= end) continue;
         attempts += 1;
+        sessionAttempts += 1;
         if (event.kind === "missed") {
           errors += 2;
+          sessionErrors += 2;
           errorTimeSum += event.scoreTime;
           errorEvents += 1;
         } else if (event.kind === "wrong") {
           errors += 1;
+          sessionErrors += 1;
           errorTimeSum += event.scoreTime;
           errorEvents += 1;
         }
@@ -114,16 +134,29 @@ function hardestWindow(
         const weakHit = assessment.status === "hit"
           && (Math.abs(assessment.timingMs ?? 0) > 180 || (assessment.valueError ?? 0) > 20);
         if (assessment.status !== "hit" || weakHit) {
-          errors += assessment.status === "missed" ? 2 : 1;
+          const severity = assessment.status === "missed" ? 2 : 1;
+          errors += severity;
+          sessionErrors += severity;
           errorTimeSum += assessment.scoreTime;
           errorEvents += 1;
         }
       }
+      if (sessionAttempts > 0) observedSessions += 1;
+      if (sessionErrors > 0) errorSessions += 1;
     }
     if (attempts === 0) continue;
     const errorCenter = errorEvents > 0 ? errorTimeSum / errorEvents : start + width / 2;
     const centering = 1 - Math.min(1, Math.abs((start + end) / 2 - errorCenter) / width);
-    const score = errors * 3 + (errors / attempts) * 5 + Math.min(attempts, 12) / 12 + centering;
+    // Rank by difficulty rather than note density. A dense passage with ten
+    // errors in two hundred attempts should not hide a five-note passage that
+    // fails almost every time. The small prior keeps a one-event window from
+    // looking certain, while persistence rewards trouble reproduced in more
+    // than one session.
+    const severityRate = Math.min(1, (errors + 1) / (attempts + 4));
+    const persistence = errorSessions / Math.max(1, observedSessions);
+    const support = Math.min(attempts, 24) / 24;
+    const score = severityRate * 12 + persistence * 4
+      + Math.log2(1 + errors) * 1.5 + support + centering;
     if (!best || score > best.score) best = { start, end, errors, attempts, score };
   }
   if (!best || best.errors === 0) return undefined;
@@ -136,60 +169,26 @@ export function recommendPractice(
   scoreDuration: number,
   scoreFingerprint?: string,
 ): PracticeRecommendation | undefined {
-  const sessions = history
-    .filter((session) => scoreFingerprint
-      ? session.context.scoreFingerprint === scoreFingerprint
-      : session.context.scoreFingerprint === undefined && session.context.scoreName === scoreName)
-    .slice(0, MAX_SOURCE_SESSIONS);
+  const sessions = selectPracticeSessions(history, scoreName, scoreFingerprint, MAX_SOURCE_SESSIONS);
   if (sessions.length === 0) return undefined;
-  const events = sessions.flatMap((session) => session.events);
+  const practiceEvidence = buildPracticeEvidence(sessions);
+  const events = practiceEvidence.events;
   if (events.length === 0) return undefined;
-  const hits = events.filter((event) => event.kind === "hit").length;
+  const hits = practiceEvidence.accuracy.hits;
   const errors = events.length - hits;
-  const accuracy = Math.round((hits / events.length) * 1000) / 10;
+  const accuracy = practiceEvidence.accuracy.percent;
   const latest = sessions[0];
-  const timingValues = sessions
-    .map((session) => session.summary.meanAbsTimingMs)
-    .filter((value): value is number => value !== undefined);
-  const timing = timingValues.length > 0
-    ? timingValues.reduce((sum, value) => sum + value, 0) / timingValues.length
-    : undefined;
-  const dynamicsValues = sessions
-    .map((session) => session.summary.dynamicsScore)
-    .filter((value): value is number => value !== undefined);
-  const dynamics = dynamicsValues.length > 0
-    ? dynamicsValues.reduce((sum, value) => sum + value, 0) / dynamicsValues.length
-    : undefined;
-  const coverageValues = sessions
-    .map((session) => session.summary.durationCoverageScore)
-    .filter((value): value is number => value !== undefined);
-  const durationCoverage = coverageValues.length > 0
-    ? coverageValues.reduce((sum, value) => sum + value, 0) / coverageValues.length
-    : undefined;
-  const releaseValues = sessions
-    .map((session) => session.summary.releasePrecisionScore)
-    .filter((value): value is number => value !== undefined);
-  const releasePrecision = releaseValues.length > 0
-    ? releaseValues.reduce((sum, value) => sum + value, 0) / releaseValues.length
-    : undefined;
-  const coordinationValues = sessions
-    .map((session) => session.summary.coordinationScore)
-    .filter((value): value is number => value !== undefined);
-  const coordination = coordinationValues.length > 0
-    ? coordinationValues.reduce((sum, value) => sum + value, 0) / coordinationValues.length
-    : undefined;
-  const handAlignmentValues = sessions
-    .map((session) => session.summary.handAlignmentScore)
-    .filter((value): value is number => value !== undefined);
-  const handAlignment = handAlignmentValues.length > 0
-    ? handAlignmentValues.reduce((sum, value) => sum + value, 0) / handAlignmentValues.length
-    : undefined;
-  const pedalValues = sessions
-    .map((session) => session.summary.pedalScore)
-    .filter((value): value is number => value !== undefined);
-  const pedal = pedalValues.length > 0
-    ? pedalValues.reduce((sum, value) => sum + value, 0) / pedalValues.length
-    : undefined;
+  const timing = weightedSummaryMetric(sessions, "meanAbsTimingMs");
+  const dynamics = weightedSummaryMetric(sessions, "dynamicsScore");
+  const durationCoverage = weightedSummaryMetric(sessions, "durationCoverageScore");
+  const releasePrecision = weightedSummaryMetric(sessions, "releasePrecisionScore");
+  const coordination = weightedSummaryMetric(sessions, "coordinationScore");
+  const handAlignment = weightedSummaryMetric(sessions, "handAlignmentScore");
+  const pedal = weightedSummaryMetric(sessions, "pedalScore");
+  const allowIncrease = practiceEvidence.completeTelemetry
+    && practiceEvidence.accuracy.lower95 >= 88
+    && practiceEvidence.trend !== "declining"
+    && (practiceEvidence.sessionConsistency === undefined || practiceEvidence.sessionConsistency >= 70);
   const tempo = recommendedTempo(
     latest.context.tempo,
     accuracy,
@@ -199,12 +198,24 @@ export function recommendPractice(
     releasePrecision,
     coordination,
     pedal,
+    allowIncrease,
   );
   const hand = chooseHand(sessions);
   const loop = hardestWindow(sessions, scoreDuration);
   // Pedal timing needs the score clock; wait-for-me deliberately has no absolute onset.
   const mode: PracticeMode = pedal !== undefined && pedal < 65 ? "realtime" : accuracy < 70 ? "wait" : "realtime";
   const reasonParts: string[] = [];
+  if (!practiceEvidence.completeTelemetry) {
+    reasonParts.push(`有 ${practiceEvidence.droppedEvents} 个练习事件未保存，本轮不自动升速`);
+  }
+  if (practiceEvidence.trend === "improving") {
+    reasonParts.push(`近期准确率较前期提升 ${practiceEvidence.trendDelta?.toFixed(1)} 个百分点`);
+  } else if (practiceEvidence.trend === "declining") {
+    reasonParts.push(`近期准确率回落 ${Math.abs(practiceEvidence.trendDelta ?? 0).toFixed(1)} 个百分点，暂不升速`);
+  }
+  if ((practiceEvidence.sessionConsistency ?? 100) < 60) {
+    reasonParts.push(`场次稳定度仅 ${Math.round(practiceEvidence.sessionConsistency!)}%，先连续复现再提速`);
+  }
   if (loop) reasonParts.push(`${loop.start.toFixed(1)}–${loop.end.toFixed(1)} 秒聚集了 ${loop.errors} 个加权错漏`);
   if (hand !== "both") reasonParts.push(`${hand === "left" ? "左手" : "右手"}错误率更高`);
   if (tempo < latest.context.tempo) reasonParts.push(
@@ -246,12 +257,18 @@ export function recommendPractice(
     hand,
     tempo,
     loop: loop ? { start: loop.start, end: loop.end } : undefined,
-    confidence: sessions.length >= 5 && events.length >= 80 ? "high" : sessions.length >= 2 && events.length >= 20 ? "medium" : "low",
+    confidence: practiceEvidence.confidence,
     reason: reasonParts.join("；"),
     evidence: {
       sessions: sessions.length,
       events: events.length,
       accuracy,
+      accuracyLower95: practiceEvidence.accuracy.lower95,
+      accuracyUpper95: practiceEvidence.accuracy.upper95,
+      trend: practiceEvidence.trend,
+      trendDelta: practiceEvidence.trendDelta,
+      sessionConsistency: practiceEvidence.sessionConsistency,
+      droppedEvents: practiceEvidence.droppedEvents,
       errorsInLoop: loop?.errors ?? errors,
       dynamicsScore: dynamics,
       durationCoverageScore: durationCoverage,

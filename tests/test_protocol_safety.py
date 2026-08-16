@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,7 +38,7 @@ def test_piano_events_and_calibration_only_reach_authorized_clients() -> None:
     source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
     sender = source[source.index("void sendCalibration") : source.index("void queueBrowserMidi")]
     assert "webControlAuthorized[index]" in sender
-    assert "sendAuthorizedText(payload)" in sender
+    assert "sendAuthorizedText(payload, static_cast<size_t>(length))" in sender
     assert "websocket.broadcastTXT(payload)" not in sender
     assert 'doc["controlAuthorized"]' in source
     assert 'doc["accessPointClient"]' in source
@@ -76,14 +77,16 @@ def test_usb_input_latency_ends_after_immediate_spi_frame() -> None:
     assert "uint64_t pendingLedInputUs" in source
     assert 'doc["ledInputLatencyAvgUs"]' in source
     assert 'doc["ledInputLatencyMaxUs"]' in source
+    realtime = source[source.index("void serviceRealtimePipeline()") : source.index("void saveCalibration")]
+    assert realtime.index("usbMidi.poll()") < realtime.index("renderStrip()")
     loop = source[source.index("void loop()") :]
-    poll = loop.index("usbMidi.poll()")
-    immediate = loop.index("if (pendingLedInputUs != 0)")
-    browser_flush = loop.index("flushBrowserMidi()")
-    network = loop.index("websocket.loop()")
-    assert poll < immediate < browser_flush < network
-    render = source[source.index("void renderStrip()") : source.index("void sendStatus")]
-    assert render.index("strip.show") < render.index("ledInputLatencyLastUs = sample")
+    assert "flushBrowserMidi()" in loop and "websocket.loop()" in loop
+    assert "usbMidi.poll()" not in loop
+    render = source[source.index("bool renderStrip()") : source.index("void sendStatus")]
+    assert render.index("strip.show") < render.index("ledInputLatency.observe(elapsed)")
+    assert "xTaskCreatePinnedToCore(realtimeTask" in source
+    assert "usbMidi.setConsumerTask(realtimeTaskHandle)" in source
+    assert "kRealtimeTaskPriority = 7" in source
 
 
 def test_browser_broadcast_cannot_delay_the_local_led_frame() -> None:
@@ -91,8 +94,10 @@ def test_browser_broadcast_cannot_delay_the_local_led_frame() -> None:
     handler = source[source.index("void handleMidiPacket") : source.index("void onPianoConnected")]
     assert "queueBrowserMidi" in handler
     assert "websocket.broadcastTXT" not in handler
-    assert "kBrowserMidiCapacity = 64" in source
-    assert 'doc["webMidiDropped"] = browserMidiDropped' in source
+    assert "kBrowserMidiCapacity = 128" in source
+    assert "kBrowserMidiFlushBatch = 12" in source
+    assert 'doc["webMidiDropped"] = webMidiDroppedSnapshot' in source
+    assert "browserMidiResyncPending" in source
 
 
 def test_ping_returns_the_device_clock_used_by_usb_midi_timestamps() -> None:
@@ -123,8 +128,87 @@ def test_high_resolution_velocity_prefix_is_channel_scoped_and_backward_compatib
     assert "velocityTracker.consumeForNote(channel, secondData)" in handler
     assert "velocityTracker.clear()" in source
     assert "pendingVelocityLsb" not in source
-    assert 'doc["v"] = velocity' in source
-    assert 'doc["vh"] = highResolutionVelocity' in source
+    assert '\\"v\\":%u' in source
+    assert '\\"vh\\":%u' in source
+
+
+def test_apa102_frame_is_bulk_transferred_and_idle_frames_are_skipped() -> None:
+    source = (ROOT / "firmware" / "src" / "Apa102Strip.cpp").read_text(encoding="utf-8")
+    assert "SPI.writeBytes(frame_" in source
+    assert "SPI.transfer(" not in source
+    assert "if (!dirty_ && !force)" in source
+    assert "unchangedFramesSkipped" in source
+    assert "apa102::controlByte(globalBrightness)" in source
+    core = (ROOT / "firmware" / "include" / "apa102_core.h").read_text(encoding="utf-8")
+    assert "static_assert(frameBytes(176) == 719)" in core
+    assert "static_assert(controlByte(4) == 0xE4U)" in core
+    main = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    for diagnostic in (
+        "ledFrames", "ledFramesSkipped", "ledSpiLastUs", "ledSpiMaxUs", "ledFrameBytes"
+    ):
+        assert f'doc["{diagnostic}"]' in main
+
+
+def test_usb_client_events_do_not_wait_behind_daemon_events() -> None:
+    source = (ROOT / "firmware" / "src" / "UsbMidiHost.cpp").read_text(encoding="utf-8")
+    client = source[source.index("void UsbMidiHost::hostTask") : source.index("void UsbMidiHost::daemonTask")]
+    daemon = source[source.index("void UsbMidiHost::daemonTask") : source.index("void UsbMidiHost::clientEvent")]
+    assert "usb_host_client_handle_events" in client
+    assert "pdMS_TO_TICKS(5)" in client
+    assert "usb_host_lib_handle_events" not in client
+    assert "usb_host_lib_handle_events" in daemon
+    assert "esp_task_wdt_add(nullptr)" in client
+    assert "esp_task_wdt_add(nullptr)" in daemon
+    transfer = source[source.index("void UsbMidiHost::inputTransferComplete") : source.index("void UsbMidiHost::outputTransferComplete")]
+    enqueue = source[source.index("bool UsbMidiHost::enqueueInput") : source.index("bool UsbMidiHost::dequeueInput")]
+    assert "host->notifyConsumer()" in transfer
+    assert transfer.index("for (int offset") < transfer.index("host->notifyConsumer()")
+    assert "notifyConsumer()" not in enqueue
+
+
+def test_usb_disconnect_requests_immediate_blackout_and_output_reset() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    disconnected = source[source.index("void onPianoDisconnected") : source.index("void serviceRealtimePipeline")]
+    assert "note.pressed = false" in disconnected
+    assert "note.target = false" in disconnected
+    assert "testNote = -1" in disconnected
+    assert "outputResetRequested.store(true)" in disconnected
+    assert "notifyRealtime()" in disconnected
+
+
+def test_browser_overflow_resync_clears_all_pedals_and_notes() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    snapshot = source[source.index("void sendMidiStateSnapshot") : source.index("void flushBrowserMidi")]
+    assert "channel = 1; channel <= 16" in snapshot
+    for controller in (64, 66, 67, 123):
+        assert f"sendMidiControl(channel, {controller}, 0, now)" in snapshot
+
+
+def test_cross_core_state_uses_atomic_publication_or_fixed_queue_locks() -> None:
+    host = (ROOT / "firmware" / "src" / "UsbMidiHost.h").read_text(encoding="utf-8")
+    main = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    assert "std::atomic<bool> connected_" in host
+    assert "std::atomic<uint8_t> outputEndpointAddress_" in host
+    assert "std::atomic<TaskHandle_t> consumerTask_" in host
+    browser = main[main.index("void queueBrowserMidi") : main.index("void handleMidiPacket")]
+    assert "portENTER_CRITICAL(&browserMidiMux)" in browser
+    assert "browserMidiEvents.push(event)" in browser
+    assert "browserMidiEvents.pop(event)" in browser
+    render = main[main.index("bool renderStrip()") : main.index("void sendStatus")]
+    assert "portENTER_CRITICAL(&ledStateMux)" in render
+    assert "std::memcpy(snapshot, notes" in render
+
+
+def test_status_diagnostics_remain_within_a_small_websocket_frame_budget() -> None:
+    source = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    status = source[source.index("void sendStatus") : source.index("void sendCalibration")]
+    keys = re.findall(r'doc\["([^"]+)"\]', status)
+    assert len(keys) <= 80
+    # Every numeric value fits in 20 ASCII digits. Add a conservative escaped
+    # 256-byte USB error and token/string allowance; the actual status is much
+    # smaller than this static upper bound.
+    conservative_bytes = 2 + sum(len(key) + 5 + 20 for key in keys) + 256
+    assert conservative_bytes < 4096
 
 
 def test_usb_interface_selection_uses_the_native_executed_descriptor_core() -> None:

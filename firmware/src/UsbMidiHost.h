@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <atomic>
 #include <freertos/FreeRTOS.h>
 #include <freertos/portmacro.h>
 #include <freertos/task.h>
@@ -33,16 +34,33 @@ class UsbMidiHost {
     uint32_t packetsSent = 0;
     uint32_t outputPacketsDropped = 0;
     uint32_t outputTransferErrors = 0;
+    uint16_t inputQueueHighWater = 0;
+    uint16_t outputQueueHighWater = 0;
+    uint16_t inputQueueDepth = 0;
+    uint16_t outputQueueDepth = 0;
+    uint16_t largestInputBatch = 0;
+    uint32_t inputResubmitRetries = 0;
+    bool clientWatchdogArmed = false;
+    bool daemonWatchdogArmed = false;
   };
 
   bool begin();
   void poll();
-  bool connected() const { return connected_; }
-  bool outputAvailable() const { return connected_ && outputEndpointAddress_ != 0; }
+  bool connected() const { return connected_.load(std::memory_order_acquire); }
+  bool outputAvailable() const {
+    return connected_.load(std::memory_order_acquire) &&
+        outputEndpointAddress_.load(std::memory_order_acquire) != 0;
+  }
   bool sendMidiMessage(uint8_t status, uint8_t data1, uint8_t data2);
   void panic();
-  const String& lastError() const { return lastError_; }
+  String lastError();
   Diagnostics diagnostics();
+  // The fixed real-time consumer is notified whenever input or connection
+  // state arrives, avoiding a polling delay without calling application code
+  // from inside the USB transfer callback.
+  void setConsumerTask(TaskHandle_t task) {
+    consumerTask_.store(task, std::memory_order_release);
+  }
 
   void setMidiCallback(MidiCallback callback, void* context) {
     midiCallback_ = callback;
@@ -61,7 +79,7 @@ class UsbMidiHost {
     uint64_t receivedUs = 0;
   };
 
-  static constexpr size_t kInputQueueSize = 64;
+  static constexpr size_t kInputQueueSize = 128;
   static constexpr size_t kOutputQueueSize = 128;
   static constexpr size_t kTransferBufferSize = 512;
   Packet inputQueue_[kInputQueueSize]{};
@@ -77,17 +95,19 @@ class UsbMidiHost {
   usb_transfer_t* inputTransfer_ = nullptr;
   usb_transfer_t* outputTransfer_ = nullptr;
   TaskHandle_t task_ = nullptr;
+  TaskHandle_t daemonTask_ = nullptr;
+  std::atomic<TaskHandle_t> consumerTask_{nullptr};
   uint8_t interfaceNumber_ = 0;
   uint8_t alternateSetting_ = 0;
   uint8_t inputEndpointAddress_ = 0;
-  uint8_t outputEndpointAddress_ = 0;
+  std::atomic<uint8_t> outputEndpointAddress_{0};
   uint16_t inputEndpointPacketSize_ = 0;
   uint16_t outputEndpointPacketSize_ = 0;
-  volatile bool connected_ = false;
+  std::atomic<bool> connected_{false};
   volatile bool inputResubmitPending_ = false;
   volatile bool outputBusy_ = false;
   bool reportedConnected_ = false;
-  String lastError_;
+  char lastError_[128]{};
   Diagnostics diagnostics_;
 
   MidiCallback midiCallback_ = nullptr;
@@ -101,10 +121,14 @@ class UsbMidiHost {
   bool enqueueOutput(const uint8_t packet[4]);
   void clearOutputQueue();
   void pumpOutput();
+  void notifyConsumer();
+  void setLastError(const char* message);
+  void setLastError(const char* operation, esp_err_t result);
   bool openMidiInterface(uint8_t address);
   void closeDevice();
 
   static void hostTask(void* argument);
+  static void daemonTask(void* argument);
   static void clientEvent(const usb_host_client_event_msg_t* event, void* argument);
   static void inputTransferComplete(usb_transfer_t* transfer);
   static void outputTransferComplete(usb_transfer_t* transfer);

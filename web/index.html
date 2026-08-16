@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#090b10" />
     <meta name="notefall-edition" content="core" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'" />
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
@@ -367,7 +368,15 @@
           <div><dt>控制认证失败</dt><dd id="diag-auth-rejected">--</dd></div>
           <div><dt>热点安全</dt><dd id="diag-hotspot-security">--</dd></div>
           <div><dt>网页 MIDI 丢弃</dt><dd id="diag-web-midi-dropped">--</dd></div>
+          <div><dt>USB IN 队列</dt><dd id="diag-usb-in-queue">--</dd></div>
+          <div><dt>USB OUT 队列</dt><dd id="diag-usb-out-queue">--</dd></div>
+          <div><dt>USB Host 任务</dt><dd id="diag-usb-host-health">--</dd></div>
+          <div><dt>网页 MIDI 队列</dt><dd id="diag-web-midi-queue">--</dd></div>
+          <div><dt>MIDI 分发延迟</dt><dd id="diag-midi-dispatch">--</dd></div>
           <div><dt>USB→灯内部延迟</dt><dd id="diag-led-latency">--</dd></div>
+          <div><dt>LED SPI / 帧</dt><dd id="diag-led-spi">--</dd></div>
+          <div><dt>实时任务健康</dt><dd id="diag-realtime-health">--</dd></div>
+          <div><dt>主循环耗时</dt><dd id="diag-main-loop">--</dd></div>
           <div><dt>可用内存</dt><dd id="diag-heap">--</dd></div>
           <div><dt>PSRAM</dt><dd id="diag-psram">--</dd></div>
           <div><dt>校准存储 NVS</dt><dd id="diag-nvs">--</dd></div>

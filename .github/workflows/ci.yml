@@ -4,20 +4,26 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   mapping-and-cad:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements-dev.txt
+      - run: pip install --only-binary=:all: -r requirements-dev.txt
+      - run: pip check
       - run: python scripts/generate.py --check
       - run: python -m pytest
       - run: python scripts/package_manufacturing.py --output dist/notefall88-manufacturing-ci.zip
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: notefall88-manufacturing
           path: dist/notefall88-manufacturing-ci.zip
@@ -28,13 +34,15 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run coverage
       - run: npm run build
@@ -43,16 +51,19 @@ jobs:
       - run: npx playwright-cli install-browser chromium --with-deps
       - run: npm run smoke:browser
       - run: NOTEFALL_EDITION=studio npm run smoke:browser
+      - run: npm run smoke:pwa-offline
       - run: npx playwright-cli install-browser webkit --with-deps
       - run: NOTEFALL_BROWSER=webkit npm run smoke:browser
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: notefall88-browser-smoke
-          path: output/playwright/smoke-*
+          path: |
+            output/playwright/smoke-*
+            output/playwright/pwa-offline-*
           if-no-files-found: ignore
           include-hidden-files: true
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: notefall-studio-web
           path: dist/studio
@@ -60,8 +71,10 @@ jobs:
   firmware:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -81,15 +94,17 @@ jobs:
   studio-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: |
             web/package-lock.json
             studio/package-lock.json
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "21"
@@ -99,11 +114,11 @@ jobs:
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$PATH"
           command -v sdkmanager
           yes | sdkmanager "platforms;android-36" "build-tools;36.0.0"
-      - run: npm ci
+      - run: npm ci --ignore-scripts
         working-directory: web
       - run: npm run build:studio
         working-directory: web
-      - run: npm ci
+      - run: npm ci --ignore-scripts
         working-directory: studio
       - run: npm audit --omit=dev --audit-level=high
         working-directory: studio
@@ -113,7 +128,7 @@ jobs:
       # on Gradle's wrapper is not preserved.  Invoke it explicitly via Bash.
       - run: bash ./gradlew assembleDebug
         working-directory: studio/android
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: notefall-studio-android-debug
           path: studio/android/app/build/outputs/apk/debug/app-debug.apk

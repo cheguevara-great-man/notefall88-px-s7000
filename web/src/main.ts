@@ -94,6 +94,8 @@ import type {
   TimingWindow,
 } from "./types";
 import { createWaterfallSurface } from "./native-waterfall";
+import type { WaterfallFeedbackKind } from "./waterfall";
+import { animatedFrameDue, requiresContinuousRendering, shouldPaintVisual } from "./render-scheduler";
 import { requestImmersiveMode } from "./immersive";
 import { SheetRenderer } from "./sheet";
 import { transposeLabel, transposeScore } from "./transpose";
@@ -297,6 +299,7 @@ let currentMeasureOccurrence: number | undefined;
 let lastRecording = recorder.snapshot();
 let lastRecordingControls = recorder.controlSnapshot();
 let pianoWasConnected = false;
+let deviceWasConnected = false;
 let scoreXml: string | undefined;
 let scoreFingerprint: string | undefined;
 let transposeSemitones = 0;
@@ -328,6 +331,13 @@ let recordingPlaybackActive = false;
 let recordingPlaybackScheduledThrough = 0;
 let recordingPlaybackNeedsControllerState = true;
 let recordingPlaybackDurationSeconds = 0;
+const IDLE_VISUAL_REFRESH_MS = 500;
+const FEEDBACK_ANIMATION_MS = 950;
+let pendingAnimationFrame: number | undefined;
+let idleVisualTimer: number | undefined;
+let visualDirty = true;
+let feedbackAnimationUntil = 0;
+let lastAnimatedFrameAt = Number.NEGATIVE_INFINITY;
 let analytics: PracticeAnalytics | undefined;
 let completedReviewEvents: PracticeEvent[] = [];
 let completedPedalAssessments: PedalAssessment[] = [];
@@ -344,6 +354,45 @@ let countInTimer: number | undefined;
 let needsCountIn = true;
 let updateInfo: UpdateInfo | undefined;
 let commissioning: CommissioningState = loadCommissioning();
+
+/**
+ * Keep the expensive score/canvas renderer event-driven while practice is
+ * paused. A low-rate heartbeat still refreshes transport diagnostics, while
+ * active playback and short feedback effects retain display-refresh cadence.
+ */
+function requestVisualFrame(markDirty = true): void {
+  if (markDirty) visualDirty = true;
+  if (document.visibilityState === "hidden" || pendingAnimationFrame !== undefined) return;
+  window.clearTimeout(idleVisualTimer);
+  idleVisualTimer = undefined;
+  pendingAnimationFrame = window.requestAnimationFrame(frame);
+}
+
+function animateWaterfallFeedback(
+  kind: WaterfallFeedbackKind,
+  note: number,
+  timingMs?: number,
+): void {
+  renderer.pushFeedback(kind, note, timingMs);
+  feedbackAnimationUntil = Math.max(feedbackAnimationUntil, performance.now() + FEEDBACK_ANIMATION_MS);
+  requestVisualFrame();
+}
+
+function scheduleNextVisualFrame(now: number): void {
+  if (document.visibilityState === "hidden") return;
+  const continuouslyAnimated = requiresContinuousRendering({
+    clockRunning: clock.isRunning(),
+    demonstrationActive,
+    recordingPlaybackActive,
+    feedbackAnimationUntil,
+  }, now);
+  if (continuouslyAnimated) {
+    pendingAnimationFrame = window.requestAnimationFrame(frame);
+    return;
+  }
+  window.clearTimeout(idleVisualTimer);
+  idleVisualTimer = window.setTimeout(() => requestVisualFrame(false), IDLE_VISUAL_REFRESH_MS);
+}
 let backgroundSuspension: BackgroundSuspension | undefined;
 let backgroundPlayLabel = "播放";
 let practicePass = 0;
@@ -485,6 +534,31 @@ function formatHex(value: number | undefined, width = 4): string {
   return value.toString(16).toUpperCase().padStart(width, "0");
 }
 
+function formatMicroseconds(value: number | undefined): string {
+  if (value === undefined) return "--";
+  return value < 1_000 ? `${value} µs` : `${(value / 1_000).toFixed(2)} ms`;
+}
+
+function formatLatencyDiagnostic(
+  lastUs: number | undefined,
+  averageUs: number | undefined,
+  maximumUs: number | undefined,
+  samples: number | undefined,
+): string {
+  if (samples === undefined) return "--";
+  if (samples === 0) return "等待数据";
+  return `最近 ${formatMicroseconds(lastUs)} · 平均 ${formatMicroseconds(averageUs)} · 最大 ${formatMicroseconds(maximumUs)} · ${samples} 次`;
+}
+
+function formatQueueDiagnostic(depth: number | undefined, highWater: number | undefined): string {
+  if (depth === undefined && highWater === undefined) return "--";
+  return `${depth ?? "--"} 当前 / ${highWater ?? "--"} 峰值`;
+}
+
+function formatWatchdog(value: boolean | undefined): string {
+  return value === undefined ? "--" : value ? "已启用" : "未启用";
+}
+
 function setStatus(element: HTMLElement, online: boolean, label: string): void {
   element.dataset.state = online ? "online" : "offline";
   element.textContent = label;
@@ -559,6 +633,7 @@ function stopRecordingPlayback(sendPanic = true, resumePractice = true): void {
   renderRecordingPlaybackButton();
   renderRecordingSummary();
   if (resumePractice) beginPracticeSession();
+  requestVisualFrame();
 }
 
 function startRecordingPlayback(): void {
@@ -588,6 +663,7 @@ function startRecordingPlayback(): void {
   recordButton.disabled = true;
   recordDownload.disabled = true;
   renderRecordingPlaybackButton();
+  requestVisualFrame();
 }
 
 function scheduleRecordingPlayback(now: number): void {
@@ -641,6 +717,7 @@ function stopDemonstration(sendPanic = true, resumePractice = true): void {
   lastTargetSignature = "";
   updateTarget(lastScoreSeconds);
   if (resumePractice) beginPracticeSession();
+  requestVisualFrame();
 }
 
 function startDemonstration(): void {
@@ -668,6 +745,7 @@ function startDemonstration(): void {
   renderRecordingPlaybackButton();
   lastTargetSignature = "";
   updateTarget(start);
+  requestVisualFrame();
 }
 
 function scheduleDemonstration(scoreSeconds: number): void {
@@ -742,6 +820,10 @@ function suspendForBackground(): void {
   device.setTargets([]);
   device.blackout();
   playButton.textContent = plan.requireManualResume ? "后台已暂停" : backgroundPlayLabel;
+  window.clearTimeout(idleVisualTimer);
+  idleVisualTimer = undefined;
+  if (pendingAnimationFrame !== undefined) window.cancelAnimationFrame(pendingAnimationFrame);
+  pendingAnimationFrame = undefined;
 }
 
 function restoreFromBackground(): void {
@@ -764,6 +846,7 @@ function restoreFromBackground(): void {
       ? "页面进入后台，练习与钢琴伴奏已安全暂停；请手动继续。"
       : "页面进入后台，目标灯和钢琴伴奏已安全关闭。");
   lifecycleStatus.hidden = false;
+  requestVisualFrame();
 }
 
 async function startRealtimePlayback(): Promise<void> {
@@ -782,6 +865,7 @@ async function startRealtimePlayback(): Promise<void> {
         metronome.reset(start);
         clock.play(performance.now());
         playButton.textContent = "暂停";
+        requestVisualFrame();
       }, plan.delayMs);
       needsCountIn = false;
       return;
@@ -795,6 +879,7 @@ async function startRealtimePlayback(): Promise<void> {
   clock.play(now);
   playButton.textContent = "暂停";
   needsCountIn = false;
+  requestVisualFrame();
 }
 
 function sessionContext() {
@@ -858,7 +943,7 @@ function recordPracticeEvent(event: PracticeEvent): number | undefined {
   selectedReviewSession = undefined;
   if (!analytics) analytics = createPracticeAnalytics();
   const token = analytics?.record(event);
-  renderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
+  animateWaterfallFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
   sheetRenderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
   reviewRevision += 1;
   return token;
@@ -871,7 +956,7 @@ function completeArticulations(completions: ArticulationCompletion[]): void {
     changed = accepted || changed;
     if (accepted) {
       const coverage = completion.soundingDurationMs / completion.targetDurationMs * 100;
-      renderer.pushFeedback(coverage < 80 ? "release-early" : "release-good", completion.note, coverage);
+      animateWaterfallFeedback(coverage < 80 ? "release-early" : "release-good", completion.note, coverage);
     }
   }
   if (changed) reviewRevision += 1;
@@ -886,7 +971,7 @@ if (import.meta.env.DEV) {
     }>).detail;
     if (!detail || !Number.isInteger(detail.note)) return;
     const kind = detail.kind ?? "hit";
-    renderer.pushFeedback(kind, detail.note!, detail.timingMs);
+    animateWaterfallFeedback(kind, detail.note!, detail.timingMs);
     if (kind === "hit" || kind === "wrong" || kind === "missed") {
       sheetRenderer.pushFeedback(kind, detail.note!, detail.timingMs);
     }
@@ -895,11 +980,13 @@ if (import.meta.env.DEV) {
     const detail = (rawEvent as CustomEvent<{ seconds?: number; clear?: boolean }>).detail;
     if (detail?.clear) {
       testScoreSeekSeconds = undefined;
+      requestVisualFrame();
       return;
     }
     const seconds = Number(detail?.seconds);
     if (Number.isFinite(seconds)) {
       testScoreSeekSeconds = seconds;
+      requestVisualFrame();
     }
   });
   window.addEventListener("notefall:test-practice-event", (rawEvent) => {
@@ -1368,6 +1455,7 @@ function resetPractice(resetStats = true): void {
   renderDemonstrationButton();
   renderStats();
   if (resetStats) beginPracticeSession();
+  requestVisualFrame();
 }
 
 function rebuildPractice(): void {
@@ -1473,11 +1561,13 @@ function advanceFollowMode(): void {
     followAdvancePending = false;
     advanceWaitMode();
     updateTarget(currentWaitChord()?.start ?? rangeEnd());
+    requestVisualFrame();
   }, delayMs);
 }
 
 function handleMidi(event: MidiInputEvent): void {
   if (event.note < 21 || event.note > 108) return;
+  requestVisualFrame();
   const capturedAt = event.capturedAt ?? performance.now();
   const capturedScoreTime = clock.time(capturedAt);
   if (demonstrationActive || recordingPlaybackActive) {
@@ -1555,6 +1645,7 @@ function handleMidi(event: MidiInputEvent): void {
 }
 
 function handleControl(event: MidiControlEvent): void {
+  requestVisualFrame();
   const capturedAt = event.capturedAt ?? performance.now();
   const capturedScoreTime = clock.time(capturedAt);
   if (demonstrationActive || recordingPlaybackActive) {
@@ -1834,6 +1925,7 @@ function updateViewMode(): void {
   if (showSheet) sheetRenderer.setLayout(wantsSplit ? "split" : "sheet");
   visualizerCard.dataset.view = wantsSplit && showSheet ? "split" : showSheet ? "sheet" : "waterfall";
   scoreNavigator.hidden = !showSheet;
+  requestVisualFrame();
 }
 
 function setFocusMode(enabled: boolean, manageSystemFullscreen = true): void {
@@ -2316,11 +2408,13 @@ visualThemeSelect.addEventListener("change", () => {
   visualTheme = normalizeVisualTheme(visualThemeSelect.value);
   visualThemeSelect.value = visualTheme;
   renderer.setTheme(visualTheme);
+  requestVisualFrame();
   try { window.localStorage.setItem(VISUAL_THEME_STORAGE_KEY, visualTheme); } catch { /* visual preference is optional */ }
 });
 previewSecondsSelect.addEventListener("change", () => {
   previewSeconds = Number(previewSecondsSelect.value);
   renderer.setPreviewSeconds(previewSeconds);
+  requestVisualFrame();
   persistPreferences();
 });
 autoFullscreen.addEventListener("change", persistPreferences);
@@ -2606,7 +2700,9 @@ required<HTMLFormElement>("update-form").addEventListener("submit", async (event
 });
 
 device.onConnection((connected) => {
-  if (!connected) {
+  const disconnectedAfterConnection = deviceWasConnected && !connected;
+  deviceWasConnected = connected;
+  if (disconnectedAfterConnection) {
     cancelFollowPlayback(false);
     stopDemonstration(false, false);
     stopRecordingPlayback(false, false);
@@ -2680,9 +2776,40 @@ device.onStatus((status: DeviceStatus) => {
     ? "--"
     : status.defaultPassword ? "危险：仍使用公开默认密码" : "已修改默认密码";
   required("diag-web-midi-dropped").textContent = String(status.webMidiDropped ?? "--");
-  required("diag-led-latency").textContent = status.ledInputLatencySamples
-    ? `${((status.ledInputLatencyAvgUs ?? 0) / 1000).toFixed(2)} 平均 / ${((status.ledInputLatencyMaxUs ?? 0) / 1000).toFixed(2)} 最大 ms · ${status.ledInputLatencySamples} 次`
-    : "等待钢琴按键";
+  required("diag-usb-in-queue").textContent = status.usbInputQueueDepth === undefined
+    ? "--"
+    : `${formatQueueDiagnostic(status.usbInputQueueDepth, status.usbInputQueueHighWater)} · 最大批次 ${status.usbLargestInputBatch ?? "--"}`;
+  required("diag-usb-out-queue").textContent = formatQueueDiagnostic(
+    status.usbOutputQueueDepth,
+    status.usbOutputQueueHighWater,
+  );
+  required("diag-usb-host-health").textContent = status.usbClientWatchdog === undefined
+    ? "--"
+    : `Client WDT ${formatWatchdog(status.usbClientWatchdog)} · Daemon WDT ${formatWatchdog(status.usbDaemonWatchdog)} · 重提交 ${status.usbInputResubmitRetries ?? "--"}`;
+  required("diag-web-midi-queue").textContent = status.webMidiQueueDepth === undefined
+    ? "--"
+    : `${formatQueueDiagnostic(status.webMidiQueueDepth, status.webMidiQueueHighWater)} · 重同步 ${status.webMidiResyncs ?? "--"}`;
+  required("diag-midi-dispatch").textContent = formatLatencyDiagnostic(
+    status.midiDispatchLatencyLastUs,
+    status.midiDispatchLatencyAvgUs,
+    status.midiDispatchLatencyMaxUs,
+    status.midiDispatchLatencySamples,
+  );
+  required("diag-led-latency").textContent = formatLatencyDiagnostic(
+    status.ledInputLatencyLastUs,
+    status.ledInputLatencyAvgUs,
+    status.ledInputLatencyMaxUs,
+    status.ledInputLatencySamples,
+  );
+  required("diag-led-spi").textContent = status.ledSpiLastUs === undefined
+    ? "--"
+    : `最近 ${formatMicroseconds(status.ledSpiLastUs)} / 最大 ${formatMicroseconds(status.ledSpiMaxUs)} · ${status.ledFrameBytes ?? "--"} B · 发送 ${status.ledFrames ?? "--"} / 跳过 ${status.ledFramesSkipped ?? "--"}`;
+  required("diag-realtime-health").textContent = status.realtimeReady === undefined
+    ? "--"
+    : `${status.realtimeReady ? "就绪" : "未就绪"} · WDT ${formatWatchdog(status.realtimeWatchdog)} · 心跳 ${status.realtimeHeartbeatAgeMs ?? "--"} ms · 栈余 ${status.realtimeStackFreeBytes ?? "--"} B · 唤醒 ${status.realtimeWakeups ?? "--"}`;
+  required("diag-main-loop").textContent = status.mainLoopLastUs === undefined
+    ? "--"
+    : `最近 ${formatMicroseconds(status.mainLoopLastUs)} / 最大 ${formatMicroseconds(status.mainLoopMaxUs)}`;
   required("diag-heap").textContent = status.freeHeap === undefined
     ? "--"
     : `${Math.round(status.freeHeap / 1024)} KiB`;
@@ -2754,6 +2881,18 @@ void refreshPracticeHistory().catch((error: unknown) => {
 });
 
 function frame(now: number): void {
+  pendingAnimationFrame = undefined;
+  const animationActive = requiresContinuousRendering({
+    clockRunning: clock.isRunning(),
+    demonstrationActive,
+    recordingPlaybackActive,
+    feedbackAnimationUntil,
+  }, now);
+  if (animationActive && !visualDirty && !animatedFrameDue(now, lastAnimatedFrameAt)) {
+    scheduleNextVisualFrame(now);
+    return;
+  }
+  if (animationActive) lastAnimatedFrameAt = now;
   scheduleRecordingPlayback(now);
   let scoreSeconds = clock.time(now);
   if (score) {
@@ -2806,14 +2945,23 @@ function frame(now: number): void {
     scoreTime.textContent = `${formatTime(scoreSeconds)} / ${formatTime(score.duration)}`;
     renderStats();
   }
-  const expected = new Set(currentTarget.map((target) => target.note));
-  if ((viewMode.value === "sheet" || viewMode.value === "split") && scoreXml) {
-    sheetRenderer.seek(lastScoreSeconds);
-    renderMeasureNavigation(lastScoreSeconds);
-  }
-  if (viewMode.value !== "sheet" || !scoreXml) {
-    renderer.setState(pressed, expected, wrong);
-    renderer.render(lastScoreSeconds, (mode === "realtime" || demonstrationActive) && clock.isRunning());
+  const renderActivity = {
+    clockRunning: clock.isRunning(),
+    demonstrationActive,
+    recordingPlaybackActive,
+    feedbackAnimationUntil,
+  };
+  if (shouldPaintVisual(renderActivity, now, visualDirty)) {
+    const expected = new Set(currentTarget.map((target) => target.note));
+    if ((viewMode.value === "sheet" || viewMode.value === "split") && scoreXml) {
+      sheetRenderer.seek(lastScoreSeconds);
+      renderMeasureNavigation(lastScoreSeconds);
+    }
+    if (viewMode.value !== "sheet" || !scoreXml) {
+      renderer.setState(pressed, expected, wrong);
+      renderer.render(lastScoreSeconds, (mode === "realtime" || demonstrationActive) && clock.isRunning());
+    }
+    visualDirty = false;
   }
   const network = `WebSocket ${device.latencyMs === undefined ? "--" : Math.round(device.latencyMs)} ms`;
   const synchronized = device.clockSyncAvailable === false
@@ -2824,7 +2972,8 @@ function frame(now: number): void {
   const transport = device.midiTransportDelayMs === undefined
     ? ""
     : ` · MIDI 路径约 ${Math.round(device.midiTransportDelayMs)} ms`;
-  latencyStatus.textContent = `${network} · ${synchronized}${transport}`;
-  requestAnimationFrame(frame);
+  const latencyLabel = `${network} · ${synchronized}${transport}`;
+  if (latencyStatus.textContent !== latencyLabel) latencyStatus.textContent = latencyLabel;
+  scheduleNextVisualFrame(now);
 }
-requestAnimationFrame(frame);
+requestVisualFrame();

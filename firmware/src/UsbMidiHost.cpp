@@ -1,7 +1,9 @@
 #include "UsbMidiHost.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
+#include <esp_task_wdt.h>
 #include <esp_timer.h>
 
 #include "midi_core.h"
@@ -22,7 +24,7 @@ bool UsbMidiHost::begin() {
 #endif
   esp_err_t result = usb_host_install(&hostConfig);
   if (result != ESP_OK) {
-    lastError_ = "usb_host_install failed: " + String(result);
+    setLastError("usb_host_install failed", result);
     return false;
   }
 
@@ -33,14 +35,14 @@ bool UsbMidiHost::begin() {
   clientConfig.async.callback_arg = this;
   result = usb_host_client_register(&clientConfig, &client_);
   if (result != ESP_OK) {
-    lastError_ = "usb_host_client_register failed: " + String(result);
+    setLastError("usb_host_client_register failed", result);
     usb_host_uninstall();
     return false;
   }
   result = usb_host_transfer_alloc(kTransferBufferSize, 0, &inputTransfer_);
   if (result == ESP_OK) result = usb_host_transfer_alloc(kTransferBufferSize, 0, &outputTransfer_);
   if (result != ESP_OK || inputTransfer_ == nullptr || outputTransfer_ == nullptr) {
-    lastError_ = "USB transfer allocation failed: " + String(result);
+    setLastError("USB transfer allocation failed", result);
     usb_host_transfer_free(inputTransfer_);
     usb_host_transfer_free(outputTransfer_);
     inputTransfer_ = nullptr;
@@ -50,8 +52,8 @@ bool UsbMidiHost::begin() {
     usb_host_uninstall();
     return false;
   }
-  if (xTaskCreatePinnedToCore(hostTask, "usb_midi_host", 4096, this, 5, &task_, 0) != pdPASS) {
-    lastError_ = "USB host task allocation failed";
+  if (xTaskCreatePinnedToCore(hostTask, "usb_midi_client", 4096, this, 6, &task_, 0) != pdPASS) {
+    setLastError("USB client task allocation failed");
     usb_host_transfer_free(inputTransfer_);
     usb_host_transfer_free(outputTransfer_);
     inputTransfer_ = nullptr;
@@ -61,7 +63,21 @@ bool UsbMidiHost::begin() {
     usb_host_uninstall();
     return false;
   }
-  lastError_ = "";
+  if (xTaskCreatePinnedToCore(daemonTask, "usb_midi_daemon", 3072, this, 4,
+                              &daemonTask_, 0) != pdPASS) {
+    setLastError("USB daemon task allocation failed");
+    vTaskDelete(task_);
+    task_ = nullptr;
+    usb_host_transfer_free(inputTransfer_);
+    usb_host_transfer_free(outputTransfer_);
+    inputTransfer_ = nullptr;
+    outputTransfer_ = nullptr;
+    usb_host_client_deregister(client_);
+    client_ = nullptr;
+    usb_host_uninstall();
+    return false;
+  }
+  setLastError("");
   return true;
 }
 
@@ -70,7 +86,7 @@ void UsbMidiHost::poll() {
   while (dequeueInput(packet)) {
     if (midiCallback_ != nullptr) midiCallback_(midiContext_, packet.bytes, packet.receivedUs);
   }
-  const bool current = connected_;
+  const bool current = connected_.load(std::memory_order_acquire);
   if (current != reportedConnected_) {
     reportedConnected_ = current;
     ConnectionCallback callback = current ? connectedCallback_ : disconnectedCallback_;
@@ -80,9 +96,49 @@ void UsbMidiHost::poll() {
 
 UsbMidiHost::Diagnostics UsbMidiHost::diagnostics() {
   portENTER_CRITICAL(&queueMux_);
-  const Diagnostics snapshot = diagnostics_;
+  Diagnostics snapshot = diagnostics_;
+  const size_t inputDepth = inputHead_ >= inputTail_
+      ? inputHead_ - inputTail_
+      : kInputQueueSize - inputTail_ + inputHead_;
+  const size_t outputDepth = outputHead_ >= outputTail_
+      ? outputHead_ - outputTail_
+      : kOutputQueueSize - outputTail_ + outputHead_;
+  snapshot.inputQueueDepth = static_cast<uint16_t>(inputDepth);
+  snapshot.outputQueueDepth = static_cast<uint16_t>(outputDepth);
   portEXIT_CRITICAL(&queueMux_);
   return snapshot;
+}
+
+String UsbMidiHost::lastError() {
+  char snapshot[sizeof(lastError_)]{};
+  portENTER_CRITICAL(&queueMux_);
+  std::memcpy(snapshot, lastError_, sizeof(snapshot));
+  portEXIT_CRITICAL(&queueMux_);
+  snapshot[sizeof(snapshot) - 1U] = '\0';
+  return String(snapshot);
+}
+
+void UsbMidiHost::setLastError(const char* message) {
+  char formatted[sizeof(lastError_)]{};
+  std::snprintf(formatted, sizeof(formatted), "%s", message == nullptr ? "" : message);
+  portENTER_CRITICAL(&queueMux_);
+  std::memcpy(lastError_, formatted, sizeof(lastError_));
+  portEXIT_CRITICAL(&queueMux_);
+}
+
+void UsbMidiHost::setLastError(const char* operation, esp_err_t result) {
+  char formatted[sizeof(lastError_)]{};
+  std::snprintf(formatted, sizeof(formatted), "%s: %ld",
+                operation == nullptr ? "USB error" : operation,
+                static_cast<long>(result));
+  portENTER_CRITICAL(&queueMux_);
+  std::memcpy(lastError_, formatted, sizeof(lastError_));
+  portEXIT_CRITICAL(&queueMux_);
+}
+
+void UsbMidiHost::notifyConsumer() {
+  const TaskHandle_t consumer = consumerTask_.load(std::memory_order_acquire);
+  if (consumer != nullptr) xTaskNotifyGive(consumer);
 }
 
 bool UsbMidiHost::enqueueInput(const uint8_t packet[4], uint64_t receivedUs) {
@@ -95,6 +151,11 @@ bool UsbMidiHost::enqueueInput(const uint8_t packet[4], uint64_t receivedUs) {
   std::memcpy(inputQueue_[inputHead_].bytes, packet, 4);
   inputQueue_[inputHead_].receivedUs = receivedUs;
   inputHead_ = next;
+  const size_t depth = inputHead_ >= inputTail_
+      ? inputHead_ - inputTail_
+      : kInputQueueSize - inputTail_ + inputHead_;
+  diagnostics_.inputQueueHighWater = std::max<uint16_t>(
+      diagnostics_.inputQueueHighWater, static_cast<uint16_t>(depth));
   portEXIT_CRITICAL(&queueMux_);
   return true;
 }
@@ -120,6 +181,11 @@ bool UsbMidiHost::enqueueOutput(const uint8_t packet[4]) {
   }
   std::memcpy(outputQueue_[outputHead_].bytes, packet, 4);
   outputHead_ = next;
+  const size_t depth = outputHead_ >= outputTail_
+      ? outputHead_ - outputTail_
+      : kOutputQueueSize - outputTail_ + outputHead_;
+  diagnostics_.outputQueueHighWater = std::max<uint16_t>(
+      diagnostics_.outputQueueHighWater, static_cast<uint16_t>(depth));
   portEXIT_CRITICAL(&queueMux_);
   return true;
 }
@@ -138,8 +204,8 @@ void UsbMidiHost::clearOutputQueue() {
 }
 
 void UsbMidiHost::panic() {
-  if (!outputAvailable()) return;
   clearOutputQueue();
+  if (!outputAvailable()) return;
   for (uint8_t channel = 0; channel < 16; ++channel) {
     sendMidiMessage(static_cast<uint8_t>(0xB0U | channel), 64, 0);
     sendMidiMessage(static_cast<uint8_t>(0xB0U | channel), 123, 0);
@@ -150,13 +216,17 @@ void UsbMidiHost::pumpOutput() {
   if (!outputAvailable() || outputTransfer_ == nullptr || outputBusy_) return;
 
   portENTER_CRITICAL(&queueMux_);
-  size_t availablePackets = outputHead_ >= outputTail_
+  const size_t outputTail = outputTail_;
+  const size_t availablePackets = outputHead_ >= outputTail_
       ? outputHead_ - outputTail_
       : kOutputQueueSize - outputTail_ + outputHead_;
   const size_t maxPackets = std::max<size_t>(1, outputEndpointPacketSize_ / 4U);
   const size_t packetCount = std::min(availablePackets, maxPackets);
+  // Keep the at-most-one-endpoint-packet copy in the critical section. Panic
+  // may reset and immediately refill the ring from the other core; copying
+  // outside the lock could otherwise combine pre- and post-panic messages.
   for (size_t index = 0; index < packetCount; ++index) {
-    const size_t queueIndex = (outputTail_ + index) % kOutputQueueSize;
+    const size_t queueIndex = (outputTail + index) % kOutputQueueSize;
     std::memcpy(outputTransfer_->data_buffer + index * 4U, outputQueue_[queueIndex].bytes, 4);
   }
   portEXIT_CRITICAL(&queueMux_);
@@ -174,27 +244,47 @@ void UsbMidiHost::pumpOutput() {
     portENTER_CRITICAL(&queueMux_);
     ++diagnostics_.outputTransferErrors;
     portEXIT_CRITICAL(&queueMux_);
-    lastError_ = "USB MIDI OUT submit failed: " + String(result);
+    setLastError("USB MIDI OUT submit failed", result);
   }
 }
 
 void UsbMidiHost::hostTask(void* argument) {
   auto* host = static_cast<UsbMidiHost*>(argument);
+  const bool watchdogArmed = esp_task_wdt_add(nullptr) == ESP_OK;
+  portENTER_CRITICAL(&host->queueMux_);
+  host->diagnostics_.clientWatchdogArmed = watchdogArmed;
+  portEXIT_CRITICAL(&host->queueMux_);
   for (;;) {
-    uint32_t eventFlags = 0;
-    usb_host_lib_handle_events(pdMS_TO_TICKS(20), &eventFlags);
-    usb_host_client_handle_events(host->client_, pdMS_TO_TICKS(20));
-    if (host->inputResubmitPending_ && host->connected_ && host->inputTransfer_ != nullptr) {
+    // Client and daemon events have separate tasks. A MIDI transfer therefore
+    // never sits behind the daemon's idle wait (formerly up to 20 ms).
+    usb_host_client_handle_events(host->client_, pdMS_TO_TICKS(5));
+    if (host->inputResubmitPending_ && host->connected_.load(std::memory_order_acquire) &&
+        host->inputTransfer_ != nullptr) {
       const esp_err_t result = usb_host_transfer_submit(host->inputTransfer_);
       if (result == ESP_OK) {
         host->inputResubmitPending_ = false;
       } else {
         portENTER_CRITICAL(&host->queueMux_);
         ++host->diagnostics_.transferErrors;
+        ++host->diagnostics_.inputResubmitRetries;
         portEXIT_CRITICAL(&host->queueMux_);
       }
     }
     host->pumpOutput();
+    if (watchdogArmed) esp_task_wdt_reset();
+  }
+}
+
+void UsbMidiHost::daemonTask(void* argument) {
+  auto* host = static_cast<UsbMidiHost*>(argument);
+  const bool watchdogArmed = esp_task_wdt_add(nullptr) == ESP_OK;
+  portENTER_CRITICAL(&host->queueMux_);
+  host->diagnostics_.daemonWatchdogArmed = watchdogArmed;
+  portEXIT_CRITICAL(&host->queueMux_);
+  for (;;) {
+    uint32_t eventFlags = 0;
+    usb_host_lib_handle_events(pdMS_TO_TICKS(20), &eventFlags);
+    if (watchdogArmed) esp_task_wdt_reset();
   }
 }
 
@@ -211,7 +301,7 @@ bool UsbMidiHost::openMidiInterface(uint8_t address) {
   if (device_ != nullptr) return false;
   esp_err_t result = usb_host_device_open(client_, address, &device_);
   if (result != ESP_OK) {
-    lastError_ = "USB device open failed: " + String(result);
+    setLastError("USB device open failed", result);
     return false;
   }
 
@@ -227,12 +317,12 @@ bool UsbMidiHost::openMidiInterface(uint8_t address) {
   const usb_config_desc_t* config = nullptr;
   result = usb_host_get_active_config_descriptor(device_, &config);
   if (result != ESP_OK || config == nullptr) {
-    lastError_ = "USB configuration descriptor unavailable";
+    setLastError("USB configuration descriptor unavailable");
     usb_host_device_close(client_, device_);
     device_ = nullptr;
     return false;
   }
-  lastError_ = "";
+  setLastError("");
 
   const uint8_t* bytes = config->val;
   const std::size_t total = config->wTotalLength;
@@ -242,7 +332,7 @@ bool UsbMidiHost::openMidiInterface(uint8_t address) {
     const usb::DescriptorResult descriptorResult =
         usb::findMidiStreamingInterface(bytes, total, searchOffset, candidate);
     if (descriptorResult == usb::DescriptorResult::Malformed) {
-      lastError_ = "malformed USB configuration descriptor";
+      setLastError("malformed USB configuration descriptor");
       break;
     }
     if (descriptorResult == usb::DescriptorResult::NotFound) break;
@@ -262,33 +352,38 @@ bool UsbMidiHost::openMidiInterface(uint8_t address) {
     inputTransfer_->num_bytes = inputEndpointPacketSize_;
 
     if (candidate.outputEndpointAddress != 0) {
-      outputEndpointAddress_ = candidate.outputEndpointAddress;
+      outputEndpointAddress_.store(candidate.outputEndpointAddress, std::memory_order_release);
       outputEndpointPacketSize_ = candidate.outputPacketSize;
       outputTransfer_->device_handle = device_;
-      outputTransfer_->bEndpointAddress = outputEndpointAddress_;
+      outputTransfer_->bEndpointAddress = candidate.outputEndpointAddress;
       outputTransfer_->callback = outputTransferComplete;
       outputTransfer_->context = this;
     } else {
-      outputEndpointAddress_ = 0;
+      outputEndpointAddress_.store(0, std::memory_order_release);
       outputEndpointPacketSize_ = 0;
     }
 
-    connected_ = true;
     result = usb_host_transfer_submit(inputTransfer_);
     if (result == ESP_OK) {
       portENTER_CRITICAL(&queueMux_);
       ++diagnostics_.connections;
       diagnostics_.endpointAddress = inputEndpointAddress_;
       diagnostics_.endpointPacketSize = inputEndpointPacketSize_;
-      diagnostics_.outputEndpointAddress = outputEndpointAddress_;
+      diagnostics_.outputEndpointAddress =
+          outputEndpointAddress_.load(std::memory_order_acquire);
       diagnostics_.outputEndpointPacketSize = outputEndpointPacketSize_;
       portEXIT_CRITICAL(&queueMux_);
-      lastError_ = "";
+      // Publish endpoint configuration only after the first IN transfer is
+      // live. The acquire in outputAvailable() then also makes the endpoint
+      // fields above visible to producers on the other core.
+      connected_.store(true, std::memory_order_release);
+      setLastError("");
+      notifyConsumer();
       return true;
     }
 
-    connected_ = false;
-    outputEndpointAddress_ = 0;
+    connected_.store(false, std::memory_order_release);
+    outputEndpointAddress_.store(0, std::memory_order_release);
     outputEndpointPacketSize_ = 0;
     inputEndpointAddress_ = 0;
     inputEndpointPacketSize_ = 0;
@@ -296,8 +391,8 @@ bool UsbMidiHost::openMidiInterface(uint8_t address) {
     break;
   }
 
-  if (lastError_.isEmpty()) {
-    lastError_ = "connected USB device has no MIDI streaming IN endpoint";
+  if (lastError().isEmpty()) {
+    setLastError("connected USB device has no MIDI streaming IN endpoint");
   }
   usb_host_device_close(client_, device_);
   device_ = nullptr;
@@ -309,6 +404,13 @@ void UsbMidiHost::inputTransferComplete(usb_transfer_t* transfer) {
   if (host == nullptr) return;
   if (transfer->status == USB_TRANSFER_STATUS_COMPLETED) {
     const uint64_t receivedUs = static_cast<uint64_t>(esp_timer_get_time());
+    const uint16_t batchSize = static_cast<uint16_t>(
+        std::max(0, transfer->actual_num_bytes) / 4);
+    portENTER_CRITICAL(&host->queueMux_);
+    host->diagnostics_.largestInputBatch = std::max(
+        host->diagnostics_.largestInputBatch, batchSize);
+    portEXIT_CRITICAL(&host->queueMux_);
+    bool queuedAny = false;
     for (int offset = 0; offset + 4 <= transfer->actual_num_bytes; offset += 4) {
       const uint8_t* packet = transfer->data_buffer + offset;
       midi::DecodedMessage decoded;
@@ -328,21 +430,28 @@ void UsbMidiHost::inputTransferComplete(usb_transfer_t* transfer) {
         portENTER_CRITICAL(&host->queueMux_);
         ++host->diagnostics_.packetsDropped;
         portEXIT_CRITICAL(&host->queueMux_);
+      } else {
+        queuedAny = true;
       }
     }
-  } else if (host->connected_ && transfer->status != USB_TRANSFER_STATUS_CANCELED &&
+    // Wake once after the complete USB transfer has been queued. The higher-
+    // priority consumer then cannot split one chord packet batch into several
+    // LED frames, while sustained traffic cannot starve it behind this task.
+    if (queuedAny) host->notifyConsumer();
+  } else if (host->connected_.load(std::memory_order_acquire) &&
+             transfer->status != USB_TRANSFER_STATUS_CANCELED &&
              transfer->status != USB_TRANSFER_STATUS_NO_DEVICE) {
     portENTER_CRITICAL(&host->queueMux_);
     ++host->diagnostics_.transferErrors;
     portEXIT_CRITICAL(&host->queueMux_);
   }
-  if (host->connected_) {
+  if (host->connected_.load(std::memory_order_acquire)) {
     const esp_err_t result = usb_host_transfer_submit(transfer);
     if (result != ESP_OK) {
       portENTER_CRITICAL(&host->queueMux_);
       ++host->diagnostics_.transferErrors;
       portEXIT_CRITICAL(&host->queueMux_);
-      host->lastError_ = "USB MIDI IN resubmit failed: " + String(result);
+      host->setLastError("USB MIDI IN resubmit failed", result);
       host->inputResubmitPending_ = true;
     }
   }
@@ -357,7 +466,8 @@ void UsbMidiHost::outputTransferComplete(usb_transfer_t* transfer) {
         ? transfer->actual_num_bytes
         : transfer->num_bytes;
     host->diagnostics_.packetsSent += static_cast<uint32_t>(transferred / 4U);
-  } else if (host->connected_ && transfer->status != USB_TRANSFER_STATUS_CANCELED &&
+  } else if (host->connected_.load(std::memory_order_acquire) &&
+             transfer->status != USB_TRANSFER_STATUS_CANCELED &&
              transfer->status != USB_TRANSFER_STATUS_NO_DEVICE) {
     ++host->diagnostics_.outputTransferErrors;
     host->diagnostics_.outputPacketsDropped += static_cast<uint32_t>(transfer->num_bytes / 4U);
@@ -367,16 +477,17 @@ void UsbMidiHost::outputTransferComplete(usb_transfer_t* transfer) {
 }
 
 void UsbMidiHost::closeDevice() {
-  connected_ = false;
+  connected_.store(false, std::memory_order_release);
   inputResubmitPending_ = false;
   outputBusy_ = false;
   if (inputTransfer_ != nullptr && inputEndpointAddress_ != 0) {
     usb_host_endpoint_halt(device_, inputEndpointAddress_);
     usb_host_endpoint_flush(device_, inputEndpointAddress_);
   }
-  if (outputTransfer_ != nullptr && outputEndpointAddress_ != 0) {
-    usb_host_endpoint_halt(device_, outputEndpointAddress_);
-    usb_host_endpoint_flush(device_, outputEndpointAddress_);
+  const uint8_t outputEndpoint = outputEndpointAddress_.load(std::memory_order_acquire);
+  if (outputTransfer_ != nullptr && outputEndpoint != 0) {
+    usb_host_endpoint_halt(device_, outputEndpoint);
+    usb_host_endpoint_flush(device_, outputEndpoint);
   }
   if (device_ != nullptr) {
     usb_host_interface_release(client_, device_, interfaceNumber_);
@@ -392,9 +503,10 @@ void UsbMidiHost::closeDevice() {
   diagnostics_.outputEndpointPacketSize = 0;
   portEXIT_CRITICAL(&queueMux_);
   inputEndpointAddress_ = 0;
-  outputEndpointAddress_ = 0;
+  outputEndpointAddress_.store(0, std::memory_order_release);
   inputEndpointPacketSize_ = 0;
   outputEndpointPacketSize_ = 0;
+  notifyConsumer();
 }
 
 }  // namespace notefall

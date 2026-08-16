@@ -329,7 +329,11 @@ try {
     const tempo = document.querySelector('#tempo');
     const listen = document.querySelector('#listen-button');
     if (!tempo || !listen) return JSON.stringify({ missing: true });
-    tempo.value = '150';
+    // Keep the silent preview alive long enough for the external Playwright
+    // CLI process to observe an intermediate timestamp on slower Windows/CI
+    // hosts. Tempo normalization itself is covered by unit tests; this probe
+    // verifies that the cross-module demonstration clock keeps advancing.
+    tempo.value = '75';
     tempo.dispatchEvent(new Event('change', { bubbles: true }));
     listen.click();
     return JSON.stringify({
@@ -346,12 +350,22 @@ try {
     && demonstrationPreview.playDisabled
     && demonstrationPreview.recordDisabled,
   `silent piano demonstration preview did not start safely: ${JSON.stringify(demonstrationPreview)}`);
-  await waitForCondition(
-    `() => JSON.stringify(['00:01 / 00:04', '00:02 / 00:04', '00:03 / 00:04', '00:04 / 00:04']
-      .includes(document.querySelector('#score-time')?.textContent ?? ''))`,
-    "piano demonstration timeline did not advance",
-    30,
-  );
+  // Observe progress inside the page. Spawning a fresh external CLI process
+  // for every poll can take longer than this four-second fixture on WebKit or
+  // a loaded Windows host, making a correct preview finish between samples.
+  const demonstrationAdvanced = evaluate(`async () => {
+    const indicator = document.querySelector('#score-time');
+    const initial = indicator?.textContent ?? '';
+    const deadline = performance.now() + 4_000;
+    while (performance.now() < deadline) {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+      const current = indicator?.textContent ?? '';
+      if (current !== initial) return JSON.stringify({ advanced: true, initial, current });
+    }
+    return JSON.stringify({ advanced: false, initial, current: indicator?.textContent ?? '' });
+  }`);
+  assert(demonstrationAdvanced.advanced,
+    `piano demonstration timeline did not advance: ${JSON.stringify(demonstrationAdvanced)}`);
   const demonstrationStopped = evaluate(`() => {
     const listen = document.querySelector('#listen-button');
     if (listen?.dataset.active === 'true') listen.click();

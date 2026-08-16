@@ -12,6 +12,7 @@
     "prebuild:studio": "node scripts/sync-studio-vendor.mjs",
     "build:studio": "tsc -b && vite build --config vite.studio.config.ts",
     "verify:studio": "node scripts/verify-studio-dist.mjs",
+    "smoke:pwa-offline": "node scripts/pwa-offline-smoke.mjs",
     "smoke:browser": "node scripts/browser-smoke.mjs",
     "test": "vitest",
     "coverage": "vitest run --coverage"

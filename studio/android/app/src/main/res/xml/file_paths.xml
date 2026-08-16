@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <!-- Never grant a URI over the tablet's entire shared-storage tree. Score
+         imports use Android's system document picker; temporary exports only
+         need this app's private cache. -->
+    <cache-path name="notefall_cache" path="." />
 </paths>

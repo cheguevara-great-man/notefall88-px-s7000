@@ -42,6 +42,9 @@ export class SheetRenderer {
   private cursorAvailable = true;
   private layout: "sheet" | "split" = "sheet";
   private feedbackTimer?: number;
+  private followFrame?: number;
+  private lastFollowAt = 0;
+  private pendingCursorElement?: HTMLElement;
 
   constructor(private readonly container: HTMLElement) {
     const observer = new ResizeObserver(([entry]) => {
@@ -137,6 +140,8 @@ export class SheetRenderer {
     this.cursorAvailable = true;
     window.clearTimeout(this.resizeTimer);
     window.clearTimeout(this.feedbackTimer);
+    window.cancelAnimationFrame(this.followFrame ?? 0);
+    this.pendingCursorElement = undefined;
     this.container.replaceChildren();
   }
 
@@ -193,7 +198,7 @@ export class SheetRenderer {
       this.container.dataset.cursorActualQuarter = String(
         (cursor.Iterator.CurrentRelativeInMeasureTimestamp?.RealValue ?? 0) * 4,
       );
-      window.requestAnimationFrame(() => this.followCursor(cursor.cursorElement));
+      this.scheduleFollow(cursor.cursorElement);
     } catch (error) {
       // A readable MusicXML document can still omit staff/voice information
       // needed by OSMD's optional cursor. Keep the rendered score usable.
@@ -202,6 +207,25 @@ export class SheetRenderer {
       try { cursor.hide?.(); } catch { /* Rendering remains usable without a cursor. */ }
     }
     this.currentCursorSignature = target.signature;
+  }
+
+  private scheduleFollow(element: HTMLElement | undefined): void {
+    this.pendingCursorElement = element;
+    if (this.followFrame !== undefined) return;
+    this.followFrame = window.requestAnimationFrame((timestamp) => {
+      this.followFrame = undefined;
+      // During fast passages OSMD can expose several iterator changes inside
+      // one display frame. Follow the newest cursor once, and avoid restarting
+      // smooth scrolling more often than a tablet panel can visibly present.
+      if (timestamp - this.lastFollowAt < 80) {
+        this.scheduleFollow(this.pendingCursorElement);
+        return;
+      }
+      this.lastFollowAt = timestamp;
+      const latest = this.pendingCursorElement;
+      this.pendingCursorElement = undefined;
+      this.followCursor(latest);
+    });
   }
 
   private followCursor(element: HTMLElement | undefined): void {

@@ -12,6 +12,8 @@ const REQUIRED_LEGAL = [
   "legal/NOTEFALL-STUDIO-LICENSE.md",
   "legal/THIRD_PARTY_NOTICES.md",
 ];
+const MAX_DISTRIBUTION_BYTES = 24 * 1024 * 1024;
+const MAX_APPLICATION_JAVASCRIPT_BYTES = 2 * 1024 * 1024;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -48,6 +50,21 @@ for (const entry of manifest.files) {
 }
 
 const serviceWorker = readFileSync(resolve(DIST, "sw.js"), "utf8");
+const assetManifestPath = resolve(DIST, "asset-manifest.json");
+assert(existsSync(assetManifestPath), "Studio distribution is missing asset-manifest.json");
+const assetManifest = JSON.parse(readFileSync(assetManifestPath, "utf8"));
+assert(assetManifest.schemaVersion === 1, "Unexpected Studio asset manifest schema");
+assert(/^[a-f0-9]{16}$/.test(assetManifest.cacheVersion), "Invalid content-addressed cache version");
+assert(serviceWorker.includes(`const INJECTED_VERSION = "${assetManifest.cacheVersion}"`),
+  "Service worker cache version does not match asset-manifest.json");
+assert(serviceWorker.includes('key.startsWith(CACHE_PREFIX)'),
+  "Service worker cleanup is not scoped to NoteFall caches");
+assert(!serviceWorker.includes("skipWaiting("),
+  "Service worker must not replace an open page with a different cached release");
+assert(serviceWorker.includes("precache integrity mismatch"),
+  "Service worker does not verify build-time asset integrity");
+assert(!serviceWorker.includes("caches.match(event.request)"),
+  "Service worker must not use an unscoped cross-cache lookup");
 const requiredOffline = [
   ...REQUIRED_LEGAL,
   "vendor/webmscore-0.21.0-a/vendor-manifest.json",
@@ -58,8 +75,37 @@ for (const relative of requiredOffline) {
 }
 
 const distributionFiles = filesBelow(DIST);
+assert(!distributionFiles.some((name) => name.endsWith(".map")),
+  "Studio production distribution must not publish source maps");
+const manifestFiles = assetManifest.files.map((entry) => entry.path);
+const expectedManifestFiles = distributionFiles
+  .filter((name) => name !== "sw.js" && name !== "asset-manifest.json")
+  .sort();
+assert(JSON.stringify(manifestFiles) === JSON.stringify(expectedManifestFiles),
+  "Asset manifest does not cover the exact Studio release payload");
+for (const entry of assetManifest.files) {
+  assert(typeof entry?.path === "string" && !entry.path.startsWith("/") && !entry.path.includes(".."),
+    "Invalid asset manifest path");
+  const bytes = readFileSync(resolve(DIST, entry.path));
+  assert(bytes.byteLength === entry.bytes, `Asset manifest size mismatch for ${entry.path}`);
+  assert(createHash("sha256").update(bytes).digest("hex") === entry.sha256,
+    `Asset manifest SHA-256 mismatch for ${entry.path}`);
+  assert(serviceWorker.includes(`./${entry.path}`), `Service worker does not precache ${entry.path}`);
+  assert(serviceWorker.includes(entry.sha256), `Service worker lacks integrity data for ${entry.path}`);
+}
+assert(serviceWorker.includes('./asset-manifest.json'),
+  "Service worker does not precache asset-manifest.json");
+assert(serviceWorker.includes(createHash("sha256").update(readFileSync(assetManifestPath)).digest("hex")),
+  "Service worker lacks integrity data for asset-manifest.json");
 const totalBytes = distributionFiles.reduce((total, relative) => total + statSync(resolve(DIST, relative)).size, 0);
-assert(totalBytes < 64 * 1024 * 1024, "Studio distribution exceeds the 64 MiB release budget");
+const applicationJavaScriptBytes = distributionFiles
+  .filter((name) => name.startsWith("assets/") && name.endsWith(".js"))
+  .reduce((total, relative) => total + statSync(resolve(DIST, relative)).size, 0);
+assert(totalBytes < MAX_DISTRIBUTION_BYTES, "Studio distribution exceeds the 24 MiB release budget");
+assert(applicationJavaScriptBytes < MAX_APPLICATION_JAVASCRIPT_BYTES,
+  "Studio application JavaScript exceeds the 2 MiB release budget");
+assert(assetManifest.totalBytes === assetManifest.files.reduce((total, entry) => total + entry.bytes, 0),
+  "Asset manifest totalBytes is inconsistent");
 
 const coreFiles = filesBelow(resolve(ROOT, "firmware/data"));
 assert(!coreFiles.some((name) => /webmscore|GPL-3\.0/i.test(name)), "GPL converter files leaked into MIT Core");
@@ -70,5 +116,7 @@ console.log(JSON.stringify({
   runtimeFiles: manifest.files.length,
   distributionFiles: distributionFiles.length,
   totalBytes,
+  applicationJavaScriptBytes,
+  cacheVersion: assetManifest.cacheVersion,
   offlineEntries: requiredOffline.length,
 }, null, 2));

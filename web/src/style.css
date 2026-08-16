@@ -21,6 +21,10 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 50% -10%, #1a2240 0, #080a0f 46%); }
 button, select, input { font: inherit; }
+button:focus-visible, .file-button:focus-within, select:focus-visible, input:focus-visible {
+  outline: 3px solid #9db8ff;
+  outline-offset: 2px;
+}
 button, .file-button {
   border: 1px solid #303746;
   border-radius: 10px;
@@ -30,7 +34,7 @@ button, .file-button {
   padding: 0 16px;
   cursor: pointer;
 }
-button:hover, .file-button:hover { border-color: #69748a; }
+@media (hover: hover) { button:hover, .file-button:hover { border-color: #69748a; } }
 button:disabled { opacity: .4; cursor: default; }
 button.primary { background: linear-gradient(135deg, #4c78ff, #a14dff); border-color: transparent; }
 .transport-card button[data-active="true"] { border-color: rgba(116,238,196,.72); background: linear-gradient(135deg, rgba(39,126,111,.92), rgba(61,74,147,.94)); color: #fff; box-shadow: 0 0 0 1px rgba(116,238,196,.12), 0 8px 24px rgba(26,116,103,.24); }
@@ -78,9 +82,9 @@ h1 span { color: #8ba7ff; }
 .focus-enter { opacity: .82; transition: opacity .15s ease, border-color .15s ease, transform .15s ease; }
 .focus-enter:hover, .focus-enter:focus-visible { opacity: 1; }
 .focus-enter:active, .focus-exit:active { transform: scale(.97); }
-#waterfall { width: 100%; height: 100%; display: block; }
+#waterfall { width: 100%; height: 100%; display: block; touch-action: pan-y pinch-zoom; }
 #waterfall[hidden], #sheet-view[hidden] { display: none; }
-  #sheet-view { position: relative; width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; padding: 22px clamp(8px, 2vw, 24px) 120px; background: #f5f4ef; color: #111; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-behavior: smooth; }
+#sheet-view { position: relative; width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; padding: 22px clamp(8px, 2vw, 24px) 120px; background: #f5f4ef; color: #111; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-behavior: smooth; touch-action: pan-y pinch-zoom; -webkit-overflow-scrolling: touch; }
 #sheet-view svg { display: block; max-width: 100%; height: auto; }
 #sheet-view img[id*="cursor"] { border-radius: 4px; filter: drop-shadow(0 0 6px rgba(75,95,255,.38)); }
 .sheet-feedback { position: absolute; z-index: 4; min-width: 30px; padding: 4px 7px; border: 1px solid currentColor; border-radius: 999px; color: #2b8c58; background: rgba(255,255,255,.94); box-shadow: 0 5px 16px rgba(22,28,45,.22); font: 800 clamp(10px, .8vw, 13px)/1.1 Inter, "PingFang SC", sans-serif; text-align: center; white-space: nowrap; pointer-events: none; transform: translate(-50%, -115%); animation: sheet-feedback-rise .9s ease-out both; }
@@ -228,6 +232,16 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 .app-shell[data-focus="true"] .legend { top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] .legend { top: calc(46% + 12px); }.app-shell[data-focus="true"] .focus-exit { display: block; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
 .app-shell[data-focus="true"] .focus-enter { display: none; }
 
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+@media (prefers-contrast: more) {
+  button, .file-button, select, input, .visualizer-card { border-color: #aebbd2; }
+  button:focus-visible, .file-button:focus-within, select:focus-visible, input:focus-visible { outline-color: #fff; }
+  .legend { color: #fff; background: rgba(0,0,0,.92); }
+}
+
 /* Large 3:2 tablets in landscape (including Xiaomi Pad-class displays).
    Android may expose different CSS-pixel sizes at different display scales,
    so this targets the shape and usable area instead of one model number. */
@@ -237,8 +251,8 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   h1 { font-size: clamp(28px, 2.5vw, 36px); }
   .status-pill { padding: 6px 10px; font-size: 12px; }
   .transport-card { gap: 8px; padding: 8px; }
-  .transport-card button, .transport-card .file-button { min-height: 38px; padding-inline: 12px; }
-  .compact-field select, .tempo-input input { height: 38px; }
+  .transport-card button, .transport-card .file-button { min-height: 46px; padding-inline: 12px; }
+  .compact-field select, .tempo-input input { height: 46px; }
   .score-strip { padding: 8px 4px 7px; }
   .score-navigator { gap: 10px; margin-bottom: 7px; padding: 6px 10px; }
   .visualizer-card { height: clamp(460px, calc(100dvh - 306px), 760px); min-height: 0; }
@@ -250,6 +264,37 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .app-shell[data-focus="true"] .visualizer-card[data-view="split"] .legend { top: calc(40% + 10px); }
   .focus-enter, .focus-exit { min-height: 48px; padding-inline: 16px; font-size: 14px; }
   .focus-icon { font-size: 21px; }
+  .legend { gap: 10px 16px; padding: 9px 12px; font-size: 13px; }
+  .legend i { width: 10px; height: 10px; }
+  .settings-panel { width: min(560px, calc(100vw - 40px)); }
+  .settings-panel button, .settings-panel input, .settings-panel select { min-height: 48px; }
+}
+
+/* Browser automation and desktop mirroring can expose the panel's physical
+   pixels as CSS pixels. Keep the same comfortable information density instead
+   of stretching a 1440 px workspace into the middle of a 3200 px panel. */
+@media (min-width: 2400px) and (min-aspect-ratio: 7 / 5) and (max-aspect-ratio: 8 / 5) {
+  .app-shell { width: min(3100px, 100%); padding: 20px clamp(28px, 2vw, 52px) 32px; }
+  .topbar { min-height: 64px; }
+  h1 { font-size: 54px; }
+  .eyebrow { font-size: 15px; }
+  .status-pill { padding: 10px 15px; font-size: 16px; }
+  .transport-card { gap: 14px; padding: 14px; font-size: 19px; }
+  .transport-card button, .transport-card .file-button, .compact-field select, .tempo-input input { min-height: 60px; }
+  .visualizer-card { height: clamp(900px, calc(100dvh - 460px), 1540px); }
+  .visualizer-card[data-view="split"] { height: clamp(900px, calc(100dvh - 460px), 1540px); grid-template-rows: minmax(360px, 30%) minmax(520px, 70%); }
+  .visualizer-card[data-view="split"] .legend { top: calc(30% + 14px); }
+  .score-strip strong { font-size: 19px; }
+  .score-strip .label, .score-navigator > small { font-size: 14px; }
+  .measure-pill { flex-basis: 52px; min-height: 38px; font-size: 14px; }
+  .focus-enter, .focus-exit { min-height: 58px; padding-inline: 20px; font-size: 17px; }
+  .settings-panel { width: min(760px, calc(100vw - 56px)); padding: 28px; font-size: 19px; }
+  .settings-panel label, .settings-panel p, .settings-panel small, .settings-panel h3, .settings-panel button { font-size: 17px; }
+  .settings-panel button, .settings-panel input, .settings-panel select { min-height: 60px; }
+  .settings-panel .eyebrow { font-size: 14px; }
+  .settings-panel h2 { font-size: 30px; }
+  .app-shell[data-focus="true"] .visualizer-card[data-view="split"] { grid-template-rows: minmax(520px, 30%) minmax(1180px, 70%); }
+  .app-shell[data-focus="true"] .visualizer-card[data-view="split"] .legend { top: calc(30% + 14px); }
 }
 
 @media (min-width: 1400px) and (min-aspect-ratio: 7 / 5) and (max-aspect-ratio: 8 / 5) {

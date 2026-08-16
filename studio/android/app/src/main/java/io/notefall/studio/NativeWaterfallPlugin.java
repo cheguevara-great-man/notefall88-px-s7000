@@ -6,7 +6,6 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.SystemClock;
 import android.view.View;
@@ -211,6 +210,7 @@ public class NativeWaterfallPlugin extends Plugin {
         private static final int RIGHT = Color.rgb(255, 79, 200);
         private static final int CORRECT = Color.rgb(101, 245, 154);
         private static final int WRONG = Color.rgb(255, 101, 79);
+        private static final long MIN_ANIMATED_FRAME_MS = 15;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path chordPath = new Path();
@@ -238,11 +238,21 @@ public class NativeWaterfallPlugin extends Plugin {
         private int dynamicsLow = 32;
         private int dynamicsHigh = 112;
         private boolean dynamicsFlat;
+        private double maximumNoteDuration;
+        private long lastAnimatedDrawMs = Long.MIN_VALUE;
+        private float cachedGradientHeight = -1;
+        private String cachedGradientTheme = "";
+        private LinearGradient backgroundGradient;
+        private LinearGradient strikeGradient;
+        private final float density;
+        private final float scaledDensity;
 
         NativeWaterfallView(Activity activity) {
             super(activity);
+            density = getResources().getDisplayMetrics().density;
+            scaledDensity = getResources().getDisplayMetrics().scaledDensity;
             setLayerType(View.LAYER_TYPE_HARDWARE, null);
-            stroke.setStrokeWidth(getResources().getDisplayMetrics().density);
+            stroke.setStrokeWidth(density);
             stroke.setStyle(Paint.Style.STROKE);
         }
 
@@ -322,6 +332,8 @@ public class NativeWaterfallPlugin extends Plugin {
             notes.sort(Comparator.comparingDouble(note -> note.start));
             beats.sort(Comparator.comparingDouble(beat -> beat.time));
             pedals.sort(Comparator.comparingDouble(pedal -> pedal.time));
+            maximumNoteDuration = 0;
+            for (NoteBar note : notes) maximumNoteDuration = Math.max(maximumNoteDuration, note.end - note.start);
             buildDynamicsProfile();
             buildPhraseMap();
             invalidate();
@@ -402,6 +414,7 @@ public class NativeWaterfallPlugin extends Plugin {
 
         void setTheme(String value) {
             theme = "aurora".equals(value) || "contrast".equals(value) ? value : "neon";
+            cachedGradientTheme = "";
             invalidate();
         }
 
@@ -435,11 +448,18 @@ public class NativeWaterfallPlugin extends Plugin {
             int width = getWidth();
             int height = getHeight();
             if (width <= 1 || height <= 1) return;
+            long realtimeMs = SystemClock.elapsedRealtime();
+            boolean animated = running || !feedback.isEmpty();
+            if (animated && lastAnimatedDrawMs != Long.MIN_VALUE
+                && realtimeMs - lastAnimatedDrawMs < MIN_ANIMATED_FRAME_MS) {
+                postInvalidateOnAnimation();
+                return;
+            }
+            if (animated) lastAnimatedDrawMs = realtimeMs;
             float keyboardHeight = height * 0.22f;
             float keyboardTop = height - keyboardHeight;
-            paint.setShader(new LinearGradient(0, 0, 0, keyboardTop,
-                themeColor(Color.rgb(9, 11, 18), Color.rgb(7, 21, 19), Color.rgb(10, 10, 10)),
-                themeColor(Color.rgb(17, 24, 39), Color.rgb(20, 36, 58), Color.rgb(32, 32, 32)), Shader.TileMode.CLAMP));
+            ensureFrameGradients(keyboardTop);
+            paint.setShader(backgroundGradient);
             canvas.drawRect(0, 0, width, keyboardTop, paint);
             paint.setShader(null);
             double now = scoreTime();
@@ -457,17 +477,30 @@ public class NativeWaterfallPlugin extends Plugin {
             if ((running || !feedback.isEmpty()) && getVisibility() == View.VISIBLE) postInvalidateOnAnimation();
         }
 
+        private void ensureFrameGradients(float keyboardTop) {
+            if (backgroundGradient != null && strikeGradient != null
+                && Math.abs(cachedGradientHeight - keyboardTop) < .5f
+                && cachedGradientTheme.equals(theme)) return;
+            cachedGradientHeight = keyboardTop;
+            cachedGradientTheme = theme;
+            backgroundGradient = new LinearGradient(0, 0, 0, keyboardTop,
+                themeColor(Color.rgb(9, 11, 18), Color.rgb(7, 21, 19), Color.rgb(10, 10, 10)),
+                themeColor(Color.rgb(17, 24, 39), Color.rgb(20, 36, 58), Color.rgb(32, 32, 32)), Shader.TileMode.CLAMP);
+            strikeGradient = new LinearGradient(0, keyboardTop - Math.max(22 * density, keyboardTop * .065f),
+                0, keyboardTop, Color.argb(0, 104, 229, 255), Color.argb(36, 104, 229, 255), Shader.TileMode.CLAMP);
+        }
+
         private void drawPedalCues(Canvas canvas, int width, float keyboardTop, double now) {
             if (pedals.isEmpty()) return;
-            float density = getResources().getDisplayMetrics().density;
             float laneX = 8 * density;
             float laneWidth = Math.max(58 * density, Math.min(104 * density, width * .078f));
             float labelSize = Math.max(10 * density, Math.min(15 * density, width * .009f));
             float boxHeight = labelSize * 1.75f;
             float[] dash = { 5 * density, 7 * density };
-            for (PedalCue cue : pedals) {
+            for (int index = lowerBoundPedals(now - .12); index < pedals.size(); index += 1) {
+                PedalCue cue = pedals.get(index);
                 double delta = cue.time - now;
-                if (delta < -.12 || delta > visibleSeconds) continue;
+                if (delta > visibleSeconds) break;
                 float y = keyboardTop - (float) (delta / visibleSeconds) * keyboardTop;
                 float imminent = 1 - Math.min(1, Math.max(0, (float) delta) / (float) Math.min(1.25, visibleSeconds));
                 int color = "up".equals(cue.kind) ? Color.rgb(121, 216, 255)
@@ -485,12 +518,12 @@ public class NativeWaterfallPlugin extends Plugin {
                 float top = Math.max(1, Math.min(keyboardTop - boxHeight - 1, y - boxHeight / 2));
                 paint.setColor(Color.argb(230, 3, 6, 12));
                 paint.setAlpha(255);
-                canvas.drawRoundRect(new RectF(laneX, top, laneX + laneWidth, top + boxHeight),
+                canvas.drawRoundRect(laneX, top, laneX + laneWidth, top + boxHeight,
                     boxHeight / 2, boxHeight / 2, paint);
                 stroke.setColor(color);
                 stroke.setAlpha((int) (255 * (.88f + imminent * .12f)));
                 stroke.setStrokeWidth(Math.max(1.2f, 1.4f * density));
-                canvas.drawRoundRect(new RectF(laneX, top, laneX + laneWidth, top + boxHeight),
+                canvas.drawRoundRect(laneX, top, laneX + laneWidth, top + boxHeight,
                     boxHeight / 2, boxHeight / 2, stroke);
                 paint.setColor(color);
                 paint.setAlpha(255);
@@ -514,7 +547,6 @@ public class NativeWaterfallPlugin extends Plugin {
 
         private void drawPhraseMap(Canvas canvas, int width, float keyboardTop, double now) {
             if (scoreDuration <= 0) return;
-            float density = getResources().getDisplayMetrics().density;
             float railWidth = Math.max(12 * density, Math.min(22 * density, width * .012f));
             float x = width - railWidth - Math.max(6 * density, width * .004f);
             float top = Math.max(12 * density, keyboardTop * .025f);
@@ -522,7 +554,7 @@ public class NativeWaterfallPlugin extends Plugin {
             float half = railWidth / 2;
             float rowHeight = height / PHRASE_MAP_BINS;
             paint.setColor(Color.argb(189, 3, 6, 12));
-            canvas.drawRoundRect(new RectF(x, top, x + railWidth, top + height), railWidth / 2, railWidth / 2, paint);
+            canvas.drawRoundRect(x, top, x + railWidth, top + height, railWidth / 2, railWidth / 2, paint);
             boolean selectedLeft = "both".equals(selectedHand) || "left".equals(selectedHand);
             boolean selectedRight = "both".equals(selectedHand) || "right".equals(selectedHand);
             int leftColor = themeColor(LEFT, Color.rgb(78, 230, 190), Color.rgb(68, 215, 255));
@@ -563,31 +595,32 @@ public class NativeWaterfallPlugin extends Plugin {
             canvas.restore();
             stroke.setColor(Color.argb(61, 210, 224, 255));
             stroke.setStrokeWidth(Math.max(1, density));
-            canvas.drawRoundRect(new RectF(x, top, x + railWidth, top + height), railWidth / 2, railWidth / 2, stroke);
+            canvas.drawRoundRect(x, top, x + railWidth, top + height, railWidth / 2, railWidth / 2, stroke);
             paint.setAlpha(255);
         }
 
         private void drawTimeline(Canvas canvas, int width, float keyboardTop, double now) {
             if (beats.isEmpty()) {
                 stroke.setColor(Color.argb(18, 255, 255, 255));
-                stroke.setStrokeWidth(getResources().getDisplayMetrics().density);
+                stroke.setStrokeWidth(density);
                 for (int second = 0; second <= 5; second += 1) {
                     float y = keyboardTop - (float) (second / visibleSeconds) * keyboardTop;
                     canvas.drawLine(0, y, width, y, stroke);
                 }
                 return;
             }
-            for (BeatLine marker : beats) {
+            for (int index = lowerBoundBeats(now - .15); index < beats.size(); index += 1) {
+                BeatLine marker = beats.get(index);
                 double delta = marker.time - now;
-                if (delta < -0.15 || delta > visibleSeconds) continue;
+                if (delta > visibleSeconds) break;
                 float y = keyboardTop - (float) (delta / visibleSeconds) * keyboardTop;
                 stroke.setColor(marker.accent ? Color.argb(97, 139, 167, 255) : Color.argb(23, 255, 255, 255));
-                stroke.setStrokeWidth((marker.accent ? 1.5f : 1f) * getResources().getDisplayMetrics().density);
+                stroke.setStrokeWidth((marker.accent ? 1.5f : 1f) * density);
                 canvas.drawLine(0, y, width, y, stroke);
                 if (marker.accent && y > 18) {
                     paint.setColor(Color.rgb(196, 210, 255));
                     paint.setAlpha(184);
-                    paint.setTextSize(11 * getResources().getDisplayMetrics().scaledDensity);
+                    paint.setTextSize(11 * scaledDensity);
                     paint.setFakeBoldText(true);
                     canvas.drawText("M" + (marker.measure + 1), 10, y - 5, paint);
                     paint.setFakeBoldText(false);
@@ -600,7 +633,7 @@ public class NativeWaterfallPlugin extends Plugin {
             int color = themeColor(Color.rgb(190, 244, 255), Color.rgb(221, 255, 232), Color.WHITE);
             stroke.setColor(color);
             stroke.setAlpha(20);
-            stroke.setStrokeWidth(getResources().getDisplayMetrics().density);
+            stroke.setStrokeWidth(density);
             for (int note = 0; note < keys.length; note += 1) {
                 KeyGeometry key = keys[note];
                 if (key == null || note % 12 != 0) continue;
@@ -611,15 +644,14 @@ public class NativeWaterfallPlugin extends Plugin {
         }
 
         private void drawStrikeZone(Canvas canvas, int width, float keyboardTop) {
-            float zone = Math.max(22 * getResources().getDisplayMetrics().density, keyboardTop * .065f);
-            paint.setShader(new LinearGradient(0, keyboardTop - zone, 0, keyboardTop,
-                Color.argb(0, 104, 229, 255), Color.argb(36, 104, 229, 255), Shader.TileMode.CLAMP));
+            float zone = Math.max(22 * density, keyboardTop * .065f);
+            paint.setShader(strikeGradient);
             canvas.drawRect(0, keyboardTop - zone, width, keyboardTop, paint);
             paint.setShader(null);
             paint.setColor(themeColor(Color.rgb(190, 244, 255), Color.rgb(221, 255, 232), Color.WHITE));
             paint.setAlpha(230);
             canvas.drawRect(0, keyboardTop - 2, width, keyboardTop, paint);
-            paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
+            paint.setTextSize(10 * scaledDensity);
             paint.setFakeBoldText(true);
             canvas.drawText("NOW", 10, keyboardTop - 8, paint);
             paint.setFakeBoldText(false);
@@ -652,11 +684,10 @@ public class NativeWaterfallPlugin extends Plugin {
                         ? themeColor(WRONG, Color.rgb(255, 154, 95), Color.rgb(255, 89, 77))
                         : Color.rgb(255, 210, 76);
                 float x = (key.x + key.width / 2f) * width;
-                float y = keyboardTop - 18 * getResources().getDisplayMetrics().density
-                    - progress * 44 * getResources().getDisplayMetrics().density;
+                float y = keyboardTop - 18 * density - progress * 44 * density;
                 paint.setColor(color);
                 paint.setAlpha((int) ((1f - progress) * 242));
-                paint.setTextSize(20 * getResources().getDisplayMetrics().scaledDensity);
+                paint.setTextSize(20 * scaledDensity);
                 paint.setFakeBoldText(true);
                 paint.setTextAlign(Paint.Align.CENTER);
                 String symbol = early ? "↑" : late ? "↓" : timed ? "●"
@@ -664,7 +695,6 @@ public class NativeWaterfallPlugin extends Plugin {
                     : "hit".equals(item.kind) ? "✓" : "wrong".equals(item.kind) ? "×" : "!";
                 canvas.drawText(symbol, x, y, paint);
                 if (timed) {
-                    float density = getResources().getDisplayMetrics().density;
                     float offset = Math.max(-1, Math.min(1, item.timingMs.floatValue() / 250f));
                     float markerY = keyboardTop - 24 * density + offset * 12 * density;
                     stroke.setColor(color);
@@ -678,33 +708,32 @@ public class NativeWaterfallPlugin extends Plugin {
                         String label = early ? "早 " + Math.min(999, Math.abs(Math.round(item.timingMs)))
                             : late ? "晚 " + Math.min(999, Math.abs(Math.round(item.timingMs))) : "准";
                         paint.setAlpha((int) ((1f - progress) * 230));
-                        paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
+                        paint.setTextSize(10 * scaledDensity);
                         canvas.drawText(label, x, y - 16 * density, paint);
                     }
                 }
                 if ((releaseGood || releaseEarly) && item.timingMs != null
-                    && key.width * width >= 26 * getResources().getDisplayMetrics().density) {
+                    && key.width * width >= 26 * density) {
                     String label = releaseEarly
                         ? "短 " + Math.max(0, Math.min(999, Math.round(item.timingMs))) + "%"
                         : "时值";
                     paint.setAlpha((int) ((1f - progress) * 230));
-                    paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
-                    canvas.drawText(label, x, y - 16 * getResources().getDisplayMetrics().density, paint);
+                    paint.setTextSize(10 * scaledDensity);
+                    canvas.drawText(label, x, y - 16 * density, paint);
                 }
                 stroke.setColor(color);
                 stroke.setAlpha((int) ((1f - progress) * 140));
-                stroke.setStrokeWidth(1.5f * getResources().getDisplayMetrics().density);
-                canvas.drawCircle(x, keyboardTop - 8 * getResources().getDisplayMetrics().density,
-                    (5 + progress * 13) * getResources().getDisplayMetrics().density, stroke);
+                stroke.setStrokeWidth(1.5f * density);
+                canvas.drawCircle(x, keyboardTop - 8 * density, (5 + progress * 13) * density, stroke);
                 if (!"contrast".equals(theme)) {
                     for (int spark = 0; spark < 6; spark += 1) {
                         double angle = spark * Math.PI / 3 + item.note * .17;
-                        float distance = (7 + progress * (12 + (spark % 3) * 5)) * getResources().getDisplayMetrics().density;
+                        float distance = (7 + progress * (12 + (spark % 3) * 5)) * density;
                         paint.setAlpha((int) ((1f - progress) * (140 - spark * 11)));
                         float sx = x + (float) Math.cos(angle) * distance;
-                        float sy = keyboardTop - 8 * getResources().getDisplayMetrics().density
+                        float sy = keyboardTop - 8 * density
                             + (float) Math.sin(angle) * distance * .65f;
-                        canvas.drawCircle(sx, sy, Math.max(1, 2.5f - progress * 1.5f) * getResources().getDisplayMetrics().density, paint);
+                        canvas.drawCircle(sx, sy, Math.max(1, 2.5f - progress * 1.5f) * density, paint);
                     }
                 }
                 paint.setTextAlign(Paint.Align.LEFT);
@@ -715,17 +744,21 @@ public class NativeWaterfallPlugin extends Plugin {
         }
 
         private void drawNotes(Canvas canvas, int width, float keyboardTop, double now) {
-            int first = lowerBound(now - 0.36);
+            int first = lowerBound(now - maximumNoteDuration - .08);
             for (int index = first; index < notes.size(); index += 1) {
                 NoteBar note = notes.get(index);
                 double delta = note.start - now;
                 if (delta > visibleSeconds) break;
                 KeyGeometry key = keys[note.note];
-                if (key == null || note.end < now - 0.35) continue;
+                if (key == null || note.end < now - .08) continue;
                 float x = key.x * width + 1;
                 float noteWidth = Math.max(3, key.width * width - 2);
-                float bottom = keyboardTop - (float) (delta / visibleSeconds) * keyboardTop;
-                float noteHeight = Math.max(5, (float) ((note.end - note.start) / visibleSeconds) * keyboardTop);
+                float rawBottom = keyboardTop - (float) (delta / visibleSeconds) * keyboardTop;
+                float rawHeight = Math.max(5, (float) ((note.end - note.start) / visibleSeconds) * keyboardTop);
+                float bottom = Math.min(keyboardTop, rawBottom);
+                float noteTop = Math.max(0, rawBottom - rawHeight);
+                float noteHeight = Math.max(2, bottom - noteTop);
+                if (noteHeight <= 2 && note.end < now) continue;
                 int color = note.left
                     ? themeColor(LEFT, Color.rgb(78, 230, 190), Color.rgb(68, 215, 255))
                     : themeColor(RIGHT, Color.rgb(184, 156, 255), Color.rgb(255, 207, 63));
@@ -746,23 +779,23 @@ public class NativeWaterfallPlugin extends Plugin {
                     paint.setShader(null);
                     paint.setColor(color);
                     paint.setAlpha((int) (20 + arrival * (26 + dynamics * 46)));
-                    canvas.drawRoundRect(new RectF(x - 3, bottom - noteHeight - 3, x + noteWidth + 3, bottom + 3), radius + 3, radius + 3, paint);
+                    canvas.drawRoundRect(x - 3, noteTop - 3, x + noteWidth + 3, bottom + 3,
+                        radius + 3, radius + 3, paint);
                 }
-                paint.setShader(new LinearGradient(0, bottom - noteHeight, 0, bottom, color,
+                paint.setShader(new LinearGradient(0, noteTop, 0, bottom, color,
                     note.left
                         ? themeColor(Color.rgb(17, 124, 163), Color.rgb(22, 135, 118), Color.rgb(20, 125, 163))
                         : themeColor(Color.rgb(182, 36, 138), Color.rgb(112, 80, 186), Color.rgb(181, 122, 8)), Shader.TileMode.CLAMP));
                 int bodyAlpha = selected ? (int) (158 + dynamics * 87) : 41;
                 paint.setAlpha(bodyAlpha);
-                canvas.drawRoundRect(new RectF(x, bottom - noteHeight, x + noteWidth, bottom), radius, radius, paint);
+                canvas.drawRoundRect(x, noteTop, x + noteWidth, bottom, radius, radius, paint);
                 paint.setShader(null);
                 if (noteWidth >= 7) {
                     paint.setColor(Color.WHITE);
                     paint.setAlpha(selected ? (int) (bodyAlpha * (.2f + dynamics * .46f)) : 16);
-                    canvas.drawRect(x + 1, bottom - noteHeight + 2,
+                    canvas.drawRect(x + 1, noteTop + 2,
                         x + 1 + Math.max(1, noteWidth * (.1f + dynamics * .14f)), bottom - 2, paint);
                 }
-                float density = getResources().getDisplayMetrics().density;
                 float cap = Math.max(1.5f * density, Math.min(6 * density, noteWidth * (.1f + dynamics * .18f)));
                 paint.setColor(Color.WHITE);
                 paint.setAlpha(selected ? (int) (255 * (.42f + dynamics * .53f)) : 20);
@@ -774,7 +807,6 @@ public class NativeWaterfallPlugin extends Plugin {
         private void drawChordGuides(Canvas canvas, int width, float keyboardTop, double now) {
             int first = lowerBound(now - .061);
             double horizon = Math.min(1.8, visibleSeconds);
-            float density = getResources().getDisplayMetrics().density;
             int index = first;
             while (index < notes.size()) {
                 NoteBar base = notes.get(index);
@@ -853,15 +885,37 @@ public class NativeWaterfallPlugin extends Plugin {
             stroke.setAlpha(255);
         }
 
-        private int lowerBound(double earliestEnd) {
+        private int lowerBound(double startTime) {
             int low = 0;
             int high = notes.size();
             while (low < high) {
                 int middle = (low + high) >>> 1;
-                if (notes.get(middle).start < earliestEnd) low = middle + 1;
+                if (notes.get(middle).start < startTime) low = middle + 1;
                 else high = middle;
             }
-            return Math.max(0, low - 16);
+            return low;
+        }
+
+        private int lowerBoundBeats(double startTime) {
+            int low = 0;
+            int high = beats.size();
+            while (low < high) {
+                int middle = (low + high) >>> 1;
+                if (beats.get(middle).time < startTime) low = middle + 1;
+                else high = middle;
+            }
+            return low;
+        }
+
+        private int lowerBoundPedals(double startTime) {
+            int low = 0;
+            int high = pedals.size();
+            while (low < high) {
+                int middle = (low + high) >>> 1;
+                if (pedals.get(middle).time < startTime) low = middle + 1;
+                else high = middle;
+            }
+            return low;
         }
 
         private void drawLoop(Canvas canvas, int width, float keyboardTop, double now, Double boundary, String label) {
@@ -870,10 +924,10 @@ public class NativeWaterfallPlugin extends Plugin {
             if (delta < 0 || delta > visibleSeconds) return;
             float y = keyboardTop - (float) (delta / visibleSeconds) * keyboardTop;
             stroke.setColor(Color.rgb(255, 210, 76));
-            stroke.setStrokeWidth(2 * getResources().getDisplayMetrics().density);
+            stroke.setStrokeWidth(2 * density);
             canvas.drawLine(0, y, width, y, stroke);
             paint.setColor(Color.rgb(255, 210, 76));
-            paint.setTextSize(12 * getResources().getDisplayMetrics().scaledDensity);
+            paint.setTextSize(12 * scaledDensity);
             paint.setFakeBoldText(true);
             canvas.drawText(label, 10, Math.max(18, y - 6), paint);
             paint.setFakeBoldText(false);
@@ -897,7 +951,7 @@ public class NativeWaterfallPlugin extends Plugin {
                 canvas.drawRect(left, top, right, top + height, stroke);
                 if (note % 12 == 0 && key.width * width >= 18) {
                     paint.setColor(Color.rgb(83, 96, 112));
-                    paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
+                    paint.setTextSize(10 * scaledDensity);
                     paint.setFakeBoldText(true);
                     canvas.drawText("C" + (note / 12 - 1), left + 3, top + height - 8, paint);
                     paint.setFakeBoldText(false);

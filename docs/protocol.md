@@ -32,8 +32,11 @@ ESP 返回 `status`；只有授权会话才返回 `calibration`、逐键 MIDI �
 - `usbOut`、`usbOutEndpoint`、`usbOutPacketSize`；
 - `usbPackets`、`usbDropped`、`usbMalformed`、`usbErrors`、`usbLastError`；其中 `usbMalformed` 只统计 CIN/status/data 边界不一致的坏包，合法但产品不消费的 SysEx、时钟与 Active Sensing 会被安全忽略而不误报；`usbLastError` 是不含凭据的最近枚举/传输原因，并随验收报告导出；
 - `usbOutPackets`、`usbOutDropped`、`usbOutErrors`、`usbOutQueued`、`usbOutputMirrorCandidates`、`usbOutOwned`；
-- `ledInputLatencyLastUs`、`ledInputLatencyAvgUs`、`ledInputLatencyMaxUs`、`ledInputLatencySamples`；
-- `webMidiDropped`、`brightness`、`offset`、`reversed`、内存、NVS 状态、启动复位原因、运行时间和 RSSI。
+- `usbInputQueueDepth` / `usbInputQueueHighWater`、`usbOutputQueueDepth` / `usbOutputQueueHighWater`、`usbLargestInputBatch`、`usbInputResubmitRetries` 与两个 USB 任务的看门狗状态；
+- `midiDispatchLatency*`（USB 回调到实时任务消费）、`ledInputLatency*`（USB 回调到 SPI 帧完成）；
+- `ledFrames`、`ledFramesSkipped`、`ledSpiLastUs`、`ledSpiMaxUs`、`ledFrameBytes`；
+- `realtimeReady`、`realtimeWatchdog`、`realtimeHeartbeatAgeMs`、`realtimeWakeups`、`realtimeStackFreeBytes`；
+- `webMidiQueueDepth`、`webMidiQueueHighWater`、`webMidiDropped`、`webMidiResyncs`、`brightness`、`offset`、`reversed`、内存、NVS 状态、启动复位原因、运行时间和 RSSI。
 
 `resetReason` 使用稳定字符串，例如 `power-on`、`software-reset`、`panic`、`watchdog` 或 `brownout`。它记录当前这次启动的来源；若满亮度或强奏测试后出现 `brownout`/`watchdog`，应先排查供电、短路、堆栈或阻塞，不得把自动重启当作正常恢复。
 
@@ -92,7 +95,9 @@ ESP 把 USB MIDI 标准化为：
 
 这个同步只消除网络到达抖动对网页判定和录音时间线的污染，不等同于按键到灯光延迟。家庭 Wi-Fi 上的 WebSocket 控制使用当前热点密码做会话再认证；家庭 Wi-Fi 凭据本身仍不能通过 WebSocket 修改。`POST /api/wifi` 只接受设备 SoftAP 本地请求，并在 `X-NoteFall-Admin` 头再次核对当前热点密码；SSID 为 1–32 个 UTF-8 字节，密码为空或 8–63 个 UTF-8 字节。热点新密码同样按 UTF-8 字节计数，网页与固件使用同一边界，避免多字节字符在两端判定不一致。ESP 始终保留 `NoteFall-88` 热点作为恢复入口。
 
-`ledInputLatency*` 测量 USB Host 传输回调收到事件到对应 SPI 灯帧发送完毕的 ESP 内部区间。固件先排空同一批 USB 事件，再只发送一帧，所以和弦不会逐音重复刷灯；该帧不再等待原来的 10 ms 周期，并且先于 WebSocket 广播。浏览器事件使用独立 64 项固定队列，溢出计入 `webMidiDropped`，不会反向阻塞或破坏实体灯。此指标不包含 PX-S7000 自身键盘扫描、USB 传输前半段与 LED 光电响应，不能替代 120 fps 端到端视频，但能定位固件排队或任务阻塞。
+`midiDispatchLatency*` 测量 USB Host 传输回调收到事件到固定实时任务开始消费的区间；`ledInputLatency*` 继续测到对应 SPI 灯帧发送完毕。USB daemon 和 MIDI client 已拆为两个任务，client 事件等待上限由 20 ms 缩到 5 ms；收到包后直接唤醒 Core 0 实时任务。固件先排空同一批 USB 事件，再只发送一帧，所以和弦不会逐音重复刷灯；该帧先于任何 WebSocket 广播，网络和 JSON 只在 Core 1 的 Arduino 主任务执行。
+
+176 灯 APA102 帧固定为 719 字节（4 字节起始、704 字节像素、11 字节结束），仍以 8 MHz、BGR、同一 5-bit 全局亮度发送，理论线时约 719 µs。实现由 719 次逐字节调用改为一次硬件 SPI 批量调用；状态未改变时不再每 10 ms 重发相同帧。USB client 先把整个 transfer 入队再只唤醒一次优先级更高的实时任务，因此同批和弦仍合成一帧，持续输入也不会饿死灯光任务。浏览器事件使用独立 128 项固定队列，每轮最多发 12 项，溢出计入 `webMidiDropped` 并用现有全通道 `control` CC64/66/67/123 加当前按键 `midi` 事件重同步；因此旧版协议 v6 客户端也能恢复且不会因漏掉 Note Off 或踏板释放永久挂键。此指标不包含 PX-S7000 自身键盘扫描、USB 传输前半段与 LED 光电响应，不能替代 120 fps 端到端视频，但能定位固件、SPI、网络或任务阻塞。
 
 ## 演进规则
 

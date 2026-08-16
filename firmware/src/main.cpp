@@ -9,10 +9,17 @@
 #include <WiFi.h>
 
 #include <algorithm>
+#include <atomic>
+#include <cstdio>
+#include <cstring>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <esp_system.h>
+#include <esp_task_wdt.h>
 #include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/portmacro.h>
+#include <freertos/task.h>
 
 #include "Apa102Strip.h"
 #include "UsbMidiHost.h"
@@ -20,6 +27,7 @@
 #include "control_policy.h"
 #include "layout_generated.h"
 #include "midi_core.h"
+#include "realtime_core.h"
 
 namespace {
 
@@ -79,7 +87,7 @@ Preferences preferences;
 NoteState notes[kNoteCount];
 notefall::midi::HighResolutionVelocityTracker velocityTracker;
 
-bool pianoConnected = false;
+std::atomic<bool> pianoConnected{false};
 bool mdnsStarted = false;
 bool restartRequested = false;
 bool preferencesReady = false;
@@ -90,13 +98,12 @@ int8_t pixelOffset = 0;
 int8_t keyPixelOffsets[kNoteCount]{};
 bool stripReversed = false;
 uint32_t lastTargetMs = 0;
-uint32_t lastLedRefreshMs = 0;
 uint32_t lastStatusMs = 0;
 int16_t testNote = -1;
 uint32_t testUntilMs = 0;
 constexpr size_t kScheduledMidiCapacity = 256;
 constexpr size_t kOutputMirrorProbeCapacity = 48;
-constexpr size_t kBrowserMidiCapacity = 64;
+constexpr size_t kBrowserMidiCapacity = 128;
 ScheduledMidiMessage scheduledMidi[kScheduledMidiCapacity]{};
 size_t scheduledMidiCount = 0;
 OutputMirrorProbe outputMirrorProbes[kOutputMirrorProbeCapacity]{};
@@ -110,14 +117,29 @@ bool webControlAuthorized[WEBSOCKETS_SERVER_CLIENT_MAX]{};
 bool webAccessPointClient[WEBSOCKETS_SERVER_CLIENT_MAX]{};
 uint32_t webMessagesRejected = 0;
 uint32_t webAuthRejected = 0;
-BrowserMidiEvent browserMidiEvents[kBrowserMidiCapacity]{};
-size_t browserMidiCount = 0;
+notefall::realtime::FixedQueue<BrowserMidiEvent, kBrowserMidiCapacity> browserMidiEvents;
 uint32_t browserMidiDropped = 0;
+uint32_t browserMidiResyncs = 0;
+uint16_t browserMidiQueueHighWater = 0;
+bool browserMidiResyncPending = false;
 uint64_t pendingLedInputUs = 0;
-uint64_t ledInputLatencyTotalUs = 0;
-uint32_t ledInputLatencyLastUs = 0;
-uint32_t ledInputLatencyMaxUs = 0;
-uint32_t ledInputLatencySamples = 0;
+notefall::realtime::LatencyAccumulator ledInputLatency;
+notefall::realtime::LatencyAccumulator midiDispatchLatency;
+portMUX_TYPE ledStateMux = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE browserMidiMux = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE realtimeMetricsMux = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE outputMirrorMux = portMUX_INITIALIZER_UNLOCKED;
+TaskHandle_t realtimeTaskHandle = nullptr;
+bool ledDirty = true;
+std::atomic<bool> realtimeTaskReady{false};
+std::atomic<bool> realtimeWatchdogArmed{false};
+std::atomic<bool> outputResetRequested{false};
+std::atomic<bool> statusBroadcastRequested{false};
+std::atomic<uint32_t> realtimeHeartbeatMs{0};
+std::atomic<uint32_t> realtimeWakeups{0};
+std::atomic<uint32_t> ledRenderGeneration{0};
+uint32_t mainLoopLastUs = 0;
+uint32_t mainLoopMaxUs = 0;
 String activeApPassword;
 String controlSessionToken;
 WebUpdateState webUpdate;
@@ -131,6 +153,10 @@ constexpr int8_t kMaxKeyPixelOffset = 4;
 constexpr uint32_t kMaxMidiScheduleDelayMs = 60000;
 constexpr uint32_t kOutputMirrorProbeMs = 80;
 constexpr size_t kMaxWebMessageBytes = 8192;
+constexpr size_t kBrowserMidiFlushBatch = 12;
+constexpr uint32_t kRealtimeIdlePollMs = 5;
+constexpr uint32_t kRealtimeTaskStackBytes = 6144;
+constexpr UBaseType_t kRealtimeTaskPriority = 7;
 constexpr char kUpdateAuthHeader[] = "X-NoteFall-Admin";
 
 template <typename T>
@@ -177,11 +203,6 @@ bool constantTimeEquals(const String& first, const String& second) {
 
 size_t noteIndex(uint8_t note) { return static_cast<size_t>(note - kFirstMidiNote); }
 
-int mappedPixel(uint8_t note) {
-  return notefall::midi::mapPixel(note, kFirstMidiNote, kLastMidiNote, kPixelCount,
-                                  kPixelByNote, keyPixelOffsets, pixelOffset, stripReversed);
-}
-
 bool timeReached(uint32_t now, uint32_t target) {
   return notefall::midi::timeReached(now, target);
 }
@@ -193,15 +214,18 @@ bool validOutputMessage(uint8_t status, uint8_t data1, uint8_t data2) {
 }
 
 void registerOutputMirrorProbe(uint8_t status, uint8_t data1, uint8_t data2, uint32_t now) {
+  portENTER_CRITICAL(&outputMirrorMux);
   OutputMirrorProbe& probe = outputMirrorProbes[nextOutputMirrorProbe];
   probe.expiresMs = now + kOutputMirrorProbeMs;
   probe.status = status;
   probe.data1 = data1;
   probe.data2 = data2;
   nextOutputMirrorProbe = (nextOutputMirrorProbe + 1) % kOutputMirrorProbeCapacity;
+  portEXIT_CRITICAL(&outputMirrorMux);
 }
 
 void observeOutputMirrorCandidate(uint8_t status, uint8_t data1, uint8_t data2, uint32_t now) {
+  portENTER_CRITICAL(&outputMirrorMux);
   for (auto& probe : outputMirrorProbes) {
     if (probe.expiresMs == 0 || timeReached(now, probe.expiresMs)) {
       probe.expiresMs = 0;
@@ -217,9 +241,11 @@ void observeOutputMirrorCandidate(uint8_t status, uint8_t data1, uint8_t data2, 
     if (exact || equivalentNoteOff) {
       probe.expiresMs = 0;
       ++midiOutputMirrorCandidates;
+      portEXIT_CRITICAL(&outputMirrorMux);
       return;
     }
   }
+  portEXIT_CRITICAL(&outputMirrorMux);
 }
 
 bool scheduleMidiMessage(uint32_t dueMs, uint8_t status, uint8_t data1, uint8_t data2) {
@@ -237,7 +263,9 @@ bool scheduleMidiMessage(uint32_t dueMs, uint8_t status, uint8_t data1, uint8_t 
 
 void panicMidiOutput() {
   scheduledMidiCount = 0;
+  portENTER_CRITICAL(&outputMirrorMux);
   for (auto& probe : outputMirrorProbes) probe.expiresMs = 0;
+  portEXIT_CRITICAL(&outputMirrorMux);
   usbMidi.panic();
 }
 
@@ -249,58 +277,94 @@ void processScheduledMidi() {
     return;
   }
   const uint32_t now = millis();
-  size_t index = 0;
-  while (index < scheduledMidiCount) {
+  size_t retained = 0;
+  const size_t originalCount = scheduledMidiCount;
+  for (size_t index = 0; index < originalCount; ++index) {
     const ScheduledMidiMessage message = scheduledMidi[index];
-    if (!timeReached(now, message.dueMs)) {
-      ++index;
-      continue;
+    const bool due = timeReached(now, message.dueMs);
+    const bool sent = due && usbMidi.sendMidiMessage(
+        message.status, message.data1, message.data2);
+    if (sent) {
+      registerOutputMirrorProbe(message.status, message.data1, message.data2, now);
+    } else {
+      scheduledMidi[retained++] = message;
     }
-    if (!usbMidi.sendMidiMessage(message.status, message.data1, message.data2)) {
-      ++index;
-      continue;
-    }
-    registerOutputMirrorProbe(message.status, message.data1, message.data2, now);
-    for (size_t move = index + 1; move < scheduledMidiCount; ++move) {
-      scheduledMidi[move - 1] = scheduledMidi[move];
-    }
-    --scheduledMidiCount;
   }
+  scheduledMidiCount = retained;
+}
+
+void notifyRealtime() {
+  const TaskHandle_t task = realtimeTaskHandle;
+  if (task != nullptr) xTaskNotifyGive(task);
 }
 
 void clearTargets() {
+  portENTER_CRITICAL(&ledStateMux);
   for (auto& note : notes) note.target = false;
+  lastTargetMs = 0;
+  ledDirty = true;
+  portEXIT_CRITICAL(&ledStateMux);
+  notifyRealtime();
 }
 
-void renderStrip() {
-  strip.clear();
+bool renderStrip() {
+  NoteState snapshot[kNoteCount];
+  int8_t offsetSnapshot[kNoteCount];
+  uint8_t brightnessSnapshot = 1;
+  int8_t globalOffsetSnapshot = 0;
+  int16_t testNoteSnapshot = -1;
+  bool reversedSnapshot = false;
   const uint32_t now = millis();
-  if (lastTargetMs != 0 && now - lastTargetMs > kTargetStaleMs) {
-    clearTargets();
-    lastTargetMs = 0;
-  }
-  if (testNote >= 0 && now >= testUntilMs) testNote = -1;
 
+  portENTER_CRITICAL(&ledStateMux);
+  if (lastTargetMs != 0 && now - lastTargetMs > kTargetStaleMs) {
+    for (auto& note : notes) note.target = false;
+    lastTargetMs = 0;
+    ledDirty = true;
+  }
+  if (testNote >= 0 && timeReached(now, testUntilMs)) {
+    testNote = -1;
+    ledDirty = true;
+  }
+  if (!ledDirty) {
+    portEXIT_CRITICAL(&ledStateMux);
+    return false;
+  }
+  ledDirty = false;
+  std::memcpy(snapshot, notes, sizeof(snapshot));
+  std::memcpy(offsetSnapshot, keyPixelOffsets, sizeof(offsetSnapshot));
+  brightnessSnapshot = brightness;
+  globalOffsetSnapshot = pixelOffset;
+  testNoteSnapshot = testNote;
+  reversedSnapshot = stripReversed;
+  portEXIT_CRITICAL(&ledStateMux);
+
+  strip.clear();
   for (uint8_t midiNote = kFirstMidiNote; midiNote <= kLastMidiNote; ++midiNote) {
     const size_t index = noteIndex(midiNote);
-    const int pixel = mappedPixel(midiNote);
+    const int pixel = notefall::midi::mapPixel(
+        midiNote, kFirstMidiNote, kLastMidiNote, kPixelCount, kPixelByNote,
+        offsetSnapshot, globalOffsetSnapshot, reversedSnapshot);
     if (pixel < 0) continue;
     Rgb color{};
-    if (notes[index].target) color = notes[index].hand == 0 ? kLeftTarget : kRightTarget;
-    if (notes[index].pressed) color = notes[index].target ? kCorrect : kWrong;
-    if (midiNote == testNote) color = kTest;
+    if (snapshot[index].target) {
+      color = snapshot[index].hand == 0 ? kLeftTarget : kRightTarget;
+    }
+    if (snapshot[index].pressed) color = snapshot[index].target ? kCorrect : kWrong;
+    if (midiNote == testNoteSnapshot) color = kTest;
     strip.setPixel(static_cast<size_t>(pixel), color);
   }
-  strip.show(std::min<uint8_t>(brightness, kMaxGlobalBrightness));
+  const bool transmitted = strip.show(
+      std::min<uint8_t>(brightnessSnapshot, kMaxGlobalBrightness));
   if (pendingLedInputUs != 0) {
     const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - pendingLedInputUs;
-    const uint32_t sample = static_cast<uint32_t>(std::min<uint64_t>(elapsed, UINT32_MAX));
-    ledInputLatencyLastUs = sample;
-    ledInputLatencyMaxUs = std::max(ledInputLatencyMaxUs, sample);
-    ledInputLatencyTotalUs += sample;
-    ++ledInputLatencySamples;
+    portENTER_CRITICAL(&realtimeMetricsMux);
+    ledInputLatency.observe(elapsed);
+    portEXIT_CRITICAL(&realtimeMetricsMux);
     pendingLedInputUs = 0;
   }
+  ledRenderGeneration.fetch_add(1, std::memory_order_release);
+  return transmitted;
 }
 
 void sendStatus(uint8_t client = 255) {
@@ -311,6 +375,27 @@ void sendStatus(uint8_t client = 255) {
     return;
   }
   const auto usb = usbMidi.diagnostics();
+  const auto led = strip.diagnostics();
+  notefall::realtime::LatencySnapshot ledLatency;
+  notefall::realtime::LatencySnapshot dispatchLatency;
+  portENTER_CRITICAL(&realtimeMetricsMux);
+  ledLatency = ledInputLatency.snapshot();
+  dispatchLatency = midiDispatchLatency.snapshot();
+  portEXIT_CRITICAL(&realtimeMetricsMux);
+  uint32_t mirrorCandidates = 0;
+  portENTER_CRITICAL(&outputMirrorMux);
+  mirrorCandidates = midiOutputMirrorCandidates;
+  portEXIT_CRITICAL(&outputMirrorMux);
+  uint32_t webMidiDroppedSnapshot = 0;
+  uint32_t webMidiResyncsSnapshot = 0;
+  uint16_t webMidiDepth = 0;
+  uint16_t webMidiHighWater = 0;
+  portENTER_CRITICAL(&browserMidiMux);
+  webMidiDroppedSnapshot = browserMidiDropped;
+  webMidiResyncsSnapshot = browserMidiResyncs;
+  webMidiDepth = static_cast<uint16_t>(browserMidiEvents.size());
+  webMidiHighWater = browserMidiQueueHighWater;
+  portEXIT_CRITICAL(&browserMidiMux);
   JsonDocument doc;
   doc["t"] = "status";
   doc["protocol"] = kProtocolVersion;
@@ -322,7 +407,7 @@ void sendStatus(uint8_t client = 255) {
   if (webControlAuthorized[client] && !webAccessPointClient[client]) {
     doc["controlToken"] = controlSessionToken;
   }
-  doc["piano"] = pianoConnected;
+  doc["piano"] = pianoConnected.load();
   doc["clients"] = webClients;
   doc["brightness"] = brightness;
   doc["offset"] = pixelOffset;
@@ -352,17 +437,44 @@ void sendStatus(uint8_t client = 255) {
   doc["usbOutDropped"] = usb.outputPacketsDropped + midiScheduleDropped;
   doc["usbOutErrors"] = usb.outputTransferErrors;
   doc["usbOutQueued"] = scheduledMidiCount;
-  doc["usbOutputMirrorCandidates"] = midiOutputMirrorCandidates;
+  doc["usbInputQueueDepth"] = usb.inputQueueDepth;
+  doc["usbInputQueueHighWater"] = usb.inputQueueHighWater;
+  doc["usbOutputQueueDepth"] = usb.outputQueueDepth;
+  doc["usbOutputQueueHighWater"] = usb.outputQueueHighWater;
+  doc["usbLargestInputBatch"] = usb.largestInputBatch;
+  doc["usbInputResubmitRetries"] = usb.inputResubmitRetries;
+  doc["usbClientWatchdog"] = usb.clientWatchdogArmed;
+  doc["usbDaemonWatchdog"] = usb.daemonWatchdogArmed;
+  doc["usbOutputMirrorCandidates"] = mirrorCandidates;
   doc["usbOutOwned"] = midiOutOwner >= 0;
   doc["webRejected"] = webMessagesRejected;
   doc["webAuthRejected"] = webAuthRejected;
-  doc["webMidiDropped"] = browserMidiDropped;
-  doc["ledInputLatencyLastUs"] = ledInputLatencyLastUs;
-  doc["ledInputLatencyAvgUs"] = ledInputLatencySamples == 0
+  doc["webMidiDropped"] = webMidiDroppedSnapshot;
+  doc["webMidiResyncs"] = webMidiResyncsSnapshot;
+  doc["webMidiQueueDepth"] = webMidiDepth;
+  doc["webMidiQueueHighWater"] = webMidiHighWater;
+  doc["midiDispatchLatencyLastUs"] = dispatchLatency.lastUs;
+  doc["midiDispatchLatencyAvgUs"] = dispatchLatency.averageUs;
+  doc["midiDispatchLatencyMaxUs"] = dispatchLatency.maxUs;
+  doc["midiDispatchLatencySamples"] = dispatchLatency.samples;
+  doc["ledInputLatencyLastUs"] = ledLatency.lastUs;
+  doc["ledInputLatencyAvgUs"] = ledLatency.averageUs;
+  doc["ledInputLatencyMaxUs"] = ledLatency.maxUs;
+  doc["ledInputLatencySamples"] = ledLatency.samples;
+  doc["ledFrames"] = led.framesSent;
+  doc["ledFramesSkipped"] = led.unchangedFramesSkipped;
+  doc["ledSpiLastUs"] = led.lastTransferUs;
+  doc["ledSpiMaxUs"] = led.maxTransferUs;
+  doc["ledFrameBytes"] = led.frameBytes;
+  doc["realtimeReady"] = realtimeTaskReady.load();
+  doc["realtimeWatchdog"] = realtimeWatchdogArmed.load();
+  doc["realtimeHeartbeatAgeMs"] = millis() - realtimeHeartbeatMs.load();
+  doc["realtimeWakeups"] = realtimeWakeups.load();
+  doc["realtimeStackFreeBytes"] = realtimeTaskHandle == nullptr
       ? 0
-      : static_cast<uint32_t>(ledInputLatencyTotalUs / ledInputLatencySamples);
-  doc["ledInputLatencyMaxUs"] = ledInputLatencyMaxUs;
-  doc["ledInputLatencySamples"] = ledInputLatencySamples;
+      : uxTaskGetStackHighWaterMark(realtimeTaskHandle);
+  doc["mainLoopLastUs"] = mainLoopLastUs;
+  doc["mainLoopMaxUs"] = mainLoopMaxUs;
   String payload;
   serializeJson(doc, payload);
   websocket.sendTXT(client, payload);
@@ -386,10 +498,10 @@ void sendCalibration(uint8_t client = 255) {
   }
 }
 
-void sendAuthorizedText(String& payload) {
+void sendAuthorizedText(const char* payload, size_t length) {
   for (uint8_t index = 0; index < WEBSOCKETS_SERVER_CLIENT_MAX; ++index) {
     if (websocket.clientIsConnected(index) && webControlAuthorized[index]) {
-      websocket.sendTXT(index, payload);
+      websocket.sendTXT(index, reinterpret_cast<const uint8_t*>(payload), length);
     }
   }
 }
@@ -397,40 +509,37 @@ void sendAuthorizedText(String& payload) {
 void sendMidiEvent(bool on, uint8_t channel, uint8_t note, uint8_t velocity,
                    uint16_t highResolutionVelocity, bool hasHighResolutionVelocity,
                    uint32_t timestampMs) {
-  JsonDocument doc;
-  doc["t"] = "midi";
-  doc["s"] = on ? "on" : "off";
-  doc["ch"] = channel;
-  doc["n"] = note;
-  doc["v"] = velocity;
-  if (hasHighResolutionVelocity) doc["vh"] = highResolutionVelocity;
-  doc["ts"] = timestampMs;
-  String payload;
-  serializeJson(doc, payload);
-  sendAuthorizedText(payload);
+  char payload[128]{};
+  const int length = hasHighResolutionVelocity
+      ? std::snprintf(payload, sizeof(payload),
+                      "{\"t\":\"midi\",\"s\":\"%s\",\"ch\":%u,\"n\":%u,\"v\":%u,\"vh\":%u,\"ts\":%lu}",
+                      on ? "on" : "off", channel, note, velocity,
+                      highResolutionVelocity, static_cast<unsigned long>(timestampMs))
+      : std::snprintf(payload, sizeof(payload),
+                      "{\"t\":\"midi\",\"s\":\"%s\",\"ch\":%u,\"n\":%u,\"v\":%u,\"ts\":%lu}",
+                      on ? "on" : "off", channel, note, velocity,
+                      static_cast<unsigned long>(timestampMs));
+  if (length > 0 && static_cast<size_t>(length) < sizeof(payload)) {
+    sendAuthorizedText(payload, static_cast<size_t>(length));
+  }
 }
 
 void sendMidiControl(uint8_t channel, uint8_t controller, uint8_t value, uint32_t timestampMs) {
-  JsonDocument doc;
-  doc["t"] = "control";
-  doc["ch"] = channel;
-  doc["c"] = controller;
-  doc["v"] = value;
-  doc["ts"] = timestampMs;
-  String payload;
-  serializeJson(doc, payload);
-  sendAuthorizedText(payload);
+  char payload[112]{};
+  const int length = std::snprintf(
+      payload, sizeof(payload),
+      "{\"t\":\"control\",\"ch\":%u,\"c\":%u,\"v\":%u,\"ts\":%lu}",
+      channel, controller, value, static_cast<unsigned long>(timestampMs));
+  if (length > 0 && static_cast<size_t>(length) < sizeof(payload)) {
+    sendAuthorizedText(payload, static_cast<size_t>(length));
+  }
 }
 
 void queueBrowserMidi(BrowserMidiKind kind, bool on, uint8_t channel,
                       uint8_t firstData, uint8_t secondData, uint32_t timestampMs,
                       uint16_t highResolutionVelocity = 0,
                       bool hasHighResolutionVelocity = false) {
-  if (browserMidiCount >= kBrowserMidiCapacity) {
-    ++browserMidiDropped;
-    return;
-  }
-  BrowserMidiEvent& event = browserMidiEvents[browserMidiCount++];
+  BrowserMidiEvent event;
   event.kind = kind;
   event.on = on;
   event.channel = channel;
@@ -439,11 +548,64 @@ void queueBrowserMidi(BrowserMidiKind kind, bool on, uint8_t channel,
   event.highResolutionVelocity = highResolutionVelocity;
   event.hasHighResolutionVelocity = hasHighResolutionVelocity;
   event.timestampMs = timestampMs;
+  portENTER_CRITICAL(&browserMidiMux);
+  if (!browserMidiEvents.push(event)) {
+    ++browserMidiDropped;
+    browserMidiResyncPending = true;
+    portEXIT_CRITICAL(&browserMidiMux);
+    return;
+  }
+  browserMidiQueueHighWater = std::max<uint16_t>(
+      browserMidiQueueHighWater, static_cast<uint16_t>(browserMidiEvents.size()));
+  portEXIT_CRITICAL(&browserMidiMux);
+}
+
+void sendMidiStateSnapshot() {
+  bool pressed[kNoteCount]{};
+  portENTER_CRITICAL(&ledStateMux);
+  for (size_t index = 0; index < kNoteCount; ++index) pressed[index] = notes[index].pressed;
+  portEXIT_CRITICAL(&ledStateMux);
+
+  const uint32_t now = millis();
+  // Stay within the existing protocol: All Notes Off followed by the currently
+  // held keys reconstructs browser state even after queue overflow, without a
+  // new message type that older Studio builds would ignore.
+  for (uint8_t channel = 1; channel <= 16; ++channel) {
+    // Clear pedal and note state on every channel before reconstructing held
+    // keys. This also repairs a lost CC64/66/67 release, not just Note Off.
+    sendMidiControl(channel, 64, 0, now);
+    sendMidiControl(channel, 66, 0, now);
+    sendMidiControl(channel, 67, 0, now);
+    sendMidiControl(channel, 123, 0, now);
+  }
+  for (size_t index = 0; index < kNoteCount; ++index) {
+    if (pressed[index]) {
+      sendMidiEvent(true, 1, static_cast<uint8_t>(kFirstMidiNote + index), 64,
+                    0, false, now);
+    }
+  }
 }
 
 void flushBrowserMidi() {
-  for (size_t index = 0; index < browserMidiCount; ++index) {
-    const BrowserMidiEvent& event = browserMidiEvents[index];
+  bool resync = false;
+  portENTER_CRITICAL(&browserMidiMux);
+  if (browserMidiResyncPending) {
+    // A missing Note Off is worse than a dropped animation sample. Discard the
+    // stale backlog and publish authoritative held-note state before resuming.
+    browserMidiEvents.clear();
+    browserMidiResyncPending = false;
+    ++browserMidiResyncs;
+    resync = true;
+  }
+  portEXIT_CRITICAL(&browserMidiMux);
+  if (resync) sendMidiStateSnapshot();
+
+  for (size_t index = 0; index < kBrowserMidiFlushBatch; ++index) {
+    BrowserMidiEvent event;
+    portENTER_CRITICAL(&browserMidiMux);
+    const bool available = browserMidiEvents.pop(event);
+    portEXIT_CRITICAL(&browserMidiMux);
+    if (!available) break;
     if (event.kind == BrowserMidiKind::Control) {
       sendMidiControl(event.channel, event.firstData, event.secondData, event.timestampMs);
     } else {
@@ -452,11 +614,14 @@ void flushBrowserMidi() {
                     event.timestampMs);
     }
   }
-  browserMidiCount = 0;
 }
 
 void handleMidiPacket(void*, const uint8_t data[4], uint64_t receivedUs) {
   if (data == nullptr) return;
+  const uint64_t dispatchedUs = static_cast<uint64_t>(esp_timer_get_time());
+  portENTER_CRITICAL(&realtimeMetricsMux);
+  midiDispatchLatency.observe(dispatchedUs >= receivedUs ? dispatchedUs - receivedUs : 0);
+  portEXIT_CRITICAL(&realtimeMetricsMux);
   notefall::midi::DecodedMessage decoded;
   if (!notefall::midi::decodeUsbEventPacket(data, decoded)) return;
   const uint8_t status = decoded.status;
@@ -476,18 +641,27 @@ void handleMidiPacket(void*, const uint8_t data[4], uint64_t receivedUs) {
       : notefall::midi::HighResolutionVelocity{};
   const bool hasHighResolutionVelocity = highResolution.valid;
   const uint16_t highResolutionVelocity = highResolution.value;
+  bool ledChanged = false;
   if (command == 0x90 && secondData > 0) {
     const uint8_t note = firstData;
+    portENTER_CRITICAL(&ledStateMux);
     notes[noteIndex(note)].pressed = true;
     notes[noteIndex(note)].velocity = secondData;
+    ledDirty = true;
+    portEXIT_CRITICAL(&ledStateMux);
     if (pendingLedInputUs == 0 || receivedUs < pendingLedInputUs) pendingLedInputUs = receivedUs;
+    ledChanged = true;
     queueBrowserMidi(BrowserMidiKind::Note, true, channel, note, secondData, timestampMs,
                      highResolutionVelocity, hasHighResolutionVelocity);
   } else if (command == 0x80 || (command == 0x90 && secondData == 0)) {
     const uint8_t note = firstData;
+    portENTER_CRITICAL(&ledStateMux);
     notes[noteIndex(note)].pressed = false;
     notes[noteIndex(note)].velocity = 0;
+    ledDirty = true;
+    portEXIT_CRITICAL(&ledStateMux);
     if (pendingLedInputUs == 0 || receivedUs < pendingLedInputUs) pendingLedInputUs = receivedUs;
+    ledChanged = true;
     queueBrowserMidi(BrowserMidiKind::Note, false, channel, note, secondData, timestampMs,
                      highResolutionVelocity, hasHighResolutionVelocity);
   } else if (command == 0xB0) {
@@ -495,28 +669,62 @@ void handleMidiPacket(void*, const uint8_t data[4], uint64_t receivedUs) {
       velocityTracker.observeControl(channel, firstData, secondData);
     }
     if (firstData == 120 || firstData == 123) {
+      portENTER_CRITICAL(&ledStateMux);
       for (auto& note : notes) note.pressed = false;
+      ledDirty = true;
+      portEXIT_CRITICAL(&ledStateMux);
       if (pendingLedInputUs == 0 || receivedUs < pendingLedInputUs) pendingLedInputUs = receivedUs;
+      ledChanged = true;
     }
     queueBrowserMidi(BrowserMidiKind::Control, false, channel, firstData, secondData, timestampMs);
   }
+  if (ledChanged) notifyRealtime();
 }
 
 void onPianoConnected(void*) {
-  pianoConnected = true;
-  sendStatus();
+  pianoConnected.store(true);
+  statusBroadcastRequested.store(true);
 }
 
 void onPianoDisconnected(void*) {
-  pianoConnected = false;
+  pianoConnected.store(false);
   velocityTracker.clear();
-  midiOutOwner = -1;
-  scheduledMidiCount = 0;
-  for (auto& probe : outputMirrorProbes) probe.expiresMs = 0;
-  for (auto& note : notes) note.pressed = false;
-  clearTargets();
+  portENTER_CRITICAL(&ledStateMux);
+  for (auto& note : notes) {
+    note.pressed = false;
+    note.target = false;
+    note.velocity = 0;
+  }
   lastTargetMs = 0;
-  sendStatus();
+  testNote = -1;
+  ledDirty = true;
+  portEXIT_CRITICAL(&ledStateMux);
+  portENTER_CRITICAL(&browserMidiMux);
+  browserMidiResyncPending = true;
+  portEXIT_CRITICAL(&browserMidiMux);
+  outputResetRequested.store(true);
+  statusBroadcastRequested.store(true);
+  notifyRealtime();
+}
+
+void serviceRealtimePipeline() {
+  usbMidi.poll();
+  renderStrip();
+  realtimeHeartbeatMs.store(millis(), std::memory_order_relaxed);
+  realtimeWakeups.fetch_add(1, std::memory_order_relaxed);
+}
+
+void realtimeTask(void*) {
+  const bool watchdogArmed = esp_task_wdt_add(nullptr) == ESP_OK;
+  realtimeWatchdogArmed.store(watchdogArmed);
+  realtimeTaskReady.store(true);
+  for (;;) {
+    serviceRealtimePipeline();
+    if (watchdogArmed) esp_task_wdt_reset();
+    // USB input and UI mutations wake this immediately. The short timeout is
+    // only a backstop for stale-target and calibration-test expiry.
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(kRealtimeIdlePollMs));
+  }
 }
 
 void saveCalibration() {
@@ -597,41 +805,71 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
   }
 
   if (strcmp(type, "target") == 0) {
-    clearTargets();
+    bool targetSnapshot[kNoteCount]{};
+    uint8_t handSnapshot[kNoteCount]{};
     const JsonArray targets = doc["notes"].as<JsonArray>();
     for (JsonObject target : targets) {
       const int note = target["n"] | -1;
       if (!validNote(note)) continue;
-      NoteState& state = notes[noteIndex(static_cast<uint8_t>(note))];
-      state.target = true;
-      state.hand = static_cast<uint8_t>(clampValue<int>(target["h"] | 1, 0, 1));
+      const size_t index = noteIndex(static_cast<uint8_t>(note));
+      targetSnapshot[index] = true;
+      handSnapshot[index] = static_cast<uint8_t>(
+          clampValue<int>(target["h"] | 1, 0, 1));
+    }
+    portENTER_CRITICAL(&ledStateMux);
+    for (size_t index = 0; index < kNoteCount; ++index) {
+      notes[index].target = targetSnapshot[index];
+      notes[index].hand = handSnapshot[index];
     }
     lastTargetMs = millis();
+    ledDirty = true;
+    portEXIT_CRITICAL(&ledStateMux);
+    notifyRealtime();
   } else if (strcmp(type, "config") == 0) {
+    portENTER_CRITICAL(&ledStateMux);
     brightness = static_cast<uint8_t>(
         clampValue<int>(doc["brightness"] | brightness, 1, kMaxGlobalBrightness));
     pixelOffset = static_cast<int8_t>(
         clampValue<int>(doc["offset"] | pixelOffset, kMinPixelOffset, kMaxPixelOffset));
     stripReversed = doc["reversed"] | stripReversed;
+    ledDirty = true;
+    portEXIT_CRITICAL(&ledStateMux);
+    notifyRealtime();
     saveCalibration();
     sendStatus();
   } else if (strcmp(type, "keyOffset") == 0) {
     const int note = doc["n"] | -1;
     if (!validNote(note)) return;
     const size_t index = noteIndex(static_cast<uint8_t>(note));
+    portENTER_CRITICAL(&ledStateMux);
     keyPixelOffsets[index] = static_cast<int8_t>(clampValue<int>(
         doc["offset"] | keyPixelOffsets[index], -kMaxKeyPixelOffset, kMaxKeyPixelOffset));
+    ledDirty = true;
+    portEXIT_CRITICAL(&ledStateMux);
+    notifyRealtime();
     if (preferencesReady) preferences.putBytes("keyOffsets", keyPixelOffsets, sizeof(keyPixelOffsets));
     sendCalibration();
   } else if (strcmp(type, "test") == 0) {
     const int note = doc["n"] | -1;
     if (validNote(note)) {
+      portENTER_CRITICAL(&ledStateMux);
       testNote = note;
       testUntilMs = millis() + kTestNoteMs;
+      ledDirty = true;
+      portEXIT_CRITICAL(&ledStateMux);
+      notifyRealtime();
     }
   } else if (strcmp(type, "blackout") == 0) {
     clearTargets();
+    portENTER_CRITICAL(&ledStateMux);
     testNote = -1;
+    for (auto& note : notes) {
+      note.pressed = false;
+      note.velocity = 0;
+    }
+    ledDirty = true;
+    portEXIT_CRITICAL(&ledStateMux);
+    notifyRealtime();
     panicMidiOutput();
     midiOutOwner = -1;
   } else if (strcmp(type, "midiPanic") == 0) {
@@ -782,10 +1020,26 @@ void handleUpdateUpload() {
       return;
     }
     clearTargets();
+    portENTER_CRITICAL(&ledStateMux);
     testNote = -1;
+    for (auto& note : notes) {
+      note.pressed = false;
+      note.velocity = 0;
+    }
+    ledDirty = true;
+    portEXIT_CRITICAL(&ledStateMux);
     panicMidiOutput();
     midiOutOwner = -1;
-    renderStrip();
+    const uint32_t generationBefore = ledRenderGeneration.load(std::memory_order_acquire);
+    notifyRealtime();
+    // Ensure the LEDs are physically dark before flash writes can monopolize
+    // the CPU. This runs outside the real-time task only during authorized OTA.
+    const uint32_t blackoutDeadline = millis() + 100U;
+    while (ledRenderGeneration.load(std::memory_order_acquire) == generationBefore &&
+           !timeReached(millis(), blackoutDeadline)) {
+      if (realtimeTaskHandle == nullptr) serviceRealtimePipeline();
+      delay(1);
+    }
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, command)) {
       webUpdate.error = Update.errorString();
       restoreFilesystemAfterFailure();
@@ -886,7 +1140,7 @@ void startNetwork() {
   http.on("/api/status", HTTP_GET, []() {
     JsonDocument doc;
     doc["project"] = "NoteFall 88";
-    doc["piano"] = pianoConnected;
+    doc["piano"] = pianoConnected.load();
     doc["apIp"] = WiFi.softAPIP().toString();
     doc["stationIp"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "";
     String body;
@@ -961,17 +1215,26 @@ void setup() {
   usbMidi.setMidiCallback(handleMidiPacket, nullptr);
   usbMidi.setConnectionCallbacks(onPianoConnected, onPianoDisconnected, nullptr);
   if (!usbMidi.begin()) Serial.printf("USB host start failed: %s\n", usbMidi.lastError().c_str());
-  renderStrip();
+  portENTER_CRITICAL(&ledStateMux);
+  ledDirty = true;
+  portEXIT_CRITICAL(&ledStateMux);
+  if (xTaskCreatePinnedToCore(realtimeTask, "notefall_realtime", kRealtimeTaskStackBytes,
+                              nullptr, kRealtimeTaskPriority, &realtimeTaskHandle, 0) != pdPASS) {
+    realtimeTaskHandle = nullptr;
+    Serial.println("WARN: real-time task allocation failed; using main-loop fallback");
+  } else {
+    usbMidi.setConsumerTask(realtimeTaskHandle);
+    notifyRealtime();
+  }
 }
 
 void loop() {
-  usbMidi.poll();
-  // Flush all note changes from the just-drained USB queue in one SPI frame.
-  // This removes the former arbitrary 0-10 ms wait without issuing one frame
-  // per note in a chord. The sample ends after the physical SPI transfer.
-  if (pendingLedInputUs != 0) {
-    renderStrip();
-    lastLedRefreshMs = millis();
+  const int64_t loopStartedUs = esp_timer_get_time();
+  if (realtimeTaskHandle == nullptr) serviceRealtimePipeline();
+  if (outputResetRequested.exchange(false)) {
+    midiOutOwner = -1;
+    scheduledMidiCount = 0;
+    panicMidiOutput();
   }
   flushBrowserMidi();
   processScheduledMidi();
@@ -984,11 +1247,8 @@ void loop() {
   }
 
   const uint32_t now = millis();
-  if (now - lastLedRefreshMs >= kLedRefreshMs) {
-    lastLedRefreshMs = now;
-    renderStrip();
-  }
-  if (now - lastStatusMs >= kStatusBroadcastMs) {
+  if (statusBroadcastRequested.exchange(false) ||
+      now - lastStatusMs >= kStatusBroadcastMs) {
     lastStatusMs = now;
     sendStatus();
   }
@@ -996,5 +1256,9 @@ void loop() {
     delay(300);
     ESP.restart();
   }
+  const int64_t elapsedUs = esp_timer_get_time() - loopStartedUs;
+  mainLoopLastUs = static_cast<uint32_t>(
+      std::min<int64_t>(std::max<int64_t>(0, elapsedUs), UINT32_MAX));
+  mainLoopMaxUs = std::max(mainLoopMaxUs, mainLoopLastUs);
   delay(1);
 }

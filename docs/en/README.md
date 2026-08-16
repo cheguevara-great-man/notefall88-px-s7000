@@ -15,6 +15,7 @@ The piano sends USB-MIDI directly to an ESP32-S3. The controller drives one vert
 - [Test and acceptance procedure](testing.md)
 - [WebSocket protocol](protocol.md)
 - [Music and practice features](studio.md)
+- [Quality and performance evidence](quality-and-performance.md)
 
 ## Installation sequence
 

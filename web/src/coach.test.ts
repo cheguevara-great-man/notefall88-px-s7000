@@ -176,4 +176,84 @@ describe("practice coach", () => {
       evidence: { sessions: 1, events: 1, accuracy: 100 },
     });
   });
+
+  it("sorts history itself before taking the current tempo", () => {
+    const events = Array.from({ length: 20 }, (_, index) => ({
+      kind: "hit" as const, note: 60, hand: "right" as const,
+      velocity: 80, scoreTime: index, timingMs: 20,
+    }));
+    const old = session("Ordered", 1_000, events, 0.7);
+    const recent = session("Ordered", 3_000, events, 1);
+    old.summary.meanAbsTimingMs = 20;
+    recent.summary.meanAbsTimingMs = 20;
+    expect(recommendPractice([old, recent], "Ordered", 25)?.tempo).toBe(1.05);
+  });
+
+  it("does not raise tempo from a statistically tiny perfect sample", () => {
+    const tiny = session("Tiny", 1_000, [
+      { kind: "hit", note: 60, hand: "right", velocity: 80, scoreTime: 0, timingMs: 10 },
+    ]);
+    tiny.summary.meanAbsTimingMs = 10;
+    expect(recommendPractice([tiny], "Tiny", 4)).toMatchObject({
+      tempo: 1,
+      confidence: "low",
+      evidence: { accuracy: 100, accuracyLower95: 20.7 },
+    });
+  });
+
+  it("weights expression evidence by actual samples instead of sessions", () => {
+    const short = session("Weighted", 2_000, [
+      { kind: "hit", note: 60, hand: "right", velocity: 80, scoreTime: 0, timingMs: 20 },
+    ]);
+    short.summary.dynamicsScore = 0;
+    short.summary.dynamicsSamples = 1;
+    short.summary.meanAbsTimingMs = 20;
+    const complete = session("Weighted", 1_000, Array.from({ length: 99 }, (_, index) => ({
+      kind: "hit" as const, note: 60, hand: "right" as const,
+      velocity: 80, scoreTime: index, timingMs: 20,
+    })));
+    complete.summary.dynamicsScore = 100;
+    complete.summary.dynamicsSamples = 99;
+    complete.summary.meanAbsTimingMs = 20;
+    expect(recommendPractice([short, complete], "Weighted", 100)).toMatchObject({
+      tempo: 1.05,
+      evidence: { dynamicsScore: 99 },
+    });
+  });
+
+  it("deduplicates restored sessions and blocks automatic speed-up after dropped events", () => {
+    const events = Array.from({ length: 40 }, (_, index) => ({
+      kind: "hit" as const, note: 60, hand: "right" as const,
+      velocity: 80, scoreTime: index, timingMs: 20,
+    }));
+    const incomplete = session("Dropped", 1_000, events);
+    incomplete.droppedEvents = 2;
+    incomplete.summary.meanAbsTimingMs = 20;
+    const recommendation = recommendPractice([incomplete, structuredClone(incomplete)], "Dropped", 45)!;
+    expect(recommendation).toMatchObject({
+      tempo: 1,
+      confidence: "low",
+      evidence: { sessions: 1, events: 40, droppedEvents: 2 },
+    });
+    expect(recommendation.reason).toContain("本轮不自动升速");
+  });
+
+  it("prefers a persistently failing sparse passage over raw note density", () => {
+    const dense = [
+      ...Array.from({ length: 100 }, (_, index) => ({
+        kind: "hit" as const, note: 60, hand: "right" as const,
+        velocity: 80, scoreTime: index / 10, timingMs: 20,
+      })),
+      ...Array.from({ length: 10 }, (_, index) => ({
+        kind: "wrong" as const, note: 61, velocity: 80, scoreTime: 1 + index / 2,
+      })),
+      { kind: "hit" as const, note: 64, hand: "right" as const, velocity: 80, scoreTime: 20, timingMs: 20 },
+      { kind: "hit" as const, note: 65, hand: "right" as const, velocity: 80, scoreTime: 21, timingMs: 20 },
+      { kind: "missed" as const, note: 67, hand: "right" as const, scoreTime: 20.5 },
+      { kind: "missed" as const, note: 69, hand: "right" as const, scoreTime: 21.5 },
+      { kind: "missed" as const, note: 71, hand: "right" as const, scoreTime: 22.5 },
+    ];
+    expect(recommendPractice([session("Hotspot", 1_000, dense)], "Hotspot", 40)?.loop)
+      .toEqual({ start: 16, end: 28 });
+  });
 });

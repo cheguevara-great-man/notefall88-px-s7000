@@ -1,5 +1,7 @@
+#include "apa102_core.h"
 #include "midi_core.h"
 #include "layout_generated.h"
+#include "realtime_core.h"
 #include "usb_midi_descriptor.h"
 
 #include <array>
@@ -132,6 +134,59 @@ void testPixelMapping() {
   }
 }
 
+void testRealtimeFixedQueue() {
+  notefall::realtime::FixedQueue<int, 3> queue;
+  CHECK(queue.empty());
+  CHECK(queue.capacity() == 3);
+  CHECK(queue.push(10));
+  CHECK(queue.push(20));
+  CHECK(queue.push(30));
+  CHECK(queue.full());
+  CHECK(!queue.push(40));
+  int value = 0;
+  CHECK(queue.pop(value) && value == 10);
+  CHECK(queue.push(40));
+  CHECK(queue.pop(value) && value == 20);
+  CHECK(queue.pop(value) && value == 30);
+  CHECK(queue.pop(value) && value == 40);
+  CHECK(!queue.pop(value));
+  CHECK(queue.push(50));
+  queue.clear();
+  CHECK(queue.empty() && queue.size() == 0);
+}
+
+void testLatencyAccumulator() {
+  notefall::realtime::LatencyAccumulator latency;
+  auto snapshot = latency.snapshot();
+  CHECK(snapshot.samples == 0 && snapshot.averageUs == 0);
+  latency.observe(100);
+  latency.observe(300);
+  snapshot = latency.snapshot();
+  CHECK(snapshot.samples == 2);
+  CHECK(snapshot.lastUs == 300);
+  CHECK(snapshot.maxUs == 300);
+  CHECK(snapshot.averageUs == 200);
+  latency.observe(static_cast<uint64_t>(UINT32_MAX) + 42U);
+  snapshot = latency.snapshot();
+  CHECK(snapshot.lastUs == UINT32_MAX);
+  CHECK(snapshot.maxUs == UINT32_MAX);
+}
+
+void testApa102WireFormat() {
+  using namespace notefall::apa102;
+  CHECK(endFrameBytes(1) == 4);
+  CHECK(endFrameBytes(64) == 4);
+  CHECK(endFrameBytes(65) == 5);
+  CHECK(endFrameBytes(176) == 11);
+  CHECK(frameBytes(176) == 719);
+  CHECK(clampBrightness(0) == 1);
+  CHECK(clampBrightness(4) == 4);
+  CHECK(clampBrightness(255) == 31);
+  CHECK(controlByte(0) == 0xE1);
+  CHECK(controlByte(4) == 0xE4);
+  CHECK(controlByte(31) == 0xFF);
+}
+
 void append(std::vector<uint8_t>& target, std::initializer_list<uint8_t> bytes) {
   target.insert(target.end(), bytes.begin(), bytes.end());
 }
@@ -224,6 +279,9 @@ int main() {
   testHighResolutionVelocity();
   testTimeRollover();
   testPixelMapping();
+  testRealtimeFixedQueue();
+  testLatencyAccumulator();
+  testApa102WireFormat();
   testUsbDescriptorSelection();
   testUsbDescriptorFailures();
   if (failures != 0) return EXIT_FAILURE;
