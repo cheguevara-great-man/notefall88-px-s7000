@@ -24,6 +24,11 @@ def test_dual_ota_and_filesystem_partitions_are_non_overlapping() -> None:
     assert by_name["app0"]["size"] == by_name["app1"]["size"] >= 0x280000
     assert by_name["littlefs"]["size"] >= 0x2E0000
 
+    firmware = (ROOT / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    assert 'kLittleFsPartitionLabel[] = "littlefs"' in firmware
+    assert 'LittleFS.begin(true, "/littlefs", 10, kLittleFsPartitionLabel)' in firmware
+    assert 'LittleFS.begin(false, "/littlefs", 10, kLittleFsPartitionLabel)' in firmware
+
     ordered = sorted(rows, key=lambda row: row["offset"])
     for first, second in zip(ordered, ordered[1:]):
         assert first["offset"] + first["size"] <= second["offset"], (first, second)

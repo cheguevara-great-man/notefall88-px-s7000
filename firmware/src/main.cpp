@@ -104,6 +104,7 @@ uint32_t testUntilMs = 0;
 constexpr size_t kScheduledMidiCapacity = 256;
 constexpr size_t kOutputMirrorProbeCapacity = 48;
 constexpr size_t kBrowserMidiCapacity = 128;
+constexpr char kLittleFsPartitionLabel[] = "littlefs";
 ScheduledMidiMessage scheduledMidi[kScheduledMidiCapacity]{};
 size_t scheduledMidiCount = 0;
 OutputMirrorProbe outputMirrorProbes[kOutputMirrorProbeCapacity]{};
@@ -996,7 +997,9 @@ void sendUpdateInfo() {
 
 void restoreFilesystemAfterFailure() {
   if (!webUpdate.filesystemUnmounted) return;
-  if (!LittleFS.begin(false)) Serial.println("WARN: LittleFS could not remount after failed update");
+  if (!LittleFS.begin(false, "/littlefs", 10, kLittleFsPartitionLabel)) {
+    Serial.println("WARN: LittleFS could not remount after failed update");
+  }
   webUpdate.filesystemUnmounted = false;
 }
 
@@ -1209,7 +1212,9 @@ void setup() {
   }
 
   if (!strip.begin()) Serial.println("FATAL: LED strip allocation failed");
-  if (!LittleFS.begin(true)) Serial.println("WARN: LittleFS unavailable; web UI will not load");
+  if (!LittleFS.begin(true, "/littlefs", 10, kLittleFsPartitionLabel)) {
+    Serial.println("WARN: LittleFS unavailable; web UI will not load");
+  }
   startNetwork();
 
   usbMidi.setMidiCallback(handleMidiPacket, nullptr);
