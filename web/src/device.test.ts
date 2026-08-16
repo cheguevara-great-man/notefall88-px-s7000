@@ -42,7 +42,7 @@ describe("device websocket link", () => {
       setTimeout: setTimeoutMock,
       clearTimeout: clearTimeoutMock,
       setInterval: setIntervalMock,
-      sessionStorage: {
+      localStorage: {
         getItem: (key: string) => sessionValues.get(key) ?? null,
         setItem: (key: string, value: string) => sessionValues.set(key, value),
         removeItem: (key: string) => sessionValues.delete(key),

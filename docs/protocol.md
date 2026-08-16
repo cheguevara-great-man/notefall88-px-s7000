@@ -16,13 +16,13 @@ NoteFall Core 在 TCP `81` 提供 WebSocket。消息均为 UTF-8 JSON；浏览�
 {"t":"hello","v":6,"auth":"current-hotspot-password"}
 ```
 
-密码只在首次解锁时发送并由固件做常量时间比较，网页不会保存它。验证成功后，固件仅向这个已授权的 STA 会话返回本次启动随机生成的 `controlToken`；网页把该令牌保存在当前标签页的 `sessionStorage`，重连时使用：
+密码只在首次解锁时发送并由固件做常量时间比较，网页不会保存它。验证成功后，固件仅向这个已授权的 STA 会话返回 NVS 中的随机 `controlToken`；网页把该令牌保存在 `localStorage`，重连及正常重启后继续使用：
 
 ```json
-{"t":"hello","v":6,"token":"boot-scoped-control-token"}
+{"t":"hello","v":6,"token":"persistent-random-control-token"}
 ```
 
-令牌在 ESP 重启或关闭标签页后失效，不进入 IndexedDB 曲库、练习记录、备份或诊断导出，也不能用于 Wi-Fi 配置、修改密码或固件更新。它仍是当前标签页的控制凭据，不应复制或导出。本地链路使用 `ws://`，不宣称端到端 TLS；家庭 WLAN 的链路加密和独有热点密码共同构成当前原型的网络边界。若 SoftAP 与家庭局域网子网重叠，固件按不可信 STA 处理并要求密码，不根据模糊地址自动授权。
+令牌在正常 ESP 重启或关闭标签页后继续有效，但修改管理密码会立即换发并撤销旧令牌。它不进入 IndexedDB 曲库、练习记录、备份或诊断导出，也不能用于 Wi-Fi 配置、修改密码或固件更新；不应复制或导出。本地链路使用 `ws://`，不宣称端到端 TLS；家庭 WLAN 的链路加密和独有热点密码共同构成当前原型的网络边界。若 SoftAP 与家庭局域网子网重叠，固件按不可信 STA 处理并要求密码，不根据模糊地址自动授权。
 
 ESP 返回 `status`；只有授权会话才返回 `calibration`、逐键 MIDI 与踏板事件。`status` 的稳定字段包括：
 
@@ -93,7 +93,7 @@ ESP 把 USB MIDI 标准化为：
 
 网页发送 `{"t":"ping","ts":1234}`，ESP 回复 `{"t":"pong","ts":1234,"deviceTs":5678}`。`ts` 原样回显浏览器 `performance.now()` 的整数毫秒令牌，`deviceTs` 是 ESP 处理请求时的 uint32 启动后毫秒数。网页只接受与当前请求匹配的回复，在近期 12 个有效样本中选往返时间最低者，以请求/回复中点估计两端单调时钟偏移；半个 RTT 是当前同步误差上界。算法处理约 49.7 天回绕、ESP 重启、超过 2 秒的同步样本和超过 5 秒的排队事件。旧固件不返回 `deviceTs` 时仍可显示 RTT，但判定与录音明确退回消息到达时刻。
 
-这个同步只消除网络到达抖动对网页判定和录音时间线的污染，不等同于按键到灯光延迟。家庭 Wi-Fi 上的 WebSocket 控制使用当前热点密码做会话再认证；家庭 Wi-Fi 凭据本身仍不能通过 WebSocket 修改。`POST /api/wifi` 只接受设备 SoftAP 本地请求，并在 `X-NoteFall-Admin` 头再次核对当前热点密码；SSID 为 1–32 个 UTF-8 字节，密码为空或 8–63 个 UTF-8 字节。热点新密码同样按 UTF-8 字节计数，网页与固件使用同一边界，避免多字节字符在两端判定不一致。ESP 始终保留 `NoteFall-88` 热点作为恢复入口。
+这个同步只消除网络到达抖动对网页判定和录音时间线的污染，不等同于按键到灯光延迟。家庭 Wi-Fi 上的 WebSocket 控制使用当前管理密码做首次会话认证；家庭 Wi-Fi 凭据本身仍不能通过 WebSocket 修改。`POST /api/wifi` 在家庭 LAN 与设备 SoftAP 上都在 `X-NoteFall-Admin` 头再次核对当前管理密码；SSID 为 1–32 个 UTF-8 字节，密码为空或 8–63 个 UTF-8 字节。热点新密码同样按 UTF-8 字节计数，网页与固件使用同一边界，避免多字节字符在两端判定不一致。ESP 始终保留 `NoteFall-88` 热点作为恢复入口。
 
 `midiDispatchLatency*` 测量 USB Host 传输回调收到事件到固定实时任务开始消费的区间；`ledInputLatency*` 继续测到对应 SPI 灯帧发送完毕。USB daemon 和 MIDI client 已拆为两个任务，client 事件等待上限由 20 ms 缩到 5 ms；收到包后直接唤醒 Core 0 实时任务。固件先排空同一批 USB 事件，再只发送一帧，所以和弦不会逐音重复刷灯；该帧先于任何 WebSocket 广播，网络和 JSON 只在 Core 1 的 Arduino 主任务执行。
 

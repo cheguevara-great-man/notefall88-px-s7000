@@ -1,0 +1,13 @@
+# Home networking, rescue access, and brick prevention
+
+NoteFall 88 normally joins the saved 2.4 GHz home WLAN. Credentials live in ESP32 NVS and survive power cycles, application OTA, and filesystem updates. The tablet may use either the router's 2.4 or 5 GHz radio. The installed **NoteFall Studio** app is the normal entry point: its Android layer discovers the ESP32 over UDP port 32188 and discovers it again after a disconnect or DHCP address change, so the user does not need to remember an IP address.
+
+The `NoteFall-88` rescue AP remains enabled at all times. If the router, credentials, DHCP, or mDNS fail, join that AP and open `http://192.168.4.1/recovery`. The recovery page is compiled into every application image and does not depend on LittleFS.
+
+The Xiaomi Pad 7 Ultra running Android 16 has been verified against the real device: after the one-time Nearby devices permission grant, Studio discovered the ESP32 at `192.168.1.7`, opened its WebSocket, reused its persistent random control token, and reconnected after an ESP32 restart. The firmware still advertises `notefall.local`, but that name did not resolve reliably on this tablet/router combination and is therefore optional rather than a single point of access.
+
+Firmware upload is safe against interruption: an incomplete image never becomes bootable. A completed candidate must match the running NoteFall project identity. ESP-IDF rollback remains pending until the new application has run for at least 10 seconds, passed storage/LED/USB-host/realtime/network checks, and received a real HTTP or WebSocket request. A crash or reset before confirmation causes bootloader rollback; an alive but unreachable or unhealthy image actively rolls back after 90 seconds.
+
+The client stores a random persistent control token rather than the plaintext management password. The native app performs factory-default authentication only when the device explicitly reports that the factory password is still active. The token survives normal ESP32 and app restarts; changing the management password revokes it. Only NVS erasure or a factory flash clears home Wi-Fi, the token, and per-key calibration.
+
+The native app uses a dedicated internal `https://studio.notefall` origin and does not register the PWA service worker, preventing an APK update from being shadowed by stale cached JavaScript. Browser PWA builds keep their offline service worker. For browser-only recovery, use the current DHCP address or try `http://notefall.local` where mDNS works; the router-independent fallback is always `http://192.168.4.1/recovery` on the rescue AP.

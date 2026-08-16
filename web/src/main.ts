@@ -36,6 +36,7 @@ import {
   pianoNoteName,
 } from "./calibration";
 import { DeviceLink } from "./device";
+import { discoverNativeDeviceWebSocket } from "./device-discovery";
 import { PX_S7000_FIELD_OFFSETS } from "./field-calibration";
 import { DemonstrationPlanner } from "./demonstration";
 import { parseMidiFile } from "./midi";
@@ -121,15 +122,18 @@ function required<T extends HTMLElement = HTMLElement>(id: string): T {
 
 const edition = document.querySelector<HTMLMetaElement>('meta[name="notefall-edition"]')?.content ?? "core";
 const studioEdition = edition === "studio";
+const nativeAppRuntime = Boolean((window as typeof window & {
+  Capacitor?: { isNativePlatform?: () => boolean };
+}).Capacitor?.isNativePlatform?.());
 document.documentElement.dataset.edition = edition;
 let studioDeviceUrl: string | undefined;
 if (studioEdition) {
   try {
     studioDeviceUrl = normalizeDeviceWebSocketUrl(
-      window.localStorage.getItem(STUDIO_DEVICE_ENDPOINT_KEY) ?? "192.168.4.1",
+      window.localStorage.getItem(STUDIO_DEVICE_ENDPOINT_KEY) ?? "notefall.local",
     );
   } catch {
-    studioDeviceUrl = normalizeDeviceWebSocketUrl("192.168.4.1");
+    studioDeviceUrl = normalizeDeviceWebSocketUrl("notefall.local");
   }
 }
 
@@ -247,7 +251,7 @@ if (studioEdition) {
   const installButton = required<HTMLButtonElement>("studio-install");
   const connectionNote = required("studio-connection-note");
   toolbar.hidden = false;
-  endpoint.value = studioDeviceUrl ?? "ws://192.168.4.1:81/";
+  endpoint.value = studioDeviceUrl ?? "ws://notefall.local:81/";
   const notice = endpointSecurityNotice(endpoint.value, window.location.protocol);
   if (notice) connectionNote.textContent = notice;
   saveEndpoint.addEventListener("click", () => {
@@ -272,7 +276,7 @@ if (studioEdition) {
     installPrompt = undefined;
     installButton.hidden = true;
   });
-  if ("serviceWorker" in navigator) {
+  if ("serviceWorker" in navigator && !nativeAppRuntime) {
     window.addEventListener("load", () => {
       void navigator.serviceWorker.register("./sw.js");
     });
@@ -323,6 +327,8 @@ let midiOutAvailable = false;
 let midiOutOwnedByThisPage = false;
 let midiOutBlocked = false;
 let controlAuthorizedForPage = false;
+let nativeDefaultControlAttempted = false;
+let nativeRediscoveryInFlight = false;
 let followPlanner = new FollowAccompanimentPlanner([]);
 let demonstrationPlanner = new DemonstrationPlanner([]);
 let demonstrationActive = false;
@@ -2760,9 +2766,30 @@ device.onConnection((connected) => {
     articulationTracker.reset();
   }
   setStatus(deviceStatus, connected, connected ? "ESP 已连接" : "ESP 未连接");
+  if (!connected && studioEdition && nativeAppRuntime && !nativeRediscoveryInFlight) {
+    nativeRediscoveryInFlight = true;
+    void discoverNativeDeviceWebSocket()
+      .then((discovered) => {
+        if (!discovered) return;
+        device.setWebSocketUrl(discovered);
+        try { window.localStorage.setItem(STUDIO_DEVICE_ENDPOINT_KEY, discovered); } catch { /* optional cache */ }
+        device.connect();
+      })
+      .catch(() => { /* DeviceLink's bounded reconnect continues in parallel. */ })
+      .finally(() => { nativeRediscoveryInFlight = false; });
+  }
 });
 device.onStatus((status: DeviceStatus) => {
   controlAuthorizedForPage = status.controlAuthorized === true;
+  if (studioEdition && nativeAppRuntime && status.controlSessionReady === true
+      && status.controlAuthorized !== true && status.defaultPassword === true
+      && !nativeDefaultControlAttempted) {
+    nativeDefaultControlAttempted = true;
+    // The factory password is public and already compiled into Core. Native
+    // Studio uses it only while the device explicitly reports that unchanged
+    // factory state, then persists the rotated session token instead.
+    device.authenticateControl("notefall88");
+  }
   required("control-auth-status").textContent = status.controlSessionReady === false
     ? "正在建立安全控制会话…"
     : status.controlAuthorized
@@ -2921,7 +2948,19 @@ if (studioEdition) {
   }
 }
 renderCommissioning();
-device.connect();
+if (studioEdition) {
+  void discoverNativeDeviceWebSocket()
+    .then((discovered) => {
+      if (discovered) {
+        device.setWebSocketUrl(discovered);
+        try { window.localStorage.setItem(STUDIO_DEVICE_ENDPOINT_KEY, discovered); } catch { /* optional cache */ }
+      }
+      device.connect();
+    })
+    .catch(() => device.connect());
+} else {
+  device.connect();
+}
 void refreshLibrary().catch((error: unknown) => {
   librarySummary.textContent = error instanceof Error ? error.message : "无法打开曲库";
 });

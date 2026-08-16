@@ -5,6 +5,8 @@
 > **2026-08-09 实物更正：** 对话中把已购端子误记成 WAGO 221；实际是商家确认可共点的 KF301‑2P/3P。第十三章原 WAGO 数量与“完全免焊”描述属于被更正的历史记录，不得照接。当前事实只看 [已购台账](as-purchased.csv) 和 [到货验收](arrival-checklist.md)：到货逐孔确认共点关系，符合商家说明就直接使用；74AHCT125N 裸芯片仍需面包板台架和最终可靠小板。
 >
 > **2026-08-11 软件更正：** 本文较早段落中的“Studio 未来再做 webmscore”、“PTS 仍领先 MuseScore/Guitar Pro 转换”已过时。Studio 已使用锁定 GPL 包在本地 Worker 内离线转换 MSCZ/MSCX/Guitar Pro/KAR，不走 CDN，真实 MSCX→MusicXML→OSMD/时间线浏览器门禁已通过。Core 仍不含该引擎。以 [ADR-005](../decisions/005-studio-score-converter.md) 为准。
+>
+> **2026-08-17 实机部署更正：** 硬件已完成装配上电，PX-S7000 的 USB MIDI、琴键、延音踏板和灯带链路均已实机工作，灯带方向已修正，剩余工作是少量逐键位置微调。Android Studio APK 已安装到小米 Pad 7 Ultra（Android 16），原生 UDP 自动发现、家庭网 WebSocket、持久随机控制令牌、ESP32 重启后自动重连均已实机通过；`notefall.local` 在该平板/路由器组合上不能可靠解析，日常入口改为原生 App 自动发现，永久兜底仍是 `NoteFall-88` + `192.168.4.1/recovery`。当前权威说明见 [网络与救援](network-and-recovery.md)。下文保留的“尚未到货”“真机待验”和旧分支描述仅是历史快照，不得用于当前部署判断。
 
 > 本文档是与 Codex 对话过程中整理的问答记录，随对话持续更新。内容均以仓库源码与文档为据。
 > 2026-08-07 按主题重组：把原按轮次堆叠的 Q1–Q62 合并为 12 个主题章节，重复问题不再各写一遍；文末附“原题号对照表”与“更新记录”。全部事实与用户标记均保留，原文档内容已并入本文件。

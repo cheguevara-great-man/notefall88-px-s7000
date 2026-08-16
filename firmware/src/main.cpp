@@ -7,6 +7,7 @@
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 
 #include <algorithm>
 #include <atomic>
@@ -28,6 +29,11 @@
 #include "layout_generated.h"
 #include "midi_core.h"
 #include "realtime_core.h"
+
+// Arduino otherwise marks a newly booted OTA image valid before setup().
+// Keeping it pending lets NoteFall prove that storage, networking, the main
+// loop and the realtime task are healthy; an unconfirmed image is rolled back.
+extern "C" bool verifyRollbackLater() { return true; }
 
 namespace {
 
@@ -61,6 +67,7 @@ struct WebUpdateState {
   bool authorized = false;
   bool started = false;
   bool success = false;
+  bool firmwareTarget = false;
   bool filesystemUnmounted = false;
   size_t written = 0;
   String error;
@@ -83,6 +90,7 @@ Apa102Strip strip(kPixelCount, kDataPin, kClockPin, kSpiHz);
 notefall::UsbMidiHost usbMidi;
 WebServer http(kHttpPort);
 WebSocketsServer websocket(kWebSocketPort);
+WiFiUDP discoveryUdp;
 Preferences preferences;
 NoteState notes[kNoteCount];
 notefall::midi::HighResolutionVelocityTracker velocityTracker;
@@ -91,7 +99,16 @@ std::atomic<bool> pianoConnected{false};
 bool mdnsStarted = false;
 bool restartRequested = false;
 bool preferencesReady = false;
+bool littleFsReady = false;
+bool stripReady = false;
+bool usbHostReady = false;
+bool accessPointReady = false;
+bool otaPendingVerification = false;
+bool otaExternalHealthSeen = false;
 uint8_t previousApStationCount = 0;
+wl_status_t previousStationStatus = WL_NO_SHIELD;
+uint32_t lastStationReconnectMs = 0;
+uint32_t otaBootStartedMs = 0;
 esp_reset_reason_t bootResetReason = ESP_RST_UNKNOWN;
 uint8_t webClients = 0;
 uint8_t brightness = kDefaultGlobalBrightness;
@@ -144,6 +161,7 @@ uint32_t mainLoopLastUs = 0;
 uint32_t mainLoopMaxUs = 0;
 String activeApPassword;
 String controlSessionToken;
+String configuredStationSsid;
 WebUpdateState webUpdate;
 
 constexpr Rgb kLeftTarget{28, 178, 255};
@@ -160,6 +178,19 @@ constexpr uint32_t kRealtimeIdlePollMs = 5;
 constexpr uint32_t kRealtimeTaskStackBytes = 6144;
 constexpr UBaseType_t kRealtimeTaskPriority = 7;
 constexpr char kUpdateAuthHeader[] = "X-NoteFall-Admin";
+constexpr char kRecoveryPage[] PROGMEM = R"HTML(<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NoteFall 88 Rescue</title><style>body{font:16px system-ui;max-width:720px;margin:30px auto;padding:0 18px;background:#0b1020;color:#eef}fieldset{margin:18px 0;padding:16px;border:1px solid #667;border-radius:12px}input,select,button{font:inherit;padding:10px;margin:5px 0;max-width:100%;box-sizing:border-box}button{cursor:pointer}pre{white-space:pre-wrap}progress{width:100%}</style>
+<h1>NoteFall 88 救援页</h1><p>这个页面内置在固件中，即使普通网页损坏也可以恢复。救援热点 <b>NoteFall-88</b> 会一直保留。</p>
+<button onclick="status()">刷新状态</button><pre id="s">正在读取…</pre>
+<fieldset><legend>恢复更新</legend><input id="p" type="password" placeholder="设备管理密码"><br><select id="t"><option value="firmware">固件</option><option value="filesystem">网页文件</option></select><input id="f" type="file" accept=".bin"><button onclick="upload()">开始恢复</button><progress id="g" max="1" value="0"></progress><pre id="r"></pre></fieldset>
+<fieldset><legend>重新设置家庭 Wi-Fi</legend><input id="n" placeholder="2.4GHz Wi-Fi 名称"><input id="w" type="password" placeholder="Wi-Fi 密码"><button onclick="wifi()">保存并重启</button></fieldset>
+<script>
+async function status(){try{s.textContent=JSON.stringify(await (await fetch('/api/status',{cache:'no-store'})).json(),null,2)}catch(e){s.textContent=String(e)}}
+function auth(){return p.value}function upload(){if(!f.files[0]||!auth())return r.textContent='请选择文件并输入管理密码';let x=new XMLHttpRequest;x.open('POST','/api/update?target='+t.value);x.setRequestHeader('X-NoteFall-Admin',auth());x.upload.onprogress=e=>{if(e.lengthComputable)g.value=e.loaded/e.total};x.onload=()=>r.textContent=x.responseText;x.onerror=()=>r.textContent='上传中断；旧固件仍然安全';let d=new FormData;d.append('image',f.files[0]);x.send(d)}
+async function wifi(){if(!auth())return r.textContent='请输入管理密码';let b=new URLSearchParams({ssid:n.value,password:w.value});let q=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-NoteFall-Admin':auth()},body:b});r.textContent=await q.text()}
+status();
+</script></html>)HTML";
 
 template <typename T>
 T clampValue(T value, T low, T high) {
@@ -415,6 +446,11 @@ void sendStatus(uint8_t client = 255) {
   doc["offset"] = pixelOffset;
   doc["reversed"] = stripReversed;
   doc["rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
+  doc["stationConnected"] = WiFi.status() == WL_CONNECTED;
+  doc["stationIp"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "";
+  doc["hostname"] = String(kHostname) + ".local";
+  doc["rescueSsid"] = kApSsid;
+  doc["otaPending"] = otaPendingVerification;
   doc["uptimeMs"] = millis();
   doc["freeHeap"] = ESP.getFreeHeap();
   doc["psramBytes"] = ESP.getPsramSize();
@@ -942,6 +978,7 @@ bool websocketClientUsesAccessPoint(uint8_t client) {
 void webSocketEvent(uint8_t client, WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
     case WStype_CONNECTED:
+      otaExternalHealthSeen = true;
       webClients = std::min<uint8_t>(webClients + 1, 250);
       webProtocolCompatible[client] = false;
       webAccessPointClient[client] = websocketClientUsesAccessPoint(client);
@@ -970,12 +1007,8 @@ void webSocketEvent(uint8_t client, WStype_t type, uint8_t* payload, size_t leng
   }
 }
 
-bool requestUsesAccessPoint() {
-  return http.client().localIP() == WiFi.softAPIP();
-}
-
 bool updateRequestAuthorized() {
-  return requestUsesAccessPoint() && http.hasHeader(kUpdateAuthHeader) &&
+  return http.hasHeader(kUpdateAuthHeader) &&
       constantTimeEquals(http.header(kUpdateAuthHeader), activeApPassword);
 }
 
@@ -990,7 +1023,9 @@ void sendUpdateInfo() {
   doc["running"] = running ? running->label : "unknown";
   doc["firmwareMax"] = next ? next->size : 0;
   doc["filesystemMax"] = filesystem ? filesystem->size : 0;
-  doc["apOnly"] = true;
+  doc["apOnly"] = false;
+  doc["rollback"] = true;
+  doc["recoveryUrl"] = "/recovery";
   String body;
   serializeJson(doc, body);
   http.send(200, "application/json", body);
@@ -1010,7 +1045,7 @@ void handleUpdateUpload() {
     webUpdate = WebUpdateState{};
     webUpdate.authorized = updateRequestAuthorized();
     if (!webUpdate.authorized) {
-      webUpdate.error = requestUsesAccessPoint() ? "wrong hotspot password" : "connect to NoteFall-88 hotspot";
+      webUpdate.error = "wrong device management password";
       return;
     }
     const String target = http.arg("target");
@@ -1022,6 +1057,8 @@ void handleUpdateUpload() {
     } else if (target != "firmware") {
       webUpdate.error = "unknown update target";
       return;
+    } else {
+      webUpdate.firmwareTarget = true;
     }
     clearTargets();
     portENTER_CRITICAL(&ledStateMux);
@@ -1066,6 +1103,20 @@ void handleUpdateUpload() {
     if (!webUpdate.success) {
       webUpdate.error = Update.errorString();
       restoreFilesystemAfterFailure();
+    } else if (webUpdate.firmwareTarget) {
+      const esp_partition_t* running = esp_ota_get_running_partition();
+      const esp_partition_t* candidate = esp_ota_get_next_update_partition(nullptr);
+      esp_app_desc_t candidateDescription{};
+      const esp_app_desc_t* runningDescription = esp_ota_get_app_description();
+      const bool identityMatches = candidate != nullptr && runningDescription != nullptr &&
+          esp_ota_get_partition_description(candidate, &candidateDescription) == ESP_OK &&
+          std::strncmp(candidateDescription.project_name, runningDescription->project_name,
+                       sizeof(candidateDescription.project_name)) == 0;
+      if (!identityMatches) {
+        if (running != nullptr) esp_ota_set_boot_partition(running);
+        webUpdate.success = false;
+        webUpdate.error = "firmware identity does not match NoteFall 88";
+      }
     }
     Serial.printf("OTA end: %u bytes, success=%d\n",
                   static_cast<unsigned>(webUpdate.written), webUpdate.success);
@@ -1092,7 +1143,7 @@ void changeAccessPointPassword() {
   JsonDocument doc;
   if (!updateRequestAuthorized()) {
     doc["ok"] = false;
-    doc["error"] = requestUsesAccessPoint() ? "current password is wrong" : "connect to NoteFall-88 hotspot";
+    doc["error"] = "current device management password is wrong";
     String body;
     serializeJson(doc, body);
     http.send(403, "application/json", body);
@@ -1105,15 +1156,16 @@ void changeAccessPointPassword() {
   }
   preferences.putString("apPass", next);
   activeApPassword = next;
+  controlSessionToken = generateControlSessionToken();
+  preferences.putString("controlToken", controlSessionToken);
   http.send(200, "application/json", "{\"ok\":true,\"restart\":true}");
   restartRequested = true;
 }
 
 void saveStationWifi() {
   if (!updateRequestAuthorized()) {
-    http.send(403, "application/json", requestUsesAccessPoint()
-        ? "{\"ok\":false,\"error\":\"current password is wrong\"}"
-        : "{\"ok\":false,\"error\":\"connect to NoteFall-88 hotspot\"}");
+    http.send(403, "application/json",
+              "{\"ok\":false,\"error\":\"current device management password is wrong\"}");
     return;
   }
   const String ssid = http.arg("ssid");
@@ -1133,20 +1185,30 @@ void saveStationWifi() {
 
 void startNetwork() {
   WiFi.mode(WIFI_AP_STA);
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.setSleep(false);
   WiFi.setHostname(kHostname);
   activeApPassword = preferences.getString("apPass", kApPassword);
   if (activeApPassword.length() < 8 || activeApPassword.length() > 63) activeApPassword = kApPassword;
-  WiFi.softAP(kApSsid, activeApPassword.c_str());
-  const String ssid = preferences.getString("wifiSsid", "");
+  accessPointReady = WiFi.softAP(kApSsid, activeApPassword.c_str());
+  configuredStationSsid = preferences.getString("wifiSsid", "");
   const String password = preferences.getString("wifiPass", "");
-  if (!ssid.isEmpty()) WiFi.begin(ssid.c_str(), password.c_str());
+  if (!configuredStationSsid.isEmpty()) {
+    WiFi.begin(configuredStationSsid.c_str(), password.c_str());
+    lastStationReconnectMs = millis();
+  }
 
   http.on("/api/status", HTTP_GET, []() {
+    otaExternalHealthSeen = true;
     JsonDocument doc;
     doc["project"] = "NoteFall 88";
     doc["piano"] = pianoConnected.load();
     doc["apIp"] = WiFi.softAPIP().toString();
     doc["stationIp"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "";
+    doc["hostname"] = String(kHostname) + ".local";
+    doc["rescueSsid"] = kApSsid;
+    doc["otaPending"] = otaPendingVerification;
     String body;
     serializeJson(doc, body);
     http.send(200, "application/json", body);
@@ -1157,6 +1219,19 @@ void startNetwork() {
   http.on("/api/update", HTTP_POST, finishUpdateRequest, handleUpdateUpload);
   http.on("/api/ap-password", HTTP_POST, changeAccessPointPassword);
   http.on("/api/wifi", HTTP_POST, saveStationWifi);
+  http.on("/api/restart", HTTP_POST, []() {
+    if (!updateRequestAuthorized()) {
+      http.send(403, "application/json",
+                "{\"ok\":false,\"error\":\"current device management password is wrong\"}");
+      return;
+    }
+    http.send(200, "application/json", "{\"ok\":true,\"restart\":true}");
+    restartRequested = true;
+  });
+  http.on("/recovery", HTTP_GET, []() {
+    otaExternalHealthSeen = true;
+    http.send_P(200, "text/html; charset=utf-8", kRecoveryPage);
+  });
   // Arduino-ESP32 2.x defaults directory roots to /index.htm (without the
   // final "l"), so register our Vite entry file explicitly and serve hashed
   // assets from their own prefix.
@@ -1167,12 +1242,34 @@ void startNetwork() {
       http.sendHeader("Location", "/", true);
       http.send(302, "text/plain", "");
     } else {
-      http.send(503, "text/plain", "NoteFall web UI is not flashed; run PlatformIO uploadfs");
+      http.sendHeader("Location", "/recovery", true);
+      http.send(302, "text/plain", "Recovery UI");
     }
   });
   http.begin();
   websocket.begin();
   websocket.onEvent(webSocketEvent);
+  discoveryUdp.begin(kDiscoveryPort);
+}
+
+void serviceDiscovery() {
+  const int packetSize = discoveryUdp.parsePacket();
+  if (packetSize <= 0) return;
+  char request[32]{};
+  const int received = discoveryUdp.read(
+      reinterpret_cast<uint8_t*>(request), std::min<int>(packetSize, sizeof(request) - 1));
+  if (received <= 0 || std::strcmp(request, "NOTEFALL_DISCOVER_V1") != 0) return;
+  JsonDocument response;
+  response["project"] = "NoteFall 88";
+  response["host"] = discoveryUdp.remoteIP()[0] == 192 && discoveryUdp.remoteIP()[1] == 168 &&
+      discoveryUdp.remoteIP()[2] == 4 ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
+  response["http"] = kHttpPort;
+  response["ws"] = kWebSocketPort;
+  String encoded;
+  serializeJson(response, encoded);
+  discoveryUdp.beginPacket(discoveryUdp.remoteIP(), discoveryUdp.remotePort());
+  discoveryUdp.write(reinterpret_cast<const uint8_t*>(encoded.c_str()), encoded.length());
+  discoveryUdp.endPacket();
 }
 
 void recoverHttpAfterAccessPointDeparture() {
@@ -1190,6 +1287,61 @@ void recoverHttpAfterAccessPointDeparture() {
   previousApStationCount = stationCount;
 }
 
+void maintainStationConnection(uint32_t now) {
+  const wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED) {
+    if (previousStationStatus != WL_CONNECTED) {
+      if (mdnsStarted) MDNS.end();
+      mdnsStarted = MDNS.begin(kHostname);
+      if (mdnsStarted) MDNS.addService("http", "tcp", kHttpPort);
+    }
+  } else {
+    if (previousStationStatus == WL_CONNECTED && mdnsStarted) {
+      MDNS.end();
+      mdnsStarted = false;
+    }
+    if (!configuredStationSsid.isEmpty() && now - lastStationReconnectMs >= kStationReconnectMs) {
+      lastStationReconnectMs = now;
+      WiFi.reconnect();
+    }
+  }
+  previousStationStatus = status;
+}
+
+void beginOtaBootVerification() {
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
+  otaPendingVerification = running != nullptr &&
+      esp_ota_get_state_partition(running, &state) == ESP_OK &&
+      state == ESP_OTA_IMG_PENDING_VERIFY;
+  otaBootStartedMs = millis();
+  if (otaPendingVerification) Serial.println("OTA image pending external health confirmation");
+}
+
+bool otaInternalHealthReady() {
+  const bool realtimeHealthy = realtimeTaskHandle == nullptr || realtimeTaskReady.load();
+  return preferencesReady && littleFsReady && stripReady && usbHostReady &&
+      accessPointReady && realtimeHealthy;
+}
+
+void serviceOtaBootVerification(uint32_t now) {
+  if (!otaPendingVerification) return;
+  const uint32_t elapsed = now - otaBootStartedMs;
+  if (elapsed >= kOtaHealthDelayMs && otaExternalHealthSeen && otaInternalHealthReady()) {
+    if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
+      otaPendingVerification = false;
+      Serial.println("OTA image confirmed healthy; rollback cancelled");
+    }
+    return;
+  }
+  if (elapsed >= kOtaConfirmationDeadlineMs) {
+    Serial.println("OTA image was not confirmed; rolling back");
+    clearTargets();
+    panicMidiOutput();
+    esp_ota_mark_app_invalid_rollback_and_reboot();
+  }
+}
+
 }  // namespace
 
 void setup() {
@@ -1202,10 +1354,15 @@ void setup() {
     Serial.printf("PSRAM ready: %u bytes\n", ESP.getPsramSize());
   }
   preferencesReady = preferences.begin("notefall", false);
-  controlSessionToken = generateControlSessionToken();
   if (!preferencesReady) {
+    controlSessionToken = generateControlSessionToken();
     Serial.println("WARN: NVS unavailable; calibration will not persist");
   } else {
+    controlSessionToken = preferences.getString("controlToken", "");
+    if (controlSessionToken.length() < 32) {
+      controlSessionToken = generateControlSessionToken();
+      preferences.putString("controlToken", controlSessionToken);
+    }
     brightness = clampValue<uint8_t>(preferences.getUChar("brightness", kDefaultGlobalBrightness),
                                      static_cast<uint8_t>(1), kMaxGlobalBrightness);
     pixelOffset = static_cast<int8_t>(clampValue<int>(preferences.getChar("offset", 0),
@@ -1227,15 +1384,19 @@ void setup() {
     }
   }
 
-  if (!strip.begin()) Serial.println("FATAL: LED strip allocation failed");
-  if (!LittleFS.begin(true, "/littlefs", 10, kLittleFsPartitionLabel)) {
+  stripReady = strip.begin();
+  if (!stripReady) Serial.println("FATAL: LED strip allocation failed");
+  littleFsReady = LittleFS.begin(true, "/littlefs", 10, kLittleFsPartitionLabel) &&
+      LittleFS.exists("/index.html");
+  if (!littleFsReady) {
     Serial.println("WARN: LittleFS unavailable; web UI will not load");
   }
   startNetwork();
 
   usbMidi.setMidiCallback(handleMidiPacket, nullptr);
   usbMidi.setConnectionCallbacks(onPianoConnected, onPianoDisconnected, nullptr);
-  if (!usbMidi.begin()) Serial.printf("USB host start failed: %s\n", usbMidi.lastError().c_str());
+  usbHostReady = usbMidi.begin();
+  if (!usbHostReady) Serial.printf("USB host start failed: %s\n", usbMidi.lastError().c_str());
   portENTER_CRITICAL(&ledStateMux);
   ledDirty = true;
   portEXIT_CRITICAL(&ledStateMux);
@@ -1247,6 +1408,7 @@ void setup() {
     usbMidi.setConsumerTask(realtimeTaskHandle);
     notifyRealtime();
   }
+  beginOtaBootVerification();
 }
 
 void loop() {
@@ -1260,15 +1422,13 @@ void loop() {
   flushBrowserMidi();
   processScheduledMidi();
   recoverHttpAfterAccessPointDeparture();
+  serviceDiscovery();
   http.handleClient();
   websocket.loop();
 
-  if (!mdnsStarted && (WiFi.status() == WL_CONNECTED || WiFi.softAPgetStationNum() > 0)) {
-    mdnsStarted = MDNS.begin(kHostname);
-    if (mdnsStarted) MDNS.addService("http", "tcp", kHttpPort);
-  }
-
   const uint32_t now = millis();
+  maintainStationConnection(now);
+  serviceOtaBootVerification(now);
   if (statusBroadcastRequested.exchange(false) ||
       now - lastStatusMs >= kStatusBroadcastMs) {
     lastStatusMs = now;

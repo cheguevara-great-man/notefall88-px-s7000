@@ -18,7 +18,7 @@ const SESSION_TOKEN_KEY = "notefall-control-token";
 
 function loadSessionToken(): string {
   try {
-    return window.sessionStorage.getItem(SESSION_TOKEN_KEY) ?? "";
+    return window.localStorage.getItem(SESSION_TOKEN_KEY) ?? "";
   } catch {
     return "";
   }
@@ -26,8 +26,8 @@ function loadSessionToken(): string {
 
 function saveSessionToken(value: string): void {
   try {
-    if (value) window.sessionStorage.setItem(SESSION_TOKEN_KEY, value);
-    else window.sessionStorage.removeItem(SESSION_TOKEN_KEY);
+    if (value) window.localStorage.setItem(SESSION_TOKEN_KEY, value);
+    else window.localStorage.removeItem(SESSION_TOKEN_KEY);
   } catch {
     // Private browsing may deny storage; the in-memory session still works.
   }
@@ -58,8 +58,14 @@ export class DeviceLink {
   clockSyncErrorMs?: number;
   midiTransportDelayMs?: number;
   browserRejectedMessages = 0;
+  private lastDecodeWarning = "";
 
-  constructor(private readonly webSocketUrl?: string) {}
+  constructor(private webSocketUrl?: string) {}
+
+  setWebSocketUrl(webSocketUrl: string): void {
+    if (this.socket && this.socket.readyState <= WebSocket.OPEN) this.socket.close();
+    this.webSocketUrl = webSocketUrl;
+  }
 
   connect(): void {
     if (!this.sessionToken) this.sessionToken = loadSessionToken();
@@ -102,6 +108,10 @@ export class DeviceLink {
     const decoded = decodeDeviceMessage(raw);
     if (!decoded.ok) {
       this.browserRejectedMessages += 1;
+      if (decoded.reason !== this.lastDecodeWarning) {
+        this.lastDecodeWarning = decoded.reason;
+        console.warn(`NoteFall ignored an invalid device message: ${decoded.reason}`);
+      }
       return;
     }
     const message = decoded.message;

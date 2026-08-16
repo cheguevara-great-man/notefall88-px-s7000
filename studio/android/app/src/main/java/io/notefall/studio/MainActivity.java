@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(NativeWaterfallPlugin.class);
         registerPlugin(ImmersiveModePlugin.class);
+        registerPlugin(NoteFallDiscoveryPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

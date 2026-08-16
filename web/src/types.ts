@@ -70,6 +70,11 @@ export interface DeviceStatus {
   offset: number;
   reversed: boolean;
   rssi?: number;
+  stationConnected?: boolean;
+  stationIp?: string;
+  hostname?: string;
+  rescueSsid?: string;
+  otaPending?: boolean;
   uptimeMs?: number;
   freeHeap?: number;
   psramBytes?: number;

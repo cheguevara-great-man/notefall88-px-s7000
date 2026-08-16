@@ -52,7 +52,8 @@ def test_kf301_vendor_claim_requires_physical_continuity_evidence() -> None:
         assert forbidden not in text
         assert "KF301" in text
     checklist = documents[-1].read_text(encoding="utf-8")
-    assert "商家已经确认" in checklist
+    assert "商家所说的“可以连起来”" in checklist
+    assert "三个相邻脚两两均不导通" in checklist
     assert "哪些孔互通" in checklist
     assert "5V 组与 GND 组必须完全不通" in checklist
 
@@ -81,3 +82,15 @@ def test_arrival_gate_preserves_usb_power_topology_and_no_power_before_audit() -
     for invariant in ("H5", "H7", "VBUS", "GND", "不得给灯带或钢琴 USB 链路上电"):
         assert invariant in checklist or invariant in inventory
     assert "共点关系未记录前不得上电" in inventory
+
+
+def test_network_recovery_docs_do_not_depend_on_mdns() -> None:
+    chinese = (DEPLOY / "network-and-recovery.md").read_text(encoding="utf-8")
+    english = (DEPLOY / "network-and-recovery.en.md").read_text(encoding="utf-8")
+    for text in (chinese, english):
+        assert "32188" in text
+        assert "192.168.4.1/recovery" in text
+        assert "notefall.local" in text
+        assert "Studio" in text
+    assert "可选入口" in chinese
+    assert "optional" in english

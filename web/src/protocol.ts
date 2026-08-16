@@ -94,6 +94,11 @@ function statusMessage(source: Record<string, unknown>): DeviceMessage {
   status.defaultPassword = optionalBoolean(source, "defaultPassword");
   status.controlToken = optionalString(source, "controlToken", 64);
   status.rssi = optionalInteger(source, "rssi", -127, 0);
+  status.stationConnected = optionalBoolean(source, "stationConnected");
+  status.stationIp = optionalString(source, "stationIp", 45);
+  status.hostname = optionalString(source, "hostname", 64);
+  status.rescueSsid = optionalString(source, "rescueSsid", 32);
+  status.otaPending = optionalBoolean(source, "otaPending");
   status.uptimeMs = optionalInteger(source, "uptimeMs", 0, 0xffff_ffff);
   status.freeHeap = optionalInteger(source, "freeHeap", 0, 0xffff_ffff);
   status.psramBytes = optionalInteger(source, "psramBytes", 0, 0xffff_ffff);

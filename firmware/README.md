@@ -23,8 +23,8 @@ cd ..
 
 - 热点：`NoteFall-88`
 - 密码：`notefall88`
-- 网页：`http://192.168.4.1`
-- 家庭 Wi-Fi 下：`http://notefall.local`（取决于路由器/客户端 mDNS）
+- 家庭网络：Android Studio App 通过 UDP 32188 自动发现；浏览器使用当前 DHCP IP，或在路由器/客户端支持 mDNS 时使用 `http://notefall.local`
+- 永久救援入口：连接 `NoteFall-88` 后打开 `http://192.168.4.1/recovery`
 - WebSocket：端口 `81`
 - 固件：0.7.2
 - 协议：v6
@@ -43,4 +43,4 @@ USB Host daemon 与 MIDI client 使用两个专用 FreeRTOS 任务，client 最�
 
 ## 无线维护
 
-双 OTA 固件槽和独立 LittleFS 分区由 `partitions.csv` 固定。`/api/update` 只接受 SoftAP 接口并再次校验热点密码；上传开始会熄灯并清空 MIDI OUT。`/api/update-info` 只读返回版本、运行槽和动态分区上限。详细操作与恢复见 `docs/update.md`。
+双 OTA 固件槽和独立 LittleFS 分区由 `partitions.csv` 固定。`/api/update` 在家庭 LAN 与永久 SoftAP 上都再次校验管理密码；上传开始会熄灯并清空 MIDI OUT。新固件保持 pending-verify，只有内部自检和真实网络访问同时成功才确认，否则 90 秒内自动回滚。`/recovery` 编译进应用镜像，不依赖 LittleFS。详细操作与恢复见 `docs/update.md`。
