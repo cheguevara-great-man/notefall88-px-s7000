@@ -9,7 +9,7 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-Q3Wg3IsY.js"></script>
+    <script type="module" crossorigin src="./assets/index-BEfBRlAP.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-qAyxR06J.css">
   </head>
   <body>
@@ -317,12 +317,21 @@
           <span>当前键修正：<strong id="key-offset-value">0</strong></span>
           <input id="key-offset" type="range" min="-4" max="4" value="0" />
         </label>
+        <label class="switch-line">
+          <span>按琴键时自动选中并保持亮灯</span>
+          <input id="key-auto-select" type="checkbox" checked />
+        </label>
         <div class="button-row">
           <button id="key-previous">上一键</button>
           <button id="key-test" class="primary">点亮当前键</button>
           <button id="key-next">下一键</button>
           <button id="key-reset">当前键归零</button>
         </div>
+        <div class="button-row">
+          <button id="key-shift-lower" type="button">灯向低音侧一格</button>
+          <button id="key-shift-higher" type="button">灯向高音侧一格</button>
+        </div>
+        <p>快速复核时从左到右弹一遍：位置正确就继续；只有偏位的键才点上面的方向按钮。无需逐键填写或记录数字。</p>
         <div class="button-row">
           <button id="calibration-field-preset" type="button" class="primary">应用本机实测建议</button>
           <button id="calibration-export" type="button">导出88键校准</button>

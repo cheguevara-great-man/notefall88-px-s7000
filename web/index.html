@@ -315,12 +315,21 @@
           <span>当前键修正：<strong id="key-offset-value">0</strong></span>
           <input id="key-offset" type="range" min="-4" max="4" value="0" />
         </label>
+        <label class="switch-line">
+          <span>按琴键时自动选中并保持亮灯</span>
+          <input id="key-auto-select" type="checkbox" checked />
+        </label>
         <div class="button-row">
           <button id="key-previous">上一键</button>
           <button id="key-test" class="primary">点亮当前键</button>
           <button id="key-next">下一键</button>
           <button id="key-reset">当前键归零</button>
         </div>
+        <div class="button-row">
+          <button id="key-shift-lower" type="button">灯向低音侧一格</button>
+          <button id="key-shift-higher" type="button">灯向高音侧一格</button>
+        </div>
+        <p>快速复核时从左到右弹一遍：位置正确就继续；只有偏位的键才点上面的方向按钮。无需逐键填写或记录数字。</p>
         <div class="button-row">
           <button id="calibration-field-preset" type="button" class="primary">应用本机实测建议</button>
           <button id="calibration-export" type="button">导出88键校准</button>

@@ -222,6 +222,7 @@ const pixelOffset = required<HTMLInputElement>("pixel-offset");
 const reversed = required<HTMLInputElement>("strip-reversed");
 const keyNote = required<HTMLInputElement>("key-note");
 const keyOffset = required<HTMLInputElement>("key-offset");
+const keyAutoSelect = required<HTMLInputElement>("key-auto-select");
 const waterfallCanvas = required<HTMLCanvasElement>("waterfall");
 const visualizerCard = required("visualizer-card");
 const appShell = document.querySelector<HTMLElement>(".app-shell");
@@ -1577,6 +1578,10 @@ function advanceFollowMode(): void {
 function handleMidi(event: MidiInputEvent): void {
   if (event.note < 21 || event.note > 108) return;
   requestVisualFrame();
+  if (event.state === "on" && !settingsPanel.hidden && keyAutoSelect.checked) {
+    selectCalibrationNote(event.note);
+    device.testNote(event.note);
+  }
   const capturedAt = event.capturedAt ?? performance.now();
   const capturedScoreTime = clock.time(capturedAt);
   if (demonstrationActive || recordingPlaybackActive) {
@@ -2624,9 +2629,15 @@ keyOffset.addEventListener("input", () => {
   device.setKeyOffset(note, offset);
   device.testNote(note);
 });
+function shiftCurrentKeyOffset(delta: number): void {
+  keyOffset.value = String(Math.max(-4, Math.min(4, Number(keyOffset.value) + delta)));
+  keyOffset.dispatchEvent(new Event("input"));
+}
 required("key-previous").addEventListener("click", () => selectCalibrationNote(Number(keyNote.value) - 1));
 required("key-next").addEventListener("click", () => selectCalibrationNote(Number(keyNote.value) + 1));
 required("key-test").addEventListener("click", () => device.testNote(Number(keyNote.value)));
+required("key-shift-lower").addEventListener("click", () => shiftCurrentKeyOffset(-1));
+required("key-shift-higher").addEventListener("click", () => shiftCurrentKeyOffset(1));
 required("key-reset").addEventListener("click", () => {
   keyOffset.value = "0";
   keyOffset.dispatchEvent(new Event("input"));
