@@ -2450,8 +2450,9 @@ required("practice-options-button").addEventListener("click", () => {
   libraryPanel.hidden = true;
   commissioningPanel.hidden = true;
   practicePanel.hidden = false;
+  visualDirty = true;
 });
-required("practice-close").addEventListener("click", () => { practicePanel.hidden = true; });
+required("practice-close").addEventListener("click", () => { practicePanel.hidden = true; visualDirty = true; });
 required("history-export").addEventListener("click", async () => {
   try {
     const payload = await sessionStore.exportHistory();
@@ -2538,29 +2539,32 @@ required("settings-button").addEventListener("click", () => {
   libraryPanel.hidden = true;
   commissioningPanel.hidden = true;
   settingsPanel.hidden = false;
+  visualDirty = true;
   void refreshUpdateInfo();
 });
-required("settings-close").addEventListener("click", () => { settingsPanel.hidden = true; });
+required("settings-close").addEventListener("click", () => { settingsPanel.hidden = true; visualDirty = true; });
 required("library-button").addEventListener("click", () => {
   practicePanel.hidden = true;
   settingsPanel.hidden = true;
   commissioningPanel.hidden = true;
   libraryPanel.hidden = false;
+  visualDirty = true;
   void refreshStorageStatus();
   void refreshLibrary().catch((error: unknown) => {
     librarySummary.textContent = error instanceof Error ? error.message : "无法打开曲库";
   });
 });
-required("library-close").addEventListener("click", () => { libraryPanel.hidden = true; });
+required("library-close").addEventListener("click", () => { libraryPanel.hidden = true; visualDirty = true; });
 
 required("commissioning-button").addEventListener("click", () => {
   practicePanel.hidden = true;
   settingsPanel.hidden = true;
   libraryPanel.hidden = true;
   commissioningPanel.hidden = false;
+  visualDirty = true;
   renderCommissioning();
 });
-required("commissioning-close").addEventListener("click", () => { commissioningPanel.hidden = true; });
+required("commissioning-close").addEventListener("click", () => { commissioningPanel.hidden = true; visualDirty = true; });
 commissioningPanel.addEventListener("change", (event) => {
   const checkbox = (event.target as HTMLElement).closest<HTMLInputElement>("input[data-commission]");
   if (!checkbox) return;

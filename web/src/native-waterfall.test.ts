@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createWaterfallSurface, nativeScoreBeats, nativeScoreNotes, nativeScorePedals } from "./native-waterfall";
+import { createWaterfallSurface, hasActiveOverlay, nativeScoreBeats, nativeScoreNotes, nativeScorePedals } from "./native-waterfall";
 
 describe("native waterfall bridge", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.body.innerHTML = "";
+  });
 
   it("sends only stable score fields to the platform renderer", () => {
     expect(nativeScoreNotes({
@@ -38,12 +41,23 @@ describe("native waterfall bridge", () => {
     })).toEqual([{ time: 0, accent: true, beat: 1, measure: 1 }]);
   });
 
+  it("detects active drawer overlays in the DOM", () => {
+    expect(hasActiveOverlay()).toBe(false);
+    const panel = document.createElement("aside");
+    panel.className = "settings-panel";
+    document.body.appendChild(panel);
+    expect(hasActiveOverlay()).toBe(true);
+    panel.hidden = true;
+    expect(hasActiveOverlay()).toBe(false);
+  });
+
   it("selects the native plugin and sends geometry, state, bounds and a low-rate clock", () => {
     const plugin = {
       setGeometry: vi.fn(async () => undefined),
       setScore: vi.fn(async () => undefined),
       setState: vi.fn(async () => undefined),
       setPlayback: vi.fn(async () => undefined),
+      setTheme: vi.fn(async () => undefined),
       setPreview: vi.fn(async () => undefined),
       showFeedback: vi.fn(async () => undefined),
       show: vi.fn(async () => undefined),
@@ -92,5 +106,41 @@ describe("native waterfall bridge", () => {
     surface.render(0.5, true);
     expect(plugin.hide).toHaveBeenCalledOnce();
     expect(plugin.setPlayback).toHaveBeenCalledOnce();
+  });
+
+  it("hides native plugin and restores canvas visibility when a settings panel is open", () => {
+    const plugin = {
+      setGeometry: vi.fn(async () => undefined),
+      setScore: vi.fn(async () => undefined),
+      setState: vi.fn(async () => undefined),
+      setPlayback: vi.fn(async () => undefined),
+      setTheme: vi.fn(async () => undefined),
+      setPreview: vi.fn(async () => undefined),
+      showFeedback: vi.fn(async () => undefined),
+      show: vi.fn(async () => undefined),
+      hide: vi.fn(async () => undefined),
+    };
+    vi.stubGlobal("window", { Capacitor: { Plugins: { NativeWaterfall: plugin } } });
+    vi.stubGlobal("performance", { now: () => 1_000 });
+    const canvas = {
+      style: { visibility: "" },
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 400 }),
+    } as unknown as HTMLCanvasElement;
+
+    const surface = createWaterfallSurface(canvas, true);
+    surface.render(0.1, false);
+    expect(plugin.show).toHaveBeenCalledOnce();
+
+    const panel = document.createElement("aside");
+    panel.className = "settings-panel";
+    document.body.appendChild(panel);
+
+    surface.render(0.2, false);
+    expect(plugin.hide).toHaveBeenCalled();
+    expect(canvas.style.visibility).toBe("");
+
+    panel.hidden = true;
+    surface.render(0.3, false);
+    expect(canvas.style.visibility).toBe("hidden");
   });
 });

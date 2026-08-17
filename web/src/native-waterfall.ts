@@ -66,6 +66,13 @@ export function nativeScorePedals(score: ParsedScore | undefined): PedalCue[] {
   return buildPedalCues(score?.pedalEvents);
 }
 
+export function hasActiveOverlay(): boolean {
+  if (typeof document === "undefined") return false;
+  return Boolean(
+    document.querySelector(".settings-panel:not([hidden]), [data-overlay-active='true'], dialog[open]")
+  );
+}
+
 function nativePlugin(): NativeWaterfallPlugin | undefined {
   const capacitor = (window as typeof window & {
     Capacitor?: { Plugins?: { NativeWaterfall?: NativeWaterfallPlugin } };
@@ -83,6 +90,11 @@ class NativeWaterfallSurface implements WaterfallSurface {
   private lastPlaybackUpdate = -Infinity;
   private lastBounds = "";
   private lastState = "";
+  private nativeActive = true;
+  private currentScore?: ParsedScore;
+  private currentTheme: VisualTheme = "neon";
+  private currentPreviewSeconds = 4.2;
+  private webRenderer?: WaterfallRenderer;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -92,7 +104,27 @@ class NativeWaterfallSurface implements WaterfallSurface {
     void plugin.setGeometry({ keys: pianoKeys() });
   }
 
+  private getWebRenderer(): WaterfallRenderer | undefined {
+    if (!this.webRenderer) {
+      try {
+        if (typeof this.canvas.getContext === "function") {
+          this.webRenderer = new WaterfallRenderer(this.canvas);
+          this.webRenderer.setScore(this.currentScore);
+          this.webRenderer.setState(this.pressed, this.expected, this.wrong);
+          this.webRenderer.setPracticeView(this.hand, this.loop);
+          this.webRenderer.setTheme(this.currentTheme);
+          this.webRenderer.setPreviewSeconds(this.currentPreviewSeconds);
+        }
+      } catch {
+        // Fallback for mock/test environments
+      }
+    }
+    return this.webRenderer;
+  }
+
   setScore(score: ParsedScore | undefined): void {
+    this.currentScore = score;
+    this.webRenderer?.setScore(score);
     void this.plugin.setScore({
       notes: nativeScoreNotes(score),
       beats: nativeScoreBeats(score),
@@ -104,34 +136,63 @@ class NativeWaterfallSurface implements WaterfallSurface {
     this.pressed = pressed;
     this.expected = expected;
     this.wrong = wrong;
+    this.webRenderer?.setState(pressed, expected, wrong);
     this.pushState();
   }
 
   setPracticeView(hand: HandSelection, loop: LoopRange | undefined): void {
     this.hand = hand;
     this.loop = loop;
+    this.webRenderer?.setPracticeView(hand, loop);
     this.pushState();
   }
 
   setTheme(theme: VisualTheme): void {
+    this.currentTheme = theme;
+    this.webRenderer?.setTheme(theme);
     void this.plugin.setTheme({ theme });
   }
 
   setPreviewSeconds(seconds: number): void {
+    this.currentPreviewSeconds = seconds;
+    this.webRenderer?.setPreviewSeconds(seconds);
     void this.plugin.setPreview({ seconds });
   }
 
   pushFeedback(kind: WaterfallFeedbackKind, note: number, timingMs?: number): void {
+    this.webRenderer?.pushFeedback(kind, note, timingMs);
     void this.plugin.showFeedback({ kind, note, timingMs });
   }
 
   setVisible(visible: boolean): void {
     this.visible = visible;
-    if (!visible) void this.plugin.hide();
+    if (!visible) {
+      this.lastBounds = "";
+      void this.plugin.hide();
+    }
+    this.webRenderer?.setVisible(visible);
   }
 
   render(scoreTime: number, running = false): void {
     if (!this.visible) return;
+
+    if (hasActiveOverlay()) {
+      if (this.nativeActive) {
+        this.nativeActive = false;
+        this.lastBounds = "";
+        void this.plugin.hide();
+        this.canvas.style.visibility = "";
+      }
+      const web = this.getWebRenderer();
+      web?.render(scoreTime, running);
+      return;
+    }
+
+    if (!this.nativeActive) {
+      this.nativeActive = true;
+      this.canvas.style.visibility = "hidden";
+    }
+
     const rect = this.canvas.getBoundingClientRect();
     const bounds = [rect.left, rect.top, rect.width, rect.height].map((value) => Math.round(value * 10) / 10).join(":");
     if (bounds !== this.lastBounds) {
