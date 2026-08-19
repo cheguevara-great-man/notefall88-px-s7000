@@ -330,4 +330,157 @@ describe("MusicXML parser", () => {
     </part></score-partwise>`;
     expect(() => parseMusicXml(invalid, "invalid-ds.musicxml")).toThrow(/D\.S\..*目标/);
   });
+
+  it("parses single-part score without explicit piano metadata for backward compatibility", () => {
+    const xml = `<score-partwise><part-list><score-part id="P1"><part-name>Part 1</part-name></score-part></part-list>
+      <part id="P1">
+        <measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note></measure>
+      </part></score-partwise>`;
+    const score = parseMusicXml(xml, "single.musicxml");
+    expect(score.notes).toHaveLength(1);
+    expect(score.notes[0].note).toBe(60);
+  });
+
+  it("filters multi-part ensemble (Piano + Violin + Bass + Drum) keeping only Piano notes and filtered notation XML", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1">
+      <part-name>Violin</part-name>
+      <score-instrument id="P1-I1"><instrument-sound>strings.violin</instrument-sound></score-instrument>
+    </score-part>
+    <score-part id="P2">
+      <part-name>Piano</part-name>
+      <score-instrument id="P2-I1"><instrument-sound>keyboard.piano.grand</instrument-sound></score-instrument>
+    </score-part>
+    <score-part id="P3">
+      <part-name>Acoustic Bass</part-name>
+      <score-instrument id="P3-I1"><instrument-sound>pluck.bass</instrument-sound></score-instrument>
+    </score-part>
+    <score-part id="P4">
+      <part-name>Drum Set</part-name>
+      <score-instrument id="P4-I1"><instrument-sound>drum.group</instrument-sound></score-instrument>
+    </score-part>
+  </part-list>
+  <part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration></note></measure></part>
+  <part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+  <part id="P3"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>E</step><octave>2</octave></pitch><duration>1</duration></note></measure></part>
+  <part id="P4"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>A</step><octave>1</octave></pitch><duration>1</duration></note></measure></part>
+</score-partwise>`;
+
+    const buffer = new TextEncoder().encode(xml).buffer as ArrayBuffer;
+    const result = parseMusicXmlFile(buffer, "ensemble.musicxml");
+
+    // Only Piano note (C4 = 60) should be in ParsedScore
+    expect(result.score.notes).toHaveLength(1);
+    expect(result.score.notes[0].note).toBe(60);
+
+    // Notation XML should only contain Piano part
+    expect(result.xml).toContain('id="P2"');
+    expect(result.xml).not.toContain('id="P1"');
+    expect(result.xml).not.toContain('id="P3"');
+    expect(result.xml).not.toContain('id="P4"');
+  });
+
+  it("identifies piano via instrument-sound even when part-name is generic", () => {
+    const xml = `<score-partwise version="4.0">
+      <part-list>
+        <score-part id="P1">
+          <part-name>Track 1</part-name>
+          <score-instrument id="P1-I1"><instrument-name>Generic</instrument-name><instrument-sound>keyboard.piano.upright</instrument-sound></score-instrument>
+        </score-part>
+        <score-part id="P2">
+          <part-name>Track 2</part-name>
+          <score-instrument id="P2-I1"><instrument-name>Voice</instrument-name><instrument-sound>voice.vocals</instrument-sound></score-instrument>
+        </score-part>
+      </part-list>
+      <part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+      <part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+    </score-partwise>`;
+
+    const score = parseMusicXml(xml, "sound.musicxml");
+    expect(score.notes).toHaveLength(1);
+    expect(score.notes[0].note).toBe(62); // D4
+  });
+
+  it("identifies piano via name fallback such as Grand Piano, Pno., Klavier, 钢琴", () => {
+    const names = ["Grand Piano", "Pno.", "Klavier", "钢琴"];
+    for (const name of names) {
+      const xml = `<score-partwise version="4.0">
+        <part-list>
+          <score-part id="P1"><part-name>${name}</part-name></score-part>
+          <score-part id="P2"><part-name>Flute</part-name></score-part>
+        </part-list>
+        <part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+        <part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>B</step><octave>5</octave></pitch><duration>1</duration></note></measure></part>
+      </score-partwise>`;
+      const score = parseMusicXml(xml, "name-fallback.musicxml");
+      expect(score.notes).toHaveLength(1);
+      expect(score.notes[0].note).toBe(64); // E4
+    }
+  });
+
+  it("does not misclassify other keyboard instruments such as organ or harpsichord as piano", () => {
+    const xml = `<score-partwise version="4.0">
+      <part-list>
+        <score-part id="P1">
+          <part-name>Church Organ</part-name>
+          <score-instrument id="P1-I1"><instrument-sound>keyboard.organ</instrument-sound></score-instrument>
+        </score-part>
+        <score-part id="P2">
+          <part-name>Harpsichord</part-name>
+          <score-instrument id="P2-I1"><instrument-sound>keyboard.harpsichord</instrument-sound></score-instrument>
+        </score-part>
+      </part-list>
+      <part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+      <part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+    </score-partwise>`;
+
+    expect(() => parseMusicXml(xml, "keyboards.musicxml")).toThrow(/未识别到钢琴声部/);
+  });
+
+  it("preserves explicit hand-split piano parts (Piano RH + Piano LH) with notes from both parts", () => {
+    const xml = `<score-partwise version="4.0">
+      <part-list>
+        <score-part id="P1"><part-name>Piano RH</part-name></score-part>
+        <score-part id="P2"><part-name>Piano LH</part-name></score-part>
+      </part-list>
+      <part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration></note></measure></part>
+      <part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration></note></measure></part>
+    </score-partwise>`;
+
+    const score = parseMusicXml(xml, "hands.musicxml");
+    expect(score.notes).toHaveLength(2);
+    expect(score.notes.map((n) => n.note).sort()).toEqual([48, 72]);
+  });
+
+  it("rejects ambiguous multiple independent piano parts (Piano 1 + Piano 2)", () => {
+    const xml = `<score-partwise version="4.0">
+      <part-list>
+        <score-part id="P1"><part-name>Piano 1</part-name></score-part>
+        <score-part id="P2"><part-name>Piano 2</part-name></score-part>
+        <score-part id="P3"><part-name>Violin</part-name></score-part>
+      </part-list>
+      <part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+      <part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+      <part id="P3"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+    </score-partwise>`;
+
+    expect(() => parseMusicXml(xml, "duet.musicxml")).toThrow(/多个独立钢琴声部/);
+  });
+
+  it("rejects multi-part scores with no piano part detected", () => {
+    const xml = `<score-partwise version="4.0">
+      <part-list>
+        <score-part id="P1"><part-name>Violin I</part-name></score-part>
+        <score-part id="P2"><part-name>Violin II</part-name></score-part>
+        <score-part id="P3"><part-name>Cello</part-name></score-part>
+      </part-list>
+      <part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+      <part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+      <part id="P3"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+    </score-partwise>`;
+
+    expect(() => parseMusicXml(xml, "quartet.musicxml")).toThrow(/未识别到钢琴声部/);
+  });
 });

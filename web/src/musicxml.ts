@@ -1,5 +1,6 @@
 import {
   DOMParser,
+  XMLSerializer,
   type Document as XmlDocument,
   type Element as XmlElement,
 } from "@xmldom/xmldom";
@@ -787,6 +788,165 @@ function scoreTitle(document: XmlDocument, fallbackName: string): string {
   return title || fallbackName.replace(/\.(musicxml|xml|mxl)$/i, "");
 }
 
+
+export interface MusicXmlPartInfo {
+  id: string;
+  partName: string;
+  partAbbreviation: string;
+  instrumentNames: string[];
+  instrumentSounds: string[];
+  midiPrograms: number[];
+}
+
+export function isPianoInstrumentSound(sound: string): boolean {
+  const normalized = sound.trim().toLowerCase();
+  if (normalized === "keyboard.piano" || normalized.startsWith("keyboard.piano.")) return true;
+  if (normalized === "keyboard.fortepiano" || normalized.startsWith("keyboard.fortepiano.")) return true;
+  return false;
+}
+
+const PIANO_NAME_REGEX = /(?:^|\b)(?:piano(?:forte)?|pno\.?|klavier|clavier|grand\s*piano|electric\s*piano|acoustic\s*piano|fortepiano|钢琴)(?:\b|$)/i;
+
+export function isPianoPart(info: MusicXmlPartInfo): boolean {
+  for (const sound of info.instrumentSounds) {
+    if (isPianoInstrumentSound(sound)) return true;
+  }
+  const hasExplicitNonPianoSound = info.instrumentSounds.some((s) => s.trim().length > 0 && !isPianoInstrumentSound(s));
+  if (hasExplicitNonPianoSound && info.instrumentSounds.length > 0) {
+    return false;
+  }
+  const candidates = [info.partName, info.partAbbreviation, ...info.instrumentNames];
+  for (const candidate of candidates) {
+    if (candidate && PIANO_NAME_REGEX.test(candidate.trim())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const RIGHT_HAND_HINTS = [/\brh\b/i, /\bright(?:\s*hand)?\b/i, /右手/i, /\btreble\b/i, /\bupper\b/i];
+const LEFT_HAND_HINTS = [/\blh\b/i, /\bleft(?:\s*hand)?\b/i, /左手/i, /\bbass\b/i, /\blower\b/i];
+
+function isRightHandPart(info: MusicXmlPartInfo): boolean {
+  const text = `${info.partName} ${info.partAbbreviation} ${info.instrumentNames.join(" ")}`;
+  return RIGHT_HAND_HINTS.some((r) => r.test(text));
+}
+
+function isLeftHandPart(info: MusicXmlPartInfo): boolean {
+  const text = `${info.partName} ${info.partAbbreviation} ${info.instrumentNames.join(" ")}`;
+  return LEFT_HAND_HINTS.some((r) => r.test(text));
+}
+
+export function isHandSplitPianoParts(parts: MusicXmlPartInfo[]): boolean {
+  if (parts.length !== 2) return false;
+  const [p1, p2] = parts;
+  return (isRightHandPart(p1) && isLeftHandPart(p2)) || (isLeftHandPart(p1) && isRightHandPart(p2));
+}
+
+export function selectPianoPartIds(parts: MusicXmlPartInfo[]): { selectedIds: Set<string>; isHandSplit: boolean } {
+  if (parts.length === 0) throw new Error("MusicXML 中没有声部");
+  if (parts.length === 1) {
+    return { selectedIds: new Set([parts[0].id]), isHandSplit: false };
+  }
+
+  const pianoParts = parts.filter(isPianoPart);
+  if (pianoParts.length === 0) {
+    throw new Error("检测到多声部 MusicXML，但未识别到钢琴声部。请使用 Piano Solo 版本或包含明确 Piano Part 的乐谱。");
+  }
+
+  if (pianoParts.length === 1) {
+    return { selectedIds: new Set([pianoParts[0].id]), isHandSplit: false };
+  }
+
+  if (pianoParts.length === 2 && isHandSplitPianoParts(pianoParts)) {
+    return { selectedIds: new Set(pianoParts.map((p) => p.id)), isHandSplit: true };
+  }
+
+  const names = pianoParts.map((p) => p.partName || p.id).join(", ");
+  throw new Error(`检测到多个独立钢琴声部（${names}），当前无法自动判断练习声部。请导入 Piano Solo 乐谱。`);
+}
+
+function collectPartInfo(scorePart: XmlElement): MusicXmlPartInfo {
+  const id = scorePart.getAttribute("id") || "";
+  const partName = text(child(scorePart, "part-name")) || "";
+  const partAbbreviation = text(child(scorePart, "part-abbreviation")) || "";
+  const instrumentNames: string[] = [];
+  const instrumentSounds: string[] = [];
+  const midiPrograms: number[] = [];
+
+  for (const inst of descendants(scorePart, "score-instrument")) {
+    const iname = text(child(inst, "instrument-name"));
+    if (iname) instrumentNames.push(iname);
+    const isound = text(child(inst, "instrument-sound"));
+    if (isound) instrumentSounds.push(isound);
+  }
+
+  for (const midiInst of descendants(scorePart, "midi-instrument")) {
+    const progText = text(child(midiInst, "midi-program"));
+    if (progText && Number.isFinite(Number(progText))) {
+      midiPrograms.push(Number(progText));
+    }
+  }
+
+  return {
+    id,
+    partName,
+    partAbbreviation,
+    instrumentNames,
+    instrumentSounds,
+    midiPrograms,
+  };
+}
+
+export function filterMusicXmlDocument(document: XmlDocument, selectedIds: Set<string>): string {
+  const root = document.documentElement;
+  if (!root || root.tagName !== "score-partwise") return "";
+
+  const partList = children(root, "part-list")[0];
+  if (partList) {
+    const partListChildren = children(partList);
+    for (const childNode of partListChildren) {
+      if (childNode.tagName === "score-part") {
+        const id = childNode.getAttribute("id") || "";
+        if (!selectedIds.has(id)) {
+          partList.removeChild(childNode);
+        }
+      }
+    }
+
+    const activeGroups = new Map<string, { startNode: XmlElement; partsCount: number }>();
+    for (const childNode of children(partList)) {
+      if (childNode.tagName === "part-group") {
+        const num = childNode.getAttribute("number") || "1";
+        const type = childNode.getAttribute("type");
+        if (type === "start") {
+          activeGroups.set(num, { startNode: childNode, partsCount: 0 });
+        } else if (type === "stop") {
+          const g = activeGroups.get(num);
+          if (g && g.partsCount === 0) {
+            partList.removeChild(g.startNode);
+            partList.removeChild(childNode);
+          }
+          activeGroups.delete(num);
+        }
+      } else if (childNode.tagName === "score-part") {
+        for (const g of activeGroups.values()) {
+          g.partsCount++;
+        }
+      }
+    }
+  }
+
+  for (const part of children(root, "part")) {
+    const id = part.getAttribute("id") || "";
+    if (!selectedIds.has(id)) {
+      root.removeChild(part);
+    }
+  }
+
+  return new XMLSerializer().serializeToString(document);
+}
+
 export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
   if (!xml.trim()) throw new Error("MusicXML 文件为空");
   const document = new DOMParser().parseFromString(xml, "application/xml");
@@ -795,24 +955,27 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
     throw new Error("当前支持 MusicXML score-partwise；该文件不是可识别的总谱");
   }
 
-  const partNames = new Map<string, string>();
-  for (const scorePart of descendants(root, "score-part")) {
-    const id = scorePart.getAttribute("id") || "";
-    partNames.set(id, text(child(scorePart, "part-name")) || id);
-  }
-  const partElements = children(root, "part");
-  const parts = partElements.map((part) => ({
+  const partList = children(root, "part-list")[0];
+  const scoreParts = partList ? children(partList, "score-part") : descendants(root, "score-part");
+  const partsInfo: MusicXmlPartInfo[] = scoreParts.map(collectPartInfo);
+  if (partsInfo.length === 0) throw new Error("MusicXML 中没有声部");
+
+  const { selectedIds } = selectPianoPartIds(partsInfo);
+  const partNames = new Map(partsInfo.map((p) => [p.id, p.partName || p.id]));
+
+  const allPartElements = children(root, "part");
+  const allParts = allPartElements.map((part) => ({
     id: part.getAttribute("id") || "",
     measures: parsePart(part, partNames.get(part.getAttribute("id") || "") || "Piano"),
   }));
-  if (parts.length === 0) throw new Error("MusicXML 中没有声部");
+  if (allParts.length === 0) throw new Error("MusicXML 中没有声部");
 
-  const measureCount = Math.max(...parts.map((part) => part.measures.length));
+  const measureCount = Math.max(...allParts.map((part) => part.measures.length));
   const writtenMeasureDurations: number[] = [];
   for (let measureIndex = 0; measureIndex < measureCount; measureIndex += 1) {
-    writtenMeasureDurations.push(Math.max(0, ...parts.map((part) => part.measures[measureIndex]?.duration ?? 0)));
+    writtenMeasureDurations.push(Math.max(0, ...allParts.map((part) => part.measures[measureIndex]?.duration ?? 0)));
   }
-  const measureOrder = expandMeasureOrder(mergedMeasureControls(partElements, measureCount));
+  const measureOrder = expandMeasureOrder(mergedMeasureControls(allPartElements, measureCount));
   const measureDurations = measureOrder.map((measureIndex) => writtenMeasureDurations[measureIndex] ?? 0);
   const measureQuarterStarts = [0];
   for (const duration of measureDurations) {
@@ -822,7 +985,24 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
   const quarterNotes: QuarterNote[] = [];
   const tempos: TempoEvent[] = [];
   const quarterPedals: Array<{ quarter: number; value: number; action: ScorePedalAction }> = [];
-  for (const part of parts) {
+
+  // 1. Gather global tempos from all parts across the score
+  for (const part of allParts) {
+    measureOrder.forEach((writtenMeasureIndex, playbackMeasureIndex) => {
+      const measure = part.measures[writtenMeasureIndex];
+      if (!measure) return;
+      const measureStart = measureQuarterStarts[playbackMeasureIndex];
+      measure.tempos.forEach((tempo) => tempos.push({
+        quarter: measureStart + tempo.offset,
+        bpm: tempo.bpm,
+        ratio: tempo.ratio,
+      }));
+    });
+  }
+
+  // 2. Gather notes and pedals ONLY from selected piano parts
+  const selectedParts = allParts.filter((part) => selectedIds.has(part.id));
+  for (const part of selectedParts) {
     measureOrder.forEach((writtenMeasureIndex, playbackMeasureIndex) => {
       const measure = part.measures[writtenMeasureIndex];
       if (!measure) return;
@@ -831,11 +1011,6 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
         ...note,
         start: measureStart + note.start,
         end: measureStart + note.end,
-      }));
-      measure.tempos.forEach((tempo) => tempos.push({
-        quarter: measureStart + tempo.offset,
-        bpm: tempo.bpm,
-        ratio: tempo.ratio,
       }));
       measure.pedals.forEach((pedal) => quarterPedals.push({
         quarter: measureStart + pedal.offset,
@@ -877,7 +1052,7 @@ export function parseMusicXml(xml: string, fallbackName: string): ParsedScore {
   const scorePedalEvents = [...pedalEventsByIdentity.values()]
     .sort((first, second) => first.time - second.time || pedalRank[first.action] - pedalRank[second.action]);
   const beatMap = measureOrder.flatMap((writtenMeasureIndex, playbackMeasureIndex) => {
-    const measure = parts.find((part) => part.measures[writtenMeasureIndex])?.measures[writtenMeasureIndex];
+    const measure = (selectedParts.find((part) => part.measures[writtenMeasureIndex]) ?? allParts.find((part) => part.measures[writtenMeasureIndex]))?.measures[writtenMeasureIndex];
     if (!measure || measure.beatGroups.length === 0) return [];
     const start = measureQuarterStarts[playbackMeasureIndex];
     const end = measureQuarterStarts[playbackMeasureIndex + 1];
@@ -949,5 +1124,23 @@ export function extractMusicXml(buffer: ArrayBuffer, fileName: string): string {
 
 export function parseMusicXmlFile(buffer: ArrayBuffer, fileName: string): MusicXmlScore {
   const xml = extractMusicXml(buffer, fileName);
-  return { score: parseMusicXml(xml, fileName), xml };
+  if (!xml.trim()) throw new Error("MusicXML 文件为空");
+  const document = new DOMParser().parseFromString(xml, "application/xml");
+  const root = document.documentElement;
+  if (!root || root.tagName !== "score-partwise") {
+    throw new Error("当前支持 MusicXML score-partwise；该文件不是可识别的总谱");
+  }
+
+  const partList = children(root, "part-list")[0];
+  const scoreParts = partList ? children(partList, "score-part") : descendants(root, "score-part");
+  const partsInfo: MusicXmlPartInfo[] = scoreParts.map(collectPartInfo);
+  if (partsInfo.length === 0) throw new Error("MusicXML 中没有声部");
+
+  const { selectedIds } = selectPianoPartIds(partsInfo);
+  let notationXml = xml;
+  if (selectedIds.size < partsInfo.length && partList) {
+    notationXml = filterMusicXmlDocument(document, selectedIds);
+  }
+
+  return { score: parseMusicXml(xml, fileName), xml: notationXml };
 }

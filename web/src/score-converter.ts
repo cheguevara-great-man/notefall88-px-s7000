@@ -107,7 +107,7 @@ export async function convertScoreToMusicXml(
     const xml = await score.saveXml();
     const encoded = new TextEncoder().encode(xml);
     if (encoded.byteLength > MAX_XML_BYTES) throw new Error("转换后的 MusicXML 超过 64 MB 安全上限");
-    if (!/<score-(?:partwise|timewise)\b/i.test(xml)) throw new Error("转换引擎未返回有效的 MusicXML");
+    if (!/<score-partwise\b/i.test(xml)) throw new Error("转换引擎未返回 NoteFall 支持的 score-partwise MusicXML");
     progress("转换完成，正在建立练习时间线…");
     return {
       buffer: asArrayBuffer(encoded),

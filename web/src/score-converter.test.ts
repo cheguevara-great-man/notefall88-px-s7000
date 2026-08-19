@@ -72,7 +72,14 @@ describe("Studio score conversion boundary", () => {
   it("rejects invalid converter output and still terminates the worker", async () => {
     const runtime = fakeRuntime("not musicxml");
     await expect(normalizeScoreSource(bytes("score"), "score.gpx", true, undefined, runtime.loader))
-      .rejects.toThrow("未返回有效的 MusicXML");
+      .rejects.toThrow("score-partwise");
+    expect(runtime.destroy).toHaveBeenCalledWith(false);
+  });
+
+  it("rejects unsupported score-timewise converter output and still terminates the worker", async () => {
+    const runtime = fakeRuntime('<?xml version="1.0"?><score-timewise version="4.0"></score-timewise>');
+    await expect(normalizeScoreSource(bytes("score"), "score.gpx", true, undefined, runtime.loader))
+      .rejects.toThrow("score-partwise");
     expect(runtime.destroy).toHaveBeenCalledWith(false);
   });
 
