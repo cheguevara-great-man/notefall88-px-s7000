@@ -1,11 +1,56 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWaterfallSurface, hasActiveOverlay, nativeScoreBeats, nativeScoreNotes, nativeScorePedals } from "./native-waterfall";
 
+class MockDomNode {
+  className = "";
+  hidden = false;
+  style: Record<string, string> = {};
+  children: MockDomNode[] = [];
+  parentElement: MockDomNode | null = null;
+
+  appendChild(child: MockDomNode) {
+    child.parentElement = this;
+    this.children.push(child);
+    return child;
+  }
+
+  removeChild(child: MockDomNode) {
+    const idx = this.children.indexOf(child);
+    if (idx !== -1) this.children.splice(idx, 1);
+    child.parentElement = null;
+    return child;
+  }
+
+  querySelector(sel: string): MockDomNode | null {
+    if (sel.includes(".settings-panel:not([hidden])")) {
+      const find = (node: MockDomNode): MockDomNode | null => {
+        if (node.className.includes("settings-panel") && !node.hidden) return node;
+        for (const c of node.children) {
+          const res = find(c);
+          if (res) return res;
+        }
+        return null;
+      };
+      return find(this);
+    }
+    return null;
+  }
+}
+
 describe("native waterfall bridge", () => {
+  let mockBody: MockDomNode;
+
+  beforeEach(() => {
+    mockBody = new MockDomNode();
+    vi.stubGlobal("document", {
+      body: mockBody,
+      createElement: () => new MockDomNode(),
+      querySelector: (sel: string) => mockBody.querySelector(sel),
+    });
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
-    document.body.innerHTML = "";
   });
 
   it("sends only stable score fields to the platform renderer", () => {
@@ -43,9 +88,9 @@ describe("native waterfall bridge", () => {
 
   it("detects active drawer overlays in the DOM", () => {
     expect(hasActiveOverlay()).toBe(false);
-    const panel = document.createElement("aside");
+    const panel = document.createElement("aside") as unknown as MockDomNode;
     panel.className = "settings-panel";
-    document.body.appendChild(panel);
+    document.body.appendChild(panel as unknown as HTMLElement);
     expect(hasActiveOverlay()).toBe(true);
     panel.hidden = true;
     expect(hasActiveOverlay()).toBe(false);
@@ -131,9 +176,9 @@ describe("native waterfall bridge", () => {
     surface.render(0.1, false);
     expect(plugin.show).toHaveBeenCalledOnce();
 
-    const panel = document.createElement("aside");
+    const panel = document.createElement("aside") as unknown as MockDomNode;
     panel.className = "settings-panel";
-    document.body.appendChild(panel);
+    document.body.appendChild(panel as unknown as HTMLElement);
 
     surface.render(0.2, false);
     expect(plugin.hide).toHaveBeenCalled();

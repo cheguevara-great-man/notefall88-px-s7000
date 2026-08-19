@@ -251,7 +251,7 @@ public class NativeWaterfallPlugin extends Plugin {
             super(activity);
             density = getResources().getDisplayMetrics().density;
             scaledDensity = getResources().getDisplayMetrics().scaledDensity;
-            setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            setLayerType(View.LAYER_TYPE_NONE, null);
             stroke.setStrokeWidth(density);
             stroke.setStyle(Paint.Style.STROKE);
         }

@@ -300,6 +300,23 @@ export class ScoreLibrary {
     return folder;
   }
 
+  async renameFolder(id: string, name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("文件夹名称不能为空");
+    const db = await this.open();
+    const tx = db.transaction(FOLDER_STORE, "readwrite");
+    const store = tx.objectStore(FOLDER_STORE);
+    const folder = await requestResult(store.get(id) as IDBRequest<LibraryFolder | undefined>);
+    if (!folder) {
+      tx.abort();
+      throw new Error("文件夹不存在");
+    }
+    folder.name = trimmed;
+    folder.updatedAt = Date.now();
+    store.put(folder);
+    await transactionDone(tx);
+  }
+
   async renameScore(id: string, title: string): Promise<void> {
     const trimmed = title.trim();
     if (!trimmed) throw new Error("乐谱名称不能为空");
@@ -311,6 +328,15 @@ export class ScoreLibrary {
       throw new Error("目标文件夹不存在");
     }
     await this.updateScore(id, (score) => { score.folderId = folderId; });
+  }
+
+  async clearAll(): Promise<void> {
+    const db = await this.open();
+    const tx = db.transaction([FOLDER_STORE, SCORE_STORE], "readwrite");
+    const done = transactionDone(tx);
+    tx.objectStore(FOLDER_STORE).clear();
+    tx.objectStore(SCORE_STORE).clear();
+    await done;
   }
 
   async deleteScore(id: string): Promise<void> {

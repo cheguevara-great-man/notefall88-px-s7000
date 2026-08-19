@@ -160,6 +160,40 @@ describe("score library", () => {
     expect(await destination.listScores()).toEqual([]);
   });
 
+  it("clears all folders and scores completely", async () => {
+    const lib = library();
+    const folder = await lib.createFolder("Test Folder");
+    await lib.saveScore(bytes("test score"), parsed, "test.mid", folder.id);
+    expect((await lib.listFolders()).length).toBe(1);
+    expect((await lib.listScores()).length).toBe(1);
+
+    await lib.clearAll();
+    expect(await lib.listFolders()).toEqual([]);
+    expect(await lib.listScores()).toEqual([]);
+  });
+
+  it("renames an existing folder and rejects invalid inputs", async () => {
+    const lib = library();
+    const folder = await lib.createFolder("Original Name");
+    await lib.renameFolder(folder.id, "Renamed Folder");
+    const folders = await lib.listFolders();
+    expect(folders[0].name).toBe("Renamed Folder");
+    await expect(lib.renameFolder(folder.id, "   ")).rejects.toThrow();
+    await expect(lib.renameFolder("non-existent-id", "Valid Name")).rejects.toThrow();
+  });
+
+  it("clears all folders and scores completely", async () => {
+    const lib = library();
+    const folder = await lib.createFolder("Test Folder");
+    await lib.saveScore(bytes("test score"), parsed, "test.mid", folder.id);
+    expect((await lib.listFolders()).length).toBe(1);
+    expect((await lib.listScores()).length).toBe(1);
+
+    await lib.clearAll();
+    expect(await lib.listFolders()).toEqual([]);
+    expect(await lib.listScores()).toEqual([]);
+  });
+
   it("rejects pathological backup counts before allocating score data", async () => {
     const source = library();
     await source.saveScore(bytes("template"), parsed, "template.mid");

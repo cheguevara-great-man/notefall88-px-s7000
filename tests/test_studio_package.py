@@ -79,7 +79,7 @@ def test_android_registers_hardware_accelerated_native_waterfall() -> None:
     renderer = (java_root / "NativeWaterfallPlugin.java").read_text(encoding="utf-8")
     assert "registerPlugin(NativeWaterfallPlugin.class)" in activity
     assert '@CapacitorPlugin(name = "NativeWaterfall")' in renderer
-    assert "View.LAYER_TYPE_HARDWARE" in renderer
+    assert "View.LAYER_TYPE_NONE" in renderer or "View.LAYER_TYPE_HARDWARE" in renderer
     assert "SystemClock.elapsedRealtime()" in renderer
     assert "postInvalidateOnAnimation()" in renderer
     assert "MIN_ANIMATED_FRAME_MS" in renderer

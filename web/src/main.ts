@@ -1,3 +1,5 @@
+import { JianpuRenderer } from "./jianpu";
+import { exportFile } from "./file-export";
 import "./style.css";
 
 import { PracticeAnalytics, PracticeSessionStore } from "./analytics";
@@ -205,8 +207,8 @@ const circuitTitle = required("circuit-title");
 const circuitProgress = required("circuit-progress");
 const circuitStatus = required("circuit-status");
 const settingsPanel = required("settings-panel");
-const commissioningPanel = required("commissioning-panel");
-const commissioningStatus = required<HTMLSpanElement>("commissioning-status");
+const commissioningPanel = document.getElementById("commissioning-panel");
+const commissioningStatus = document.getElementById("commissioning-status") as HTMLSpanElement | null;
 const updateStatus = required("update-status");
 const updateProgress = required<HTMLProgressElement>("update-progress");
 const libraryPanel = required("library-panel");
@@ -216,7 +218,10 @@ const practiceQueue = required("practice-queue");
 const storageSummary = required("storage-summary");
 const storagePersist = required<HTMLButtonElement>("storage-persist");
 const librarySearch = required<HTMLInputElement>("library-search");
+const libraryFormatFilter = required<HTMLSelectElement>("library-format-filter");
 const libraryFolderFilter = required<HTMLSelectElement>("library-folder-filter");
+const practiceLibraryFormat = required<HTMLSelectElement>("practice-library-format");
+const libraryClearAll = document.getElementById("library-clear-all") as HTMLButtonElement | null;
 const brightness = required<HTMLInputElement>("brightness");
 const pixelOffset = required<HTMLInputElement>("pixel-offset");
 const reversed = required<HTMLInputElement>("strip-reversed");
@@ -227,8 +232,18 @@ const waterfallCanvas = required<HTMLCanvasElement>("waterfall");
 const visualizerCard = required("visualizer-card");
 const appShell = document.querySelector<HTMLElement>(".app-shell");
 const sheetView = required("sheet-view");
+const transportFocus = required<HTMLButtonElement>("transport-focus");
+const jianpuContainer = required<HTMLElement>("jianpu-container");
+const osmdContainer = required<HTMLElement>("osmd-container");
+const sheetNotationType = required<HTMLSelectElement>("sheet-notation-type");
+const navLoopMode = required<HTMLSelectElement>("nav-loop-mode");
+const topTimelineBar = required<HTMLElement>("top-timeline-bar");
+const timelineScrubber = required<HTMLInputElement>("timeline-scrubber");
+const timelineLoopRegion = required<HTMLElement>("timeline-loop-region");
+
 const renderer = createWaterfallSurface(waterfallCanvas, studioEdition);
-const sheetRenderer = new SheetRenderer(sheetView);
+const jianpuRenderer = new JianpuRenderer(jianpuContainer);
+const sheetRenderer = new SheetRenderer(osmdContainer);
 const device = new DeviceLink(studioDeviceUrl);
 const clock = new ScoreClock();
 const waitMatcher = new WaitMatcher();
@@ -420,6 +435,10 @@ visualThemeSelect.value = visualTheme;
 renderer.setTheme(visualTheme);
 previewSecondsSelect.value = String(previewSeconds);
 autoFullscreen.checked = initialPreferences.autoFullscreen;
+sheetNotationType.value = initialPreferences.sheetNotationType;
+navLoopMode.value = initialPreferences.navLoopMode;
+libraryFormatFilter.value = initialPreferences.libraryFormatFilter;
+practiceLibraryFormat.value = initialPreferences.libraryFormatFilter;
 renderer.setPreviewSeconds(previewSeconds);
 required("lead-value").textContent = `${(leadMs / 1000).toFixed(1)} 秒`;
 required("metronome-status").textContent = initialPreferences.metronome
@@ -436,6 +455,11 @@ function persistPreferences(): void {
     leadMs,
     previewSeconds,
     autoFullscreen: autoFullscreen.checked,
+    sheetNotationType: sheetNotationType.value === "staff" ? "staff" : "jianpu",
+    navLoopMode: navLoopMode.value === "measure" ? "measure" : "loop",
+    libraryFormatFilter: practiceLibraryFormat.value === "musicxml" || practiceLibraryFormat.value === "midi"
+      ? practiceLibraryFormat.value
+      : "all",
     metronome: metronomeEnabled.checked,
     countIn: countInEnabled.checked,
   });
@@ -484,6 +508,7 @@ function storeCommissioning(next: CommissioningState): void {
 }
 
 function renderCommissioning(): void {
+  if (!commissioningPanel || !commissioningStatus) return;
   const missing = missingCommissioningEvidence(commissioning);
   const manualComplete = Object.values(commissioning.manual).filter(Boolean).length;
   const observedComplete = [
@@ -517,11 +542,13 @@ function renderCommissioning(): void {
     : `尚缺 ${missing.length} 项：${missing.slice(0, 4).join("、")}${missing.length > 4 ? "…" : ""}`;
   required<HTMLButtonElement>("commission-finish").disabled = missing.length > 0;
   const complete = missing.length === 0 && commissioning.completedAt !== undefined;
-  setStatus(
-    commissioningStatus,
-    complete,
-    complete ? `硬件已验收 · ${new Date(commissioning.completedAt!).toLocaleDateString("zh-CN")}` : "硬件尚未验收",
-  );
+  if (commissioningStatus) {
+    setStatus(
+      commissioningStatus,
+      complete,
+      complete ? `硬件已验收 · ${new Date(commissioning.completedAt!).toLocaleDateString("zh-CN")}` : "硬件尚未验收",
+    );
+  }
   document.querySelectorAll<HTMLInputElement>("[data-commission]").forEach((checkbox) => {
     const key = checkbox.dataset.commission as keyof CommissioningState["manual"];
     checkbox.checked = commissioning.manual[key];
@@ -955,6 +982,7 @@ function recordPracticeEvent(event: PracticeEvent): number | undefined {
   const token = analytics?.record(event);
   animateWaterfallFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
   sheetRenderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
+  jianpuRenderer.pushFeedback(event.kind, event.note, event.kind === "hit" ? event.timingMs : undefined);
   reviewRevision += 1;
   return token;
 }
@@ -984,6 +1012,7 @@ if (import.meta.env.DEV) {
     animateWaterfallFeedback(kind, detail.note!, detail.timingMs);
     if (kind === "hit" || kind === "wrong" || kind === "missed") {
       sheetRenderer.pushFeedback(kind, detail.note!, detail.timingMs);
+      jianpuRenderer.pushFeedback(kind, detail.note!, detail.timingMs);
     }
   });
   window.addEventListener("notefall:test-score-seek", (rawEvent) => {
@@ -1483,30 +1512,129 @@ function rebuildPractice(): void {
   resetPractice(true);
 }
 
+let synthAudioContext: AudioContext | undefined;
+
+function playScrubTone(targetTime: number): void {
+  if (!score || score.notes.length === 0) return;
+  const active = score.notes.filter((n) => targetTime >= n.start - 0.05 && targetTime <= n.end + 0.05);
+  let notesToSound = active.map((n) => n.note);
+  if (notesToSound.length === 0) {
+    let closestDist = Infinity;
+    let closest: number[] = [];
+    for (const n of score.notes) {
+      const dist = Math.abs(n.start - targetTime);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = [n.note];
+      } else if (Math.abs(dist - closestDist) < 0.02) {
+        closest.push(n.note);
+      }
+    }
+    notesToSound = closest;
+  }
+  const uniqueNotes = [...new Set(notesToSound)].slice(0, 4);
+  if (uniqueNotes.length === 0) return;
+
+  if (canUseMidiOut()) {
+    const events = uniqueNotes.flatMap((note) => [
+      { delayMs: 0, status: 0x90, data1: note, data2: 80 },
+      { delayMs: 140, status: 0x80, data1: note, data2: 0 },
+    ]);
+    device.scheduleMidi(events);
+  } else {
+    try {
+      if (!synthAudioContext) {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtx) synthAudioContext = new AudioCtx();
+      }
+      if (synthAudioContext && synthAudioContext.state === "suspended") {
+        void synthAudioContext.resume();
+      }
+      if (synthAudioContext) {
+        const now = synthAudioContext.currentTime;
+        for (const note of uniqueNotes) {
+          const osc = synthAudioContext.createOscillator();
+          const gain = synthAudioContext.createGain();
+          const freq = 440 * Math.pow(2, (note - 69) / 12);
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(freq, now);
+          gain.gain.setValueAtTime(0.1, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+          osc.connect(gain);
+          gain.connect(synthAudioContext.destination);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        }
+      }
+    } catch {
+      // synth fallback
+    }
+  }
+}
+
+function syncTimelineLoopRegion(): void {
+  if (!score || !loopEnabled.checked || navLoopMode.value === "measure") {
+    timelineLoopRegion.hidden = true;
+    return;
+  }
+  const duration = Math.max(0.5, score.duration);
+  const normalized = normalizeLoop(Number(loopStart.value), Number(loopEnd.value), duration);
+  const startPct = Math.max(0, Math.min(100, (normalized.start / duration) * 100));
+  const endPct = Math.max(0, Math.min(100, (normalized.end / duration) * 100));
+  const widthPct = Math.max(0.5, endPct - startPct);
+
+  timelineLoopRegion.style.left = `${startPct}%`;
+  timelineLoopRegion.style.width = `${widthPct}%`;
+  timelineLoopRegion.hidden = false;
+}
+
 function configureLoopInputs(): void {
-  if (!score) return;
+  if (!score) {
+    loopStart.disabled = true;
+    loopEnd.disabled = true;
+    loopControls.setAttribute("aria-disabled", "true");
+    topTimelineBar.hidden = true;
+    timelineScrubber.disabled = true;
+    timelineLoopRegion.hidden = true;
+    updateLoopLabels();
+    return;
+  }
   const duration = Math.max(0.5, score.duration);
   loopStart.max = String(duration);
   loopEnd.max = String(duration);
+  timelineScrubber.max = String(duration);
+
   loopStart.value = "0";
   loopEnd.value = String(score.duration);
+
   loopStart.disabled = !loopEnabled.checked;
   loopEnd.disabled = !loopEnabled.checked;
   loopControls.setAttribute("aria-disabled", String(!loopEnabled.checked));
+
+  topTimelineBar.hidden = navLoopMode.value === "measure";
+  timelineScrubber.disabled = false;
+
   updateLoopLabels();
+  syncTimelineLoopRegion();
 }
 
 function updateLoopLabels(): void {
   if (!score) {
     required("loop-start-value").textContent = "00:00";
     required("loop-end-value").textContent = "00:00";
+    timelineLoopRegion.hidden = true;
     return;
   }
   const normalized = normalizeLoop(Number(loopStart.value), Number(loopEnd.value), score.duration);
   loopStart.value = String(normalized.start);
   loopEnd.value = String(normalized.end);
-  required("loop-start-value").textContent = formatTime(normalized.start);
-  required("loop-end-value").textContent = formatTime(normalized.end);
+
+  const startStr = formatTime(normalized.start);
+  const endStr = formatTime(normalized.end);
+  required("loop-start-value").textContent = startStr;
+  required("loop-end-value").textContent = endStr;
+
+  syncTimelineLoopRegion();
 }
 
 function advanceWaitMode(): void {
@@ -1737,15 +1865,9 @@ recordButton.addEventListener("click", () => {
 
 recordDownload.addEventListener("click", () => {
   if (lastRecording.length === 0 && lastRecordingControls.length === 0) return;
-  const name = `${score?.name ?? "NoteFall"} - 演奏 ${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  const name = `${score?.name ?? "NoteFall"} - 演奏录音 ${new Date().toISOString().replace(/[:.]/g, "-")}`;
   const bytes = recordingToMidi(lastRecording, name, lastRecordingControls);
-  const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "audio/midi" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${name}.mid`;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  void exportFile(bytes.buffer as ArrayBuffer, `${name}.mid`, "audio/midi");
 });
 
 recordPlaybackButton.addEventListener("click", () => {
@@ -1841,6 +1963,14 @@ async function activateScore(
   circuitMessage = currentCircuit
     ? (currentCircuit.completed ? "已恢复完成记录；可以基于最新历史生成新一轮。" : "已恢复上次未完成的弱点巡回。")
     : "根据历史错漏、拍点和左右手差异，自动安排最多三处弱点。";
+  // Sanitize score title
+  let cleanName = (parsed.name || "未命名乐谱").trim();
+  cleanName = cleanName.replace(/^[\s -\x1f-\x9f!@#$%^&*()_+=\-\[\]{}|;:'",.<>?/`~\ufffd]+/, "").trim();
+  if (!cleanName || /[\x00-\x1f\x7f-\x9f\ufffd]/.test(cleanName)) {
+    cleanName = "未命名乐谱";
+  }
+  parsed.name = cleanName;
+
   score = transposeScore(parsed, transposeSemitones);
   followPlanner = new FollowAccompanimentPlanner(score.notes);
   demonstrationPlanner = new DemonstrationPlanner(score.notes, score.pedalEvents);
@@ -1929,16 +2059,40 @@ fileInput.addEventListener("change", async () => {
 function updateViewMode(): void {
   const wantsSheet = viewMode.value === "sheet";
   const wantsSplit = viewMode.value === "split";
-  const showSheet = (wantsSheet || wantsSplit) && !!scoreXml;
-  if ((wantsSheet || wantsSplit) && !scoreXml) viewMode.value = "waterfall";
+  const isJianpu = sheetNotationType.value === "jianpu";
+  const hasSheetSource = isJianpu ? Boolean(score) : Boolean(scoreXml);
+  const showSheet = (wantsSheet || wantsSplit) && hasSheetSource;
+
+  if ((wantsSheet || wantsSplit) && !hasSheetSource) {
+    if (!score) viewMode.value = "waterfall";
+  }
+
   waterfallCanvas.hidden = wantsSheet && showSheet;
   renderer.setVisible(!waterfallCanvas.hidden);
   sheetView.hidden = !showSheet;
-  // Reveal the sheet before OSMD measures and rerenders it. Rendering while
-  // `hidden` would collapse the container during waterfall -> sheet switches.
-  if (showSheet) sheetRenderer.setLayout(wantsSplit ? "split" : "sheet");
+
+  if (showSheet) {
+    if (isJianpu) {
+      jianpuContainer.hidden = false;
+      osmdContainer.hidden = true;
+      jianpuRenderer.setLayout(wantsSplit ? "split" : "sheet");
+      if (score) jianpuRenderer.load(score);
+      jianpuRenderer.seek(lastScoreSeconds);
+    } else {
+      jianpuContainer.hidden = true;
+      osmdContainer.hidden = false;
+      sheetRenderer.setLayout(wantsSplit ? "split" : "sheet");
+      sheetRenderer.seek(lastScoreSeconds);
+    }
+  }
+
   visualizerCard.dataset.view = wantsSplit && showSheet ? "split" : showSheet ? "sheet" : "waterfall";
-  scoreNavigator.hidden = !showSheet;
+
+  const isMeasureMode = navLoopMode.value === "measure";
+  scoreNavigator.hidden = !isMeasureMode || !score;
+  topTimelineBar.hidden = !score || isMeasureMode;
+  syncTimelineLoopRegion();
+
   requestVisualFrame();
 }
 
@@ -2090,68 +2244,215 @@ function formatLibraryDuration(seconds: number): string {
   return formatTime(seconds);
 }
 
+const collapsedFolders = new Set<string>();
+
+function escapeHtml(str: string): string {
+  return str.replace(/[&<>"']/g, (m) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  }[m] ?? m));
+}
+
 function createLibraryItem(item: LibraryScore): HTMLElement {
   const card = document.createElement("article");
   card.className = "library-item";
   card.dataset.scoreId = item.id;
+
   const head = document.createElement("div");
   head.className = "library-item-head";
+
   const title = document.createElement("div");
   title.className = "library-item-title";
+
   const strong = document.createElement("strong");
   strong.textContent = item.title;
+
   const details = document.createElement("small");
-  details.textContent = `${item.format === "musicxml" ? "MusicXML" : "MIDI"} · ${item.noteCount} 音符 · ${formatLibraryDuration(item.duration)} · ${Math.ceil(item.sourceBytes / 1024)} KiB`;
+  const badgeText = item.format === "musicxml" ? "MusicXML 原谱" : "MIDI 演奏";
+  details.textContent = `[${badgeText}] · ${item.noteCount} 音符 · ${formatLibraryDuration(item.duration)} · ${Math.ceil(item.sourceBytes / 1024)} KiB`;
+
   title.append(strong, details);
+
   const actions = document.createElement("div");
   actions.className = "library-item-actions";
-  for (const [action, label] of [["open", "打开"], ["rename", "重命名"], ["delete", "删除"]] as const) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.action = action;
-    button.textContent = label;
-    if (action === "open") button.className = "primary";
-    actions.append(button);
+
+  const openBtn = document.createElement("button");
+  openBtn.type = "button";
+  openBtn.className = "primary";
+  openBtn.dataset.action = "open";
+  openBtn.textContent = "打开";
+
+  const renameBtn = document.createElement("button");
+  renameBtn.type = "button";
+  renameBtn.dataset.action = "rename";
+  renameBtn.textContent = "重命名";
+
+  const moveSelect = document.createElement("select");
+  moveSelect.dataset.action = "move";
+  moveSelect.className = "item-move-select";
+  const rootOpt = document.createElement("option");
+  rootOpt.value = "";
+  rootOpt.textContent = "移至: 未分类";
+  moveSelect.append(rootOpt);
+  for (const f of libraryFolders) {
+    const opt = document.createElement("option");
+    opt.value = f.id;
+    opt.textContent = `移至: ${f.name}`;
+    moveSelect.append(opt);
   }
+  moveSelect.value = item.folderId ?? "";
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.dataset.action = "delete";
+  deleteBtn.textContent = "删除";
+
+  actions.append(openBtn, renameBtn, moveSelect, deleteBtn);
   head.append(title, actions);
-  const folder = document.createElement("select");
-  folder.dataset.action = "move";
-  const rootOption = document.createElement("option");
-  rootOption.value = "";
-  rootOption.textContent = "未分类";
-  folder.append(rootOption);
-  for (const available of libraryFolders) {
-    const option = document.createElement("option");
-    option.value = available.id;
-    option.textContent = available.name;
-    folder.append(option);
-  }
-  folder.value = item.folderId ?? "";
-  folder.setAttribute("aria-label", `移动 ${item.title} 到文件夹`);
-  card.append(head, folder);
+  card.append(head);
   return card;
 }
 
 function renderLibrary(): void {
   const query = librarySearch.value.trim().toLocaleLowerCase("zh-CN");
   const selectedFolder = libraryFolderFilter.value;
+  const selectedFormat = libraryFormatFilter.value;
   const filtered = libraryScores.filter((item) => {
     const matchesText = !query || `${item.title}\n${item.fileName}`.toLocaleLowerCase("zh-CN").includes(query);
     const matchesFolder = selectedFolder === "all"
       || (selectedFolder === "root" ? item.folderId === null : item.folderId === selectedFolder);
-    return matchesText && matchesFolder;
+    const matchesFormat = selectedFormat === "all" || item.format === selectedFormat;
+    return matchesText && matchesFolder && matchesFormat;
   });
+
   libraryList.replaceChildren();
-  if (filtered.length === 0) {
+  if (libraryScores.length === 0) {
     const empty = document.createElement("div");
     empty.className = "library-empty";
-    empty.textContent = libraryScores.length === 0 ? "曲库为空；点击“导入乐谱”即可加入。" : "没有符合筛选条件的乐谱。";
+    empty.textContent = "曲库为空；点击“导入乐谱”即可加入。";
+    libraryList.append(empty);
+  } else if (filtered.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "library-empty";
+    empty.textContent = "没有符合筛选条件的乐谱。";
     libraryList.append(empty);
   } else {
-    filtered.forEach((item) => libraryList.append(createLibraryItem(item)));
+    const scoresByFolder = new Map<string | null, LibraryScore[]>();
+    scoresByFolder.set(null, []);
+    for (const f of libraryFolders) {
+      scoresByFolder.set(f.id, []);
+    }
+    for (const item of filtered) {
+      const list = scoresByFolder.get(item.folderId) ?? scoresByFolder.get(null)!;
+      list.push(item);
+    }
+
+    for (const folder of libraryFolders) {
+      const scores = scoresByFolder.get(folder.id) ?? [];
+      if (selectedFolder !== "all" && selectedFolder !== folder.id && scores.length === 0) continue;
+      const isCollapsed = collapsedFolders.has(folder.id);
+
+      const group = document.createElement("section");
+      group.className = "library-folder-group";
+      group.dataset.folderId = folder.id;
+
+      const header = document.createElement("div");
+      header.className = "library-folder-header";
+
+      const toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "folder-toggle-btn";
+      toggleBtn.innerHTML = `<span>${isCollapsed ? "▶" : "▼"}</span> <span>${escapeHtml(folder.name)}</span> <span class="folder-song-count">${scores.length} 首</span>`;
+      toggleBtn.addEventListener("click", () => {
+        if (collapsedFolders.has(folder.id)) {
+          collapsedFolders.delete(folder.id);
+        } else {
+          collapsedFolders.add(folder.id);
+        }
+        renderLibrary();
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "folder-header-actions";
+
+      const renameBtn = document.createElement("button");
+      renameBtn.type = "button";
+      renameBtn.textContent = "重命名";
+      renameBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const next = window.prompt("修改分类名称", folder.name);
+        if (next && next.trim() && next.trim() !== folder.name) {
+          await library.renameFolder(folder.id, next.trim());
+          await refreshLibrary();
+        }
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.textContent = "删除分类";
+      deleteBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (window.confirm(`确定删除分类“${folder.name}”吗？（分类下的曲目将保留并移至未分类）`)) {
+          await library.deleteFolder(folder.id, false);
+          await refreshLibrary();
+        }
+      });
+
+      actions.append(renameBtn, deleteBtn);
+      header.append(toggleBtn, actions);
+      group.append(header);
+
+      if (!isCollapsed) {
+        const scoresContainer = document.createElement("div");
+        scoresContainer.className = "library-folder-scores";
+        scores.forEach((s) => scoresContainer.append(createLibraryItem(s)));
+        group.append(scoresContainer);
+      }
+
+      libraryList.append(group);
+    }
+
+    const rootScores = scoresByFolder.get(null) ?? [];
+    if (rootScores.length > 0 && (selectedFolder === "all" || selectedFolder === "root")) {
+      const isCollapsed = collapsedFolders.has("root");
+      const group = document.createElement("section");
+      group.className = "library-folder-group";
+
+      const header = document.createElement("div");
+      header.className = "library-folder-header";
+
+      const toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "folder-toggle-btn";
+      toggleBtn.innerHTML = `<span>${isCollapsed ? "▶" : "▼"}</span> <span>未分类</span> <span class="folder-song-count">${rootScores.length} 首</span>`;
+      toggleBtn.addEventListener("click", () => {
+        if (collapsedFolders.has("root")) {
+          collapsedFolders.delete("root");
+        } else {
+          collapsedFolders.add("root");
+        }
+        renderLibrary();
+      });
+
+      header.append(toggleBtn);
+      group.append(header);
+
+      if (!isCollapsed) {
+        const scoresContainer = document.createElement("div");
+        scoresContainer.className = "library-folder-scores";
+        rootScores.forEach((s) => scoresContainer.append(createLibraryItem(s)));
+        group.append(scoresContainer);
+      }
+
+      libraryList.append(group);
+    }
   }
+
   const bytes = libraryScores.reduce((sum, item) => sum + item.sourceBytes, 0);
-  librarySummary.textContent = `${libraryScores.length} 首 · ${libraryFolders.length} 个文件夹 · ${(bytes / 1024 / 1024).toFixed(2)} MiB`;
+  librarySummary.textContent = `${libraryScores.length} 首 · ${libraryFolders.length} 个分类 · ${(bytes / 1024 / 1024).toFixed(2)} MiB`;
   renderPracticeQueue();
 }
 
@@ -2281,13 +2582,7 @@ required<HTMLFormElement>("folder-form").addEventListener("submit", async (event
 required("library-backup").addEventListener("click", async () => {
   try {
     const backup = await library.exportBackup();
-    const blob = new Blob([JSON.stringify(backup)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `notefall88-library-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    await exportFile(JSON.stringify(backup, null, 2), `notefall88-library-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
   } catch (error) {
     librarySummary.textContent = storageFailureMessage(error, "导出曲库备份");
   }
@@ -2441,6 +2736,7 @@ loopEnabled.addEventListener("change", () => {
 for (const input of [loopStart, loopEnd]) {
   input.addEventListener("input", () => {
     updateLoopLabels();
+    playScrubTone(Number(input.value));
     rebuildPractice();
   });
 }
@@ -2448,7 +2744,7 @@ for (const input of [loopStart, loopEnd]) {
 required("practice-options-button").addEventListener("click", () => {
   settingsPanel.hidden = true;
   libraryPanel.hidden = true;
-  commissioningPanel.hidden = true;
+  if (commissioningPanel) commissioningPanel.hidden = true;
   practicePanel.hidden = false;
   visualDirty = true;
 });
@@ -2456,15 +2752,9 @@ required("practice-close").addEventListener("click", () => { practicePanel.hidde
 required("history-export").addEventListener("click", async () => {
   try {
     const payload = await sessionStore.exportHistory();
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `notefall88-practice-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    await exportFile(JSON.stringify(payload, null, 2), `notefall88-history-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
   } catch (error) {
-    historySummary.textContent = error instanceof Error ? error.message : "无法导出练习记录";
+    historySummary.textContent = storageFailureMessage(error, "导出练习记录");
   }
 });
 coachApply.addEventListener("click", () => {
@@ -2537,7 +2827,7 @@ circuitStop.addEventListener("click", () => {
 required("settings-button").addEventListener("click", () => {
   practicePanel.hidden = true;
   libraryPanel.hidden = true;
-  commissioningPanel.hidden = true;
+  if (commissioningPanel) commissioningPanel.hidden = true;
   settingsPanel.hidden = false;
   visualDirty = true;
   void refreshUpdateInfo();
@@ -2546,7 +2836,7 @@ required("settings-close").addEventListener("click", () => { settingsPanel.hidde
 required("library-button").addEventListener("click", () => {
   practicePanel.hidden = true;
   settingsPanel.hidden = true;
-  commissioningPanel.hidden = true;
+  if (commissioningPanel) commissioningPanel.hidden = true;
   libraryPanel.hidden = false;
   visualDirty = true;
   void refreshStorageStatus();
@@ -2556,16 +2846,19 @@ required("library-button").addEventListener("click", () => {
 });
 required("library-close").addEventListener("click", () => { libraryPanel.hidden = true; visualDirty = true; });
 
-required("commissioning-button").addEventListener("click", () => {
+document.getElementById("commissioning-button")?.addEventListener("click", () => {
   practicePanel.hidden = true;
   settingsPanel.hidden = true;
   libraryPanel.hidden = true;
-  commissioningPanel.hidden = false;
+  if (commissioningPanel) commissioningPanel.hidden = false;
   visualDirty = true;
   renderCommissioning();
 });
-required("commissioning-close").addEventListener("click", () => { commissioningPanel.hidden = true; visualDirty = true; });
-commissioningPanel.addEventListener("change", (event) => {
+document.getElementById("commissioning-close")?.addEventListener("click", () => {
+  if (commissioningPanel) commissioningPanel.hidden = true;
+  visualDirty = true;
+});
+commissioningPanel?.addEventListener("change", (event) => {
   const checkbox = (event.target as HTMLElement).closest<HTMLInputElement>("input[data-commission]");
   if (!checkbox) return;
   const key = checkbox.dataset.commission as keyof CommissioningState["manual"];
@@ -2574,28 +2867,24 @@ commissioningPanel.addEventListener("change", (event) => {
   next.completedAt = undefined;
   storeCommissioning(next);
 });
-commissioningPanel.addEventListener("click", (event) => {
+commissioningPanel?.addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-commission-test]");
   if (button) device.testNote(Number(button.dataset.commissionTest));
 });
-required("commission-blackout").addEventListener("click", () => device.blackout());
-required("commission-finish").addEventListener("click", () => {
+document.getElementById("commission-blackout")?.addEventListener("click", () => device.blackout());
+document.getElementById("commission-finish")?.addEventListener("click", () => {
   try {
     storeCommissioning(completeCommissioning(commissioning));
-    required("commission-missing").textContent = "实机验收已完成。建议立即导出报告，与当前固件版本一起保存。";
+    const msg = document.getElementById("commission-missing");
+    if (msg) msg.textContent = "实机验收已完成。建议立即导出报告，与当前固件版本一起保存。";
   } catch (error) {
-    required("commission-missing").textContent = error instanceof Error ? error.message : "无法完成验收";
+    const msg = document.getElementById("commission-missing");
+    if (msg) msg.textContent = error instanceof Error ? error.message : "无法完成验收";
   }
 });
-required("commission-export").addEventListener("click", () => {
+document.getElementById("commission-export")?.addEventListener("click", () => {
   const report = commissioningReport(commissioning);
-  const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `notefall88-commissioning-${new Date().toISOString().slice(0, 10)}.json`;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  void exportFile(JSON.stringify(report, null, 2), `notefall88-commissioning-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
 });
 
 function sendCalibration(): void {
@@ -2648,14 +2937,8 @@ required("key-reset").addEventListener("click", () => {
 });
 required("calibration-export").addEventListener("click", () => {
   const profile = calibrationProfile(keyOffsets, new Date().toISOString(), "device-export");
-  const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `notefall88-calibration-${new Date().toISOString().slice(0, 10)}.json`;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  required("calibration-transfer-status").textContent = "88键校准备份已导出。";
+  void exportFile(JSON.stringify(profile, null, 2), `notefall88-calibration-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
+  required("calibration-transfer-status").textContent = "88键校准已成功导出";
 });
 const calibrationImportFile = required<HTMLInputElement>("calibration-import-file");
 required("calibration-import").addEventListener("click", () => calibrationImportFile.click());
@@ -3080,3 +3363,59 @@ function frame(now: number): void {
   scheduleNextVisualFrame(now);
 }
 requestVisualFrame();
+
+
+transportFocus.addEventListener("click", () => setFocusMode(appShell?.dataset.focus !== "true"));
+
+sheetNotationType.addEventListener("change", () => {
+  updateViewMode();
+  persistPreferences();
+});
+
+navLoopMode.addEventListener("change", () => {
+  updateViewMode();
+  persistPreferences();
+});
+
+timelineScrubber.addEventListener("input", () => {
+  if (!score) return;
+  const target = Number(timelineScrubber.value);
+  clock.seek(target);
+  lastScoreSeconds = target;
+  playScrubTone(target);
+  scoreTime.textContent = `${formatTime(target)} / ${formatTime(score.duration)}`;
+  renderer.render(target, false);
+  if (sheetNotationType.value === "jianpu") {
+    jianpuRenderer.seek(target);
+  } else {
+    sheetRenderer.seek(target);
+  }
+  requestVisualFrame();
+});
+
+
+
+libraryClearAll?.addEventListener("click", async () => {
+  if (window.confirm("确定要清空全部曲库乐谱吗？此操作不可撤销！")) {
+    try {
+      await library.clearAll();
+      await refreshLibrary();
+      librarySummary.textContent = "曲库已清空";
+    } catch (error) {
+      librarySummary.textContent = error instanceof Error ? error.message : "操作失败";
+    }
+  }
+});
+
+
+libraryFormatFilter.addEventListener("change", () => {
+  practiceLibraryFormat.value = libraryFormatFilter.value;
+  renderLibrary();
+  persistPreferences();
+});
+
+practiceLibraryFormat.addEventListener("change", () => {
+  libraryFormatFilter.value = practiceLibraryFormat.value;
+  renderLibrary();
+  persistPreferences();
+});

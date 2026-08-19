@@ -3,6 +3,10 @@ import { normalizeTempo } from "./tempo";
 
 const STORAGE_KEY = "notefall88.preferences.v1";
 
+export type SheetNotationType = "jianpu" | "staff";
+export type NavLoopMode = "loop" | "measure";
+export type LibraryFormatFilter = "all" | "musicxml" | "midi";
+
 export interface AppPreferences {
   version: 1;
   mode: PracticeMode;
@@ -14,6 +18,9 @@ export interface AppPreferences {
   autoFullscreen: boolean;
   metronome: boolean;
   countIn: boolean;
+  sheetNotationType: SheetNotationType;
+  navLoopMode: NavLoopMode;
+  libraryFormatFilter: LibraryFormatFilter;
 }
 
 export const DEFAULT_PREFERENCES: AppPreferences = {
@@ -27,6 +34,9 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   autoFullscreen: false,
   metronome: false,
   countIn: true,
+  sheetNotationType: "jianpu",
+  navLoopMode: "loop",
+  libraryFormatFilter: "all",
 };
 
 type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
@@ -47,6 +57,11 @@ function normalize(value: unknown): AppPreferences {
     : DEFAULT_PREFERENCES.timingProfile;
   const leadMs = Math.round(Math.max(300, Math.min(2_000, Number(candidate.leadMs) || DEFAULT_PREFERENCES.leadMs)) / 100) * 100;
   const previewSeconds = normalizePreviewSeconds(candidate.previewSeconds);
+  const sheetNotationType = candidate.sheetNotationType === "staff" ? "staff" : "jianpu";
+  const navLoopMode = candidate.navLoopMode === "measure" ? "measure" : "loop";
+  const libraryFormatFilter: LibraryFormatFilter = candidate.libraryFormatFilter === "musicxml" || candidate.libraryFormatFilter === "midi"
+    ? candidate.libraryFormatFilter
+    : "all";
   return {
     version: 1,
     mode,
@@ -58,6 +73,9 @@ function normalize(value: unknown): AppPreferences {
     autoFullscreen: candidate.autoFullscreen === true,
     metronome: candidate.metronome === true,
     countIn: candidate.countIn !== false,
+    sheetNotationType,
+    navLoopMode,
+    libraryFormatFilter,
   };
 }
 

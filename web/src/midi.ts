@@ -52,7 +52,17 @@ export function parseMidiFile(buffer: ArrayBuffer, fallbackName: string): Parsed
     previousPedal = control.value;
   }
   const duration = notes.reduce((max, note) => Math.max(max, note.end), midi.duration || 0);
-  const embeddedName = midi.header.name?.trim();
+  const cleanFallback = fallbackName.replace(/\.(mid|midi|xml|musicxml|mxl)$/i, "").trim();
+  let name = cleanFallback || "未命名乐谱";
+  const rawEmbedded = midi.header.name?.trim();
+  if (rawEmbedded && !/[\x00-\x1f\x7f-\x9f\ufffd]/.test(rawEmbedded)) {
+    // Only accept embedded name if it doesn't contain weird garbage characters
+    const hasSpecialGarbage = /[^\x20-\x7e\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af\u3000-\u303f\uff00-\uffef]/.test(rawEmbedded);
+    if (!hasSpecialGarbage) {
+      name = rawEmbedded;
+    }
+  }
+
   const durationTicks = Math.max(0, Math.ceil(midi.header.secondsToTicks(duration)));
   const beatMap = beatMapFromTicks(
     midi.header.timeSignatures.map((event) => ({
@@ -65,7 +75,7 @@ export function parseMidiFile(buffer: ArrayBuffer, fallbackName: string): Parsed
     (ticks) => midi.header.ticksToSeconds(ticks),
   );
   return {
-    name: embeddedName || fallbackName.replace(/\.(mid|midi)$/i, ""),
+    name,
     duration,
     notes,
     format: "midi",
