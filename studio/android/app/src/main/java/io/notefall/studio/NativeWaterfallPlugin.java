@@ -29,13 +29,6 @@ import java.util.List;
 @CapacitorPlugin(name = "NativeWaterfall")
 public class NativeWaterfallPlugin extends Plugin {
     private NativeWaterfallView waterfall;
-    // Keep the waterfall in one stable hardware layer. Re-applying layout params or
-    // toggling visibility for identical bounds makes some MIUI compositors flash.
-    private int shownLeft = Integer.MIN_VALUE;
-    private int shownTop = Integer.MIN_VALUE;
-    private int shownWidth = Integer.MIN_VALUE;
-    private int shownHeight = Integer.MIN_VALUE;
-    private boolean waterfallShown;
 
     private void onUi(Runnable action) {
         Activity activity = getActivity();
@@ -47,7 +40,6 @@ public class NativeWaterfallPlugin extends Plugin {
         Activity activity = getActivity();
         waterfall = new NativeWaterfallView(activity);
         waterfall.setVisibility(View.GONE);
-        waterfall.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         waterfall.setClickable(false);
         waterfall.setFocusable(false);
         ViewGroup root = activity.findViewById(android.R.id.content);
@@ -123,28 +115,15 @@ public class NativeWaterfallPlugin extends Plugin {
         onUi(() -> {
             NativeWaterfallView view = ensureView();
             float density = view.getResources().getDisplayMetrics().density;
-            int safeWidth = Math.max(1, (int) Math.round(width * density));
-            int safeHeight = Math.max(1, (int) Math.round(height * density));
-            int safeLeft = (int) Math.round(left * density);
-            int safeTop = (int) Math.round(top * density);
-            boolean boundsChanged = safeLeft != shownLeft || safeTop != shownTop
-                || safeWidth != shownWidth || safeHeight != shownHeight;
-            if (boundsChanged) {
-                FrameLayout.LayoutParams layout = new FrameLayout.LayoutParams(safeWidth, safeHeight);
-                layout.leftMargin = safeLeft;
-                layout.topMargin = safeTop;
-                view.setLayoutParams(layout);
-                shownLeft = safeLeft;
-                shownTop = safeTop;
-                shownWidth = safeWidth;
-                shownHeight = safeHeight;
-            }
-            boolean wasHidden = !waterfallShown;
-            if (wasHidden) {
-                waterfallShown = true;
-                view.setVisibility(View.VISIBLE);
-            }
-            if (boundsChanged || wasHidden) view.invalidate();
+            FrameLayout.LayoutParams layout = new FrameLayout.LayoutParams(
+                Math.max(1, (int) Math.round(width * density)),
+                Math.max(1, (int) Math.round(height * density))
+            );
+            layout.leftMargin = (int) Math.round(left * density);
+            layout.topMargin = (int) Math.round(top * density);
+            view.setLayoutParams(layout);
+            view.setVisibility(View.VISIBLE);
+            view.invalidate();
         });
         call.resolve();
     }
@@ -153,7 +132,6 @@ public class NativeWaterfallPlugin extends Plugin {
     public void hide(PluginCall call) {
         onUi(() -> {
             if (waterfall != null) waterfall.setVisibility(View.GONE);
-            waterfallShown = false;
         });
         call.resolve();
     }

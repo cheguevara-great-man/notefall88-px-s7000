@@ -245,9 +245,11 @@ const timelineMarkerB = required<HTMLButtonElement>("loop-marker-b");
 const timelinePlayhead = required<HTMLElement>("timeline-playhead");
 const timelineLoopToggle = required<HTMLButtonElement>("timeline-loop-toggle");
 
-// Studio uses a fixed native hardware layer for the high-rate waterfall. Its bounds
-// are stabilized in the Android plugin so feedback redraws never recompose the UI.
-const renderer = createWaterfallSurface(waterfallCanvas, studioEdition);
+// A native Android overlay can be fast, but it is a second compositor layer above
+// the WebView. On some high-refresh Xiaomi displays that layer visibly flashes when
+// feedback changes. The web canvas has an explicit HiDPI pixel budget and is stable
+// in the same compositor as the rest of the Studio UI, so it is the default surface.
+const renderer = createWaterfallSurface(waterfallCanvas, false);
 const jianpuRenderer = new JianpuRenderer(jianpuContainer);
 const sheetRenderer = new SheetRenderer(osmdContainer);
 const device = new DeviceLink(studioDeviceUrl);
