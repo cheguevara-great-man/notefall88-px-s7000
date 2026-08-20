@@ -63,12 +63,25 @@
       </section>
 
       <section id="top-timeline-bar" class="top-timeline-bar" hidden>
-        <div class="timeline-track-wrap">
+        <div id="timeline-track" class="timeline-track-wrap" role="slider" tabindex="0"
+          aria-label="播放位置与 A-B 循环" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"
+          aria-describedby="timeline-gesture-hint">
           <div id="timeline-loop-region" class="timeline-loop-region" hidden>
-            <span id="loop-marker-a" class="loop-marker marker-a" title="A点">A</span>
-            <span id="loop-marker-b" class="loop-marker marker-b" title="B点">B</span>
+            <button id="loop-marker-a" class="loop-marker marker-a" type="button" aria-label="循环起点 A，可拖动">A</button>
+            <button id="loop-marker-b" class="loop-marker marker-b" type="button" aria-label="循环终点 B，可拖动">B</button>
           </div>
-          <input id="timeline-scrubber" class="timeline-scrubber" type="range" min="0" max="1" step="0.05" value="0" aria-label="全曲进度拖拽与试听" />
+          <span id="timeline-playhead" class="timeline-playhead" aria-hidden="true"></span>
+          <input id="timeline-scrubber" class="sr-only" type="range" min="0" max="1" step="0.05" value="0" aria-label="全曲进度" />
+        </div>
+        <div class="timeline-gesture-row">
+          <small id="timeline-gesture-hint" class="timeline-gesture-hint">点任意位置从此处开始；未设置循环时拖动可创建 A–B，之后只拖 A 或 B 调整。</small>
+          <button id="timeline-clear-loop" class="timeline-clear-loop" type="button" hidden>清除 A–B</button>
+        </div>
+        <div id="loop-controls" class="sr-only" aria-disabled="true">
+          <input id="loop-enabled" type="checkbox" tabindex="-1" aria-hidden="true" />
+          <input id="loop-start" type="range" min="0" max="1" step="0.1" value="0" tabindex="-1" aria-hidden="true" />
+          <input id="loop-end" type="range" min="0" max="1" step="0.1" value="1" tabindex="-1" aria-hidden="true" />
+          <strong id="loop-start-value">00:00</strong><strong id="loop-end-value">00:00</strong>
         </div>
       </section>
 
@@ -208,20 +221,6 @@
           <span>开始前一小节预备拍</span>
           <input id="count-in-enabled" type="checkbox" checked />
         </label>
-        <label class="switch-line">
-          <span>循环 A–B 片段</span>
-          <input id="loop-enabled" type="checkbox" />
-        </label>
-        <div id="loop-controls" class="loop-controls" aria-disabled="true">
-          <label>
-            <span>A：<strong id="loop-start-value">00:00</strong></span>
-            <input id="loop-start" type="range" min="0" max="1" step="0.1" value="0" disabled />
-          </label>
-          <label>
-            <span>B：<strong id="loop-end-value">00:00</strong></span>
-            <input id="loop-end" type="range" min="0" max="1" step="0.1" value="1" disabled />
-          </label>
-        </div>
         <hr />
         <div class="settings-head compact-head">
           <div>

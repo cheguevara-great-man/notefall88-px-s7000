@@ -237,8 +237,14 @@ const osmdContainer = required<HTMLElement>("osmd-container");
 const sheetNotationType = required<HTMLSelectElement>("sheet-notation-type");
 const navLoopMode = required<HTMLSelectElement>("nav-loop-mode");
 const topTimelineBar = required<HTMLElement>("top-timeline-bar");
+const timelineTrack = required<HTMLElement>("timeline-track");
 const timelineScrubber = required<HTMLInputElement>("timeline-scrubber");
 const timelineLoopRegion = required<HTMLElement>("timeline-loop-region");
+const timelineMarkerA = required<HTMLButtonElement>("loop-marker-a");
+const timelineMarkerB = required<HTMLButtonElement>("loop-marker-b");
+const timelinePlayhead = required<HTMLElement>("timeline-playhead");
+const timelineGestureHint = required<HTMLElement>("timeline-gesture-hint");
+const timelineClearLoop = required<HTMLButtonElement>("timeline-clear-loop");
 
 const renderer = createWaterfallSurface(waterfallCanvas, studioEdition);
 const jianpuRenderer = new JianpuRenderer(jianpuContainer);
@@ -1515,27 +1521,31 @@ let synthAudioContext: AudioContext | undefined;
 function playScrubTone(targetTime: number): void {
   if (!score || score.notes.length === 0) return;
   const active = score.notes.filter((n) => targetTime >= n.start - 0.05 && targetTime <= n.end + 0.05);
-  let notesToSound = active.map((n) => n.note);
+  let notesToSound = active;
   if (notesToSound.length === 0) {
     let closestDist = Infinity;
-    let closest: number[] = [];
+    let closest: ParsedScore["notes"] = [];
     for (const n of score.notes) {
       const dist = Math.abs(n.start - targetTime);
       if (dist < closestDist) {
         closestDist = dist;
-        closest = [n.note];
+        closest = [n];
       } else if (Math.abs(dist - closestDist) < 0.02) {
-        closest.push(n.note);
+        closest.push(n);
       }
     }
     notesToSound = closest;
   }
-  const uniqueNotes = [...new Set(notesToSound)].slice(0, 4);
+  const uniqueNotes = [...notesToSound.reduce((byPitch, note) => {
+    const existing = byPitch.get(note.note);
+    if (!existing || note.velocity > existing.velocity) byPitch.set(note.note, note);
+    return byPitch;
+  }, new Map<number, ParsedScore["notes"][number]>()).values()].slice(0, 4);
   if (uniqueNotes.length === 0) return;
 
   if (canUseMidiOut()) {
-    const events = uniqueNotes.flatMap((note) => [
-      { delayMs: 0, status: 0x90, data1: note, data2: 80 },
+    const events = uniqueNotes.flatMap(({ note, velocity }) => [
+      { delayMs: 0, status: 0x90, data1: note, data2: Math.max(1, Math.min(127, Math.round(velocity || 80))) },
       { delayMs: 140, status: 0x80, data1: note, data2: 0 },
     ]);
     device.scheduleMidi(events);
@@ -1550,13 +1560,13 @@ function playScrubTone(targetTime: number): void {
       }
       if (synthAudioContext) {
         const now = synthAudioContext.currentTime;
-        for (const note of uniqueNotes) {
+        for (const { note, velocity } of uniqueNotes) {
           const osc = synthAudioContext.createOscillator();
           const gain = synthAudioContext.createGain();
           const freq = 440 * Math.pow(2, (note - 69) / 12);
           osc.type = "sine";
           osc.frequency.setValueAtTime(freq, now);
-          gain.gain.setValueAtTime(0.1, now);
+          gain.gain.setValueAtTime(0.012 + Math.max(1, Math.min(127, velocity || 80)) / 127 * 0.085, now);
           gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
           osc.connect(gain);
           gain.connect(synthAudioContext.destination);
@@ -1573,6 +1583,8 @@ function playScrubTone(targetTime: number): void {
 function syncTimelineLoopRegion(): void {
   if (!score || !loopEnabled.checked || navLoopMode.value === "measure") {
     timelineLoopRegion.hidden = true;
+    timelineClearLoop.hidden = true;
+    timelineGestureHint.textContent = "点任意位置从此处开始；拖动进度条可创建 A–B 循环。";
     return;
   }
   const duration = Math.max(0.5, score.duration);
@@ -1583,7 +1595,53 @@ function syncTimelineLoopRegion(): void {
 
   timelineLoopRegion.style.left = `${startPct}%`;
   timelineLoopRegion.style.width = `${widthPct}%`;
+  timelineMarkerA.style.left = "0%";
+  timelineMarkerB.style.left = "100%";
   timelineLoopRegion.hidden = false;
+  timelineClearLoop.hidden = false;
+  timelineGestureHint.textContent = `循环 ${formatTime(normalized.start)}–${formatTime(normalized.end)}；拖 A 或 B 调整，点其他位置只定位播放。`;
+}
+
+function syncTimelinePlayhead(seconds: number): void {
+  if (!score) return;
+  const duration = Math.max(0.5, score.duration);
+  const safeSeconds = Math.max(0, Math.min(duration, seconds));
+  const percent = safeSeconds / duration * 100;
+  timelinePlayhead.style.left = `${percent}%`;
+  timelineScrubber.value = String(safeSeconds);
+  timelineTrack.setAttribute("aria-valuemax", String(duration));
+  timelineTrack.setAttribute("aria-valuenow", String(safeSeconds));
+  timelineTrack.setAttribute("aria-valuetext", `${formatTime(safeSeconds)} / ${formatTime(duration)}`);
+}
+
+function seekTimelineTo(target: number, audition = true): void {
+  if (!score) return;
+  const safeTarget = Math.max(0, Math.min(score.duration, target));
+  clock.seek(safeTarget);
+  lastScoreSeconds = safeTarget;
+  if (audition) playScrubTone(safeTarget);
+  scoreTime.textContent = `${formatTime(safeTarget)} / ${formatTime(score.duration)}`;
+  syncTimelinePlayhead(safeTarget);
+  renderer.render(safeTarget, false);
+  if (sheetNotationType.value === "jianpu") {
+    jianpuRenderer.seek(safeTarget);
+  } else {
+    sheetRenderer.seek(safeTarget);
+  }
+  requestVisualFrame();
+}
+
+function setTimelineLoop(start: number, end: number, rebuild = true): void {
+  if (!score) return;
+  const normalized = normalizeLoop(start, end, score.duration);
+  loopEnabled.checked = true;
+  loopStart.value = String(normalized.start);
+  loopEnd.value = String(normalized.end);
+  loopStart.disabled = false;
+  loopEnd.disabled = false;
+  loopControls.setAttribute("aria-disabled", "false");
+  updateLoopLabels();
+  if (rebuild) rebuildPractice();
 }
 
 function configureLoopInputs(): void {
@@ -1594,6 +1652,7 @@ function configureLoopInputs(): void {
     topTimelineBar.hidden = true;
     timelineScrubber.disabled = true;
     timelineLoopRegion.hidden = true;
+    timelineClearLoop.hidden = true;
     updateLoopLabels();
     return;
   }
@@ -1613,6 +1672,7 @@ function configureLoopInputs(): void {
   timelineScrubber.disabled = false;
 
   updateLoopLabels();
+  syncTimelinePlayhead(lastScoreSeconds);
   syncTimelineLoopRegion();
 }
 
@@ -1621,6 +1681,7 @@ function updateLoopLabels(): void {
     required("loop-start-value").textContent = "00:00";
     required("loop-end-value").textContent = "00:00";
     timelineLoopRegion.hidden = true;
+    timelineClearLoop.hidden = true;
     return;
   }
   const normalized = normalizeLoop(Number(loopStart.value), Number(loopEnd.value), score.duration);
@@ -2772,6 +2833,7 @@ loopEnabled.addEventListener("change", () => {
   loopStart.disabled = !loopEnabled.checked;
   loopEnd.disabled = !loopEnabled.checked;
   loopControls.setAttribute("aria-disabled", String(!loopEnabled.checked));
+  updateLoopLabels();
   rebuildPractice();
 });
 for (const input of [loopStart, loopEnd]) {
@@ -3386,6 +3448,7 @@ function frame(now: number): void {
     analytics?.setPedalProgress(practicePass, scoreSeconds);
     updateTarget(scoreSeconds);
     scoreTime.textContent = `${formatTime(scoreSeconds)} / ${formatTime(score.duration)}`;
+    syncTimelinePlayhead(scoreSeconds);
     renderStats();
   }
   const renderActivity = {
@@ -3434,21 +3497,91 @@ navLoopMode.addEventListener("change", () => {
   persistPreferences();
 });
 
-timelineScrubber.addEventListener("input", () => {
-  if (!score) return;
-  const target = Number(timelineScrubber.value);
-  clock.seek(target);
-  lastScoreSeconds = target;
-  playScrubTone(target);
-  scoreTime.textContent = `${formatTime(target)} / ${formatTime(score.duration)}`;
-  renderer.render(target, false);
-  if (sheetNotationType.value === "jianpu") {
-    jianpuRenderer.seek(target);
-  } else {
-    sheetRenderer.seek(target);
+type TimelineDragKind = "create" | "a" | "b" | undefined;
+let timelineDrag: { pointerId: number; kind: TimelineDragKind; start: number; current: number; moved: boolean } | undefined;
+
+function timelineSecondsAt(clientX: number): number {
+  if (!score) return 0;
+  const rect = timelineTrack.getBoundingClientRect();
+  const ratio = rect.width <= 0 ? 0 : Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  return ratio * score.duration;
+}
+
+function updateTimelineDrag(target: number): void {
+  if (!score || !timelineDrag) return;
+  timelineDrag.current = target;
+  if (Math.abs(target - timelineDrag.start) >= Math.max(0.12, score.duration * 0.004)) timelineDrag.moved = true;
+  if (timelineDrag.kind === "a") {
+    setTimelineLoop(target, Number(loopEnd.value), false);
+  } else if (timelineDrag.kind === "b") {
+    setTimelineLoop(Number(loopStart.value), target, false);
+  } else if (timelineDrag.kind === "create" && timelineDrag.moved) {
+    setTimelineLoop(Math.min(timelineDrag.start, target), Math.max(timelineDrag.start, target), false);
   }
-  requestVisualFrame();
+}
+
+timelineTrack.addEventListener("pointerdown", (event) => {
+  if (!score || event.button !== 0) return;
+  const marker = (event.target as HTMLElement).closest<HTMLElement>(".loop-marker");
+  const target = timelineSecondsAt(event.clientX);
+  const kind: TimelineDragKind = marker === timelineMarkerA ? "a"
+    : marker === timelineMarkerB ? "b"
+      : loopEnabled.checked ? undefined : "create";
+  timelineDrag = { pointerId: event.pointerId, kind, start: target, current: target, moved: false };
+  timelineTrack.setPointerCapture(event.pointerId);
+  event.preventDefault();
 });
+
+timelineTrack.addEventListener("pointermove", (event) => {
+  if (!timelineDrag || timelineDrag.pointerId !== event.pointerId) return;
+  updateTimelineDrag(timelineSecondsAt(event.clientX));
+  event.preventDefault();
+});
+
+function finishTimelineDrag(event: PointerEvent): void {
+  if (!timelineDrag || timelineDrag.pointerId !== event.pointerId) return;
+  const drag = timelineDrag;
+  timelineDrag = undefined;
+  if (timelineTrack.hasPointerCapture(event.pointerId)) timelineTrack.releasePointerCapture(event.pointerId);
+  if (!score) return;
+  if (drag.kind === "a" || drag.kind === "b" || (drag.kind === "create" && drag.moved)) {
+    setTimelineLoop(Number(loopStart.value), Number(loopEnd.value));
+    if (drag.kind === "create") seekTimelineTo(Math.min(drag.start, drag.current));
+    return;
+  }
+  // Once a loop exists, the empty part of the track is intentionally seek-only:
+  // it must never overwrite an established A–B range by accident.
+  seekTimelineTo(drag.current);
+}
+
+timelineTrack.addEventListener("pointerup", finishTimelineDrag);
+timelineTrack.addEventListener("pointercancel", finishTimelineDrag);
+
+timelineTrack.addEventListener("keydown", (event) => {
+  if (!score) return;
+  const step = event.shiftKey ? Math.max(1, score.duration / 100) : 0.25;
+  let target = lastScoreSeconds;
+  if (event.key === "ArrowLeft" || event.key === "ArrowDown") target -= step;
+  else if (event.key === "ArrowRight" || event.key === "ArrowUp") target += step;
+  else if (event.key === "Home") target = 0;
+  else if (event.key === "End") target = score.duration;
+  else return;
+  event.preventDefault();
+  seekTimelineTo(target);
+});
+
+timelineClearLoop.addEventListener("click", () => {
+  if (!score || !loopEnabled.checked) return;
+  loopEnabled.checked = false;
+  loopStart.value = "0";
+  loopEnd.value = String(score.duration);
+  updateLoopLabels();
+  rebuildPractice();
+  seekTimelineTo(lastScoreSeconds, false);
+});
+
+// Retain a real range input for assistive technology and automated clients.
+timelineScrubber.addEventListener("input", () => seekTimelineTo(Number(timelineScrubber.value)));
 
 
 
