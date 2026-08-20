@@ -249,11 +249,12 @@ html[data-edition="studio"] h1::after { content: "STUDIO"; margin-left: 10px; pa
 .library-item.is-managing { outline: 1px solid rgba(111,147,255,.42); outline-offset: -1px; }
 footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 11px; padding: 14px 4px 0; }
 .app-shell[data-focus="true"] { position: fixed; inset: 0; width: 100%; max-width: none; height: 100dvh; min-height: 0; overflow: hidden; padding: max(3px, env(safe-area-inset-top)) max(3px, env(safe-area-inset-right)) max(3px, env(safe-area-inset-bottom)) max(3px, env(safe-area-inset-left)); box-sizing: border-box; }
-.app-shell[data-focus="true"] > .topbar, .app-shell[data-focus="true"] > .transport-card, .app-shell[data-focus="true"] > .studio-toolbar, .app-shell[data-focus="true"] > .top-timeline-bar, .app-shell[data-focus="true"] > .lifecycle-status, .app-shell[data-focus="true"] > .score-strip, .app-shell[data-focus="true"] > .score-navigator, .app-shell[data-focus="true"] > footer { display: none; }
+.app-shell[data-focus="true"] > .topbar, .app-shell[data-focus="true"] > .transport-card, .app-shell[data-focus="true"] > .studio-toolbar, .app-shell[data-focus="true"] > .lifecycle-status, .app-shell[data-focus="true"] > .score-strip, .app-shell[data-focus="true"] > .score-navigator, .app-shell[data-focus="true"] > footer { display: none; }
 .app-shell[data-focus="true"] .visualizer-card { height: 100%; max-height: 100%; min-height: 0; border-radius: 10px; box-sizing: border-box; }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] { height: 100%; grid-template-rows: minmax(250px, 46%) minmax(320px, 54%); }
+.app-shell[data-focus="true"] > .top-timeline-bar { position: absolute; z-index: 5; top: max(8px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: max(62px, calc(env(safe-area-inset-right) + 54px)); width: auto; min-height: 34px; margin: 0; padding: 4px 8px; border-radius: 9px; background: rgba(10,14,23,.76); backdrop-filter: blur(10px); box-shadow: 0 5px 18px rgba(0,0,0,.24); }
 .app-shell[data-focus="true"] .legend { display: none; }.app-shell[data-focus="true"] .focus-exit { display: grid; place-items: center; inline-size: 38px; min-width: 38px; min-height: 38px; padding: 0; border-radius: 50%; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); font-size: 26px; line-height: 1; }
 .app-shell[data-focus="true"] .jianpu-header { display: none; }
-.app-shell[data-focus="true"] .jianpu-container { padding-top: 6px; }
+.app-shell[data-focus="true"] .jianpu-container { padding-top: 52px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
