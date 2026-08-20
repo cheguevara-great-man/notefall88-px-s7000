@@ -243,8 +243,7 @@ const timelineLoopRegion = required<HTMLElement>("timeline-loop-region");
 const timelineMarkerA = required<HTMLButtonElement>("loop-marker-a");
 const timelineMarkerB = required<HTMLButtonElement>("loop-marker-b");
 const timelinePlayhead = required<HTMLElement>("timeline-playhead");
-const timelineGestureHint = required<HTMLElement>("timeline-gesture-hint");
-const timelineClearLoop = required<HTMLButtonElement>("timeline-clear-loop");
+const timelineLoopToggle = required<HTMLButtonElement>("timeline-loop-toggle");
 
 const renderer = createWaterfallSurface(waterfallCanvas, studioEdition);
 const jianpuRenderer = new JianpuRenderer(jianpuContainer);
@@ -1581,10 +1580,12 @@ function playScrubTone(targetTime: number): void {
 }
 
 function syncTimelineLoopRegion(): void {
+  const loopActive = Boolean(score && loopEnabled.checked && navLoopMode.value !== "measure");
+  timelineLoopToggle.dataset.active = String(loopActive);
+  timelineLoopToggle.setAttribute("aria-pressed", String(loopActive));
+  timelineLoopToggle.setAttribute("aria-label", loopActive ? "关闭 A-B 循环编辑" : "开启 A-B 循环编辑");
   if (!score || !loopEnabled.checked || navLoopMode.value === "measure") {
     timelineLoopRegion.hidden = true;
-    timelineClearLoop.hidden = true;
-    timelineGestureHint.textContent = "点任意位置从此处开始；拖动进度条可创建 A–B 循环。";
     return;
   }
   const duration = Math.max(0.5, score.duration);
@@ -1598,8 +1599,6 @@ function syncTimelineLoopRegion(): void {
   timelineMarkerA.style.left = "0%";
   timelineMarkerB.style.left = "100%";
   timelineLoopRegion.hidden = false;
-  timelineClearLoop.hidden = false;
-  timelineGestureHint.textContent = `循环 ${formatTime(normalized.start)}–${formatTime(normalized.end)}；拖 A 或 B 调整，点其他位置只定位播放。`;
 }
 
 function syncTimelinePlayhead(seconds: number): void {
@@ -1652,7 +1651,6 @@ function configureLoopInputs(): void {
     topTimelineBar.hidden = true;
     timelineScrubber.disabled = true;
     timelineLoopRegion.hidden = true;
-    timelineClearLoop.hidden = true;
     updateLoopLabels();
     return;
   }
@@ -1681,7 +1679,6 @@ function updateLoopLabels(): void {
     required("loop-start-value").textContent = "00:00";
     required("loop-end-value").textContent = "00:00";
     timelineLoopRegion.hidden = true;
-    timelineClearLoop.hidden = true;
     return;
   }
   const normalized = normalizeLoop(Number(loopStart.value), Number(loopEnd.value), score.duration);
@@ -3497,8 +3494,10 @@ navLoopMode.addEventListener("change", () => {
   persistPreferences();
 });
 
-type TimelineDragKind = "create" | "a" | "b" | undefined;
-let timelineDrag: { pointerId: number; kind: TimelineDragKind; start: number; current: number; moved: boolean } | undefined;
+type TimelineDragKind = "seek" | "a" | "b";
+let timelineDrag: { pointerId: number; kind: TimelineDragKind; current: number } | undefined;
+let lastTimelineAuditionAt = -Infinity;
+let lastTimelineAuditionTarget = Number.NaN;
 
 function timelineSecondsAt(clientX: number): number {
   if (!score) return 0;
@@ -3507,17 +3506,26 @@ function timelineSecondsAt(clientX: number): number {
   return ratio * score.duration;
 }
 
+function auditionTimeline(target: number, force = false): void {
+  const now = performance.now();
+  if (!force && now - lastTimelineAuditionAt < 85 && Math.abs(target - lastTimelineAuditionTarget) < 0.16) return;
+  lastTimelineAuditionAt = now;
+  lastTimelineAuditionTarget = target;
+  playScrubTone(target);
+}
+
 function updateTimelineDrag(target: number): void {
   if (!score || !timelineDrag) return;
   timelineDrag.current = target;
-  if (Math.abs(target - timelineDrag.start) >= Math.max(0.12, score.duration * 0.004)) timelineDrag.moved = true;
   if (timelineDrag.kind === "a") {
     setTimelineLoop(target, Number(loopEnd.value), false);
   } else if (timelineDrag.kind === "b") {
     setTimelineLoop(Number(loopStart.value), target, false);
-  } else if (timelineDrag.kind === "create" && timelineDrag.moved) {
-    setTimelineLoop(Math.min(timelineDrag.start, target), Math.max(timelineDrag.start, target), false);
   }
+  // Both modes audition while moving. In normal mode this is a plain seek;
+  // in A-B mode only the handles alter the loop boundaries.
+  seekTimelineTo(target, false);
+  auditionTimeline(target);
 }
 
 timelineTrack.addEventListener("pointerdown", (event) => {
@@ -3526,9 +3534,10 @@ timelineTrack.addEventListener("pointerdown", (event) => {
   const target = timelineSecondsAt(event.clientX);
   const kind: TimelineDragKind = marker === timelineMarkerA ? "a"
     : marker === timelineMarkerB ? "b"
-      : loopEnabled.checked ? undefined : "create";
-  timelineDrag = { pointerId: event.pointerId, kind, start: target, current: target, moved: false };
+      : "seek";
+  timelineDrag = { pointerId: event.pointerId, kind, current: target };
   timelineTrack.setPointerCapture(event.pointerId);
+  updateTimelineDrag(target);
   event.preventDefault();
 });
 
@@ -3544,13 +3553,13 @@ function finishTimelineDrag(event: PointerEvent): void {
   timelineDrag = undefined;
   if (timelineTrack.hasPointerCapture(event.pointerId)) timelineTrack.releasePointerCapture(event.pointerId);
   if (!score) return;
-  if (drag.kind === "a" || drag.kind === "b" || (drag.kind === "create" && drag.moved)) {
+  if (drag.kind === "a" || drag.kind === "b") {
     setTimelineLoop(Number(loopStart.value), Number(loopEnd.value));
-    if (drag.kind === "create") seekTimelineTo(Math.min(drag.start, drag.current));
+    seekTimelineTo(drag.current, false);
+    auditionTimeline(drag.current, true);
     return;
   }
-  // Once a loop exists, the empty part of the track is intentionally seek-only:
-  // it must never overwrite an established A–B range by accident.
+  // Seeking is always available and never changes A/B mode or its boundaries.
   seekTimelineTo(drag.current);
 }
 
@@ -3570,11 +3579,23 @@ timelineTrack.addEventListener("keydown", (event) => {
   seekTimelineTo(target);
 });
 
-timelineClearLoop.addEventListener("click", () => {
-  if (!score || !loopEnabled.checked) return;
-  loopEnabled.checked = false;
-  loopStart.value = "0";
-  loopEnd.value = String(score.duration);
+timelineLoopToggle.addEventListener("click", () => {
+  if (!score) return;
+  if (!loopEnabled.checked) {
+    const duration = score.duration;
+    const existing = normalizeLoop(Number(loopStart.value), Number(loopEnd.value), duration);
+    // First activation gets a useful local loop, not the whole piece. Once edited,
+    // toggling preserves the user's A/B points for the next activation.
+    if (existing.end - existing.start >= duration - 0.1) {
+      const span = Math.min(6, duration);
+      const start = Math.max(0, Math.min(Math.max(0, duration - span), lastScoreSeconds - span / 3));
+      loopStart.value = String(start);
+      loopEnd.value = String(Math.min(duration, start + span));
+    }
+    loopEnabled.checked = true;
+  } else {
+    loopEnabled.checked = false;
+  }
   updateLoopLabels();
   rebuildPractice();
   seekTimelineTo(lastScoreSeconds, false);

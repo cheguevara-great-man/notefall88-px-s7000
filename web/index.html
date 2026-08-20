@@ -64,8 +64,7 @@
 
       <section id="top-timeline-bar" class="top-timeline-bar" hidden>
         <div id="timeline-track" class="timeline-track-wrap" role="slider" tabindex="0"
-          aria-label="播放位置与 A-B 循环" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"
-          aria-describedby="timeline-gesture-hint">
+          aria-label="播放位置与 A-B 循环" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
           <div id="timeline-loop-region" class="timeline-loop-region" hidden>
             <button id="loop-marker-a" class="loop-marker marker-a" type="button" aria-label="循环起点 A，可拖动">A</button>
             <button id="loop-marker-b" class="loop-marker marker-b" type="button" aria-label="循环终点 B，可拖动">B</button>
@@ -73,10 +72,7 @@
           <span id="timeline-playhead" class="timeline-playhead" aria-hidden="true"></span>
           <input id="timeline-scrubber" class="sr-only" type="range" min="0" max="1" step="0.05" value="0" aria-label="全曲进度" />
         </div>
-        <div class="timeline-gesture-row">
-          <small id="timeline-gesture-hint" class="timeline-gesture-hint">点任意位置从此处开始；未设置循环时拖动可创建 A–B，之后只拖 A 或 B 调整。</small>
-          <button id="timeline-clear-loop" class="timeline-clear-loop" type="button" hidden>清除 A–B</button>
-        </div>
+        <button id="timeline-loop-toggle" class="timeline-loop-toggle" type="button" aria-label="开启 A-B 循环编辑" aria-pressed="false" title="A-B 循环">⟲</button>
         <div id="loop-controls" class="sr-only" aria-disabled="true">
           <input id="loop-enabled" type="checkbox" tabindex="-1" aria-hidden="true" />
           <input id="loop-start" type="range" min="0" max="1" step="0.1" value="0" tabindex="-1" aria-hidden="true" />
