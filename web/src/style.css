@@ -683,6 +683,8 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 /* Top Timeline Scrubber & Integrated A-B Region */
 .top-timeline-bar {
   display: flex;
+  /* Override the old stacked A/B controls: the scrubber and icon are one row. */
+  flex-direction: row;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -699,6 +701,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   position: relative;
   display: block;
   flex: 1 1 auto;
+  align-self: stretch;
   min-width: 0;
   height: 30px;
   border-radius: 8px;
