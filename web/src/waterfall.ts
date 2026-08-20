@@ -15,6 +15,31 @@ import type { PedalCue } from "./pedal-cue";
 
 export type WaterfallFeedbackKind = "hit" | "wrong" | "missed" | "release-good" | "release-early";
 
+export interface PhraseRailGeometry {
+  x: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** Shared by drawing and pointer hit-testing so the visible rail is the control. */
+export function phraseRailGeometry(width: number, height: number): PhraseRailGeometry {
+  const keyboardTop = height * (1 - 0.22);
+  const railWidth = Math.max(12, Math.min(22, width * 0.012));
+  const top = Math.max(12, keyboardTop * 0.025);
+  return {
+    x: width - railWidth - Math.max(6, width * 0.004),
+    top,
+    width: railWidth,
+    height: Math.max(80, keyboardTop - top - 12),
+  };
+}
+
+export function phraseRailSeconds(clientY: number, canvasTop: number, geometry: PhraseRailGeometry, duration: number): number {
+  const ratio = Math.max(0, Math.min(1, (clientY - canvasTop - geometry.top) / geometry.height));
+  return ratio * Math.max(0, duration);
+}
+
 interface WaterfallFeedback {
   kind: WaterfallFeedbackKind;
   note: number;
@@ -252,7 +277,7 @@ export class WaterfallRenderer {
 
     this.drawPedalCues(scoreTime, visibleSeconds, keyboardTop, rollHeight, width);
 
-    this.drawPhraseMap(scoreTime, visibleSeconds, keyboardTop, width, palette);
+    this.drawPhraseMap(scoreTime, visibleSeconds, width, palette);
 
     if (this.loop) {
       this.drawLoopBoundary(this.loop.start, scoreTime, keyboardTop, rollHeight, visibleSeconds, width, "A");
@@ -375,16 +400,13 @@ export class WaterfallRenderer {
   private drawPhraseMap(
     scoreTime: number,
     visibleSeconds: number,
-    keyboardTop: number,
     width: number,
     palette: ReturnType<typeof visualPalette>,
   ): void {
     if (this.phraseMap.duration <= 0 || this.phraseMap.bins.length === 0) return;
     const ctx = this.context;
-    const railWidth = Math.max(12, Math.min(22, width * 0.012));
-    const x = width - railWidth - Math.max(6, width * 0.004);
-    const top = Math.max(12, keyboardTop * 0.025);
-    const height = Math.max(80, keyboardTop - top - 12);
+    const rail = phraseRailGeometry(width, this.canvas.clientHeight || this.canvas.getBoundingClientRect().height);
+    const { width: railWidth, x, top, height } = rail;
     const half = railWidth / 2;
     const rowHeight = height / this.phraseMap.bins.length;
     const selectedLeft = this.hand === "both" || this.hand === "left";
@@ -425,6 +447,9 @@ export class WaterfallRenderer {
       ctx.fillRect(x, loopTop, railWidth, Math.max(1, loopBottom - loopTop));
       ctx.strokeStyle = "rgba(255,210,76,.9)";
       ctx.strokeRect(x + 0.5, loopTop + 0.5, railWidth - 1, Math.max(1, loopBottom - loopTop - 1));
+      ctx.fillStyle = "#ffd24c";
+      ctx.fillRect(x - 5, loopTop - 2, railWidth + 10, 4);
+      ctx.fillRect(x - 5, loopBottom - 2, railWidth + 10, 4);
     }
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(x - 3, playheadY - 1, railWidth + 6, 2);

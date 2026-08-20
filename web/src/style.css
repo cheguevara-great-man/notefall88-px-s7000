@@ -80,7 +80,7 @@ h1 span { color: #8ba7ff; }
 .focus-exit[hidden] { display: none; }
 .focus-icon { font-size: 18px; line-height: 1; }
 .focus-exit:active { transform: scale(.97); }
-#waterfall { width: 100%; height: 100%; display: block; touch-action: pan-y pinch-zoom; }
+#waterfall { width: 100%; height: 100%; display: block; touch-action: none; }
 #waterfall[hidden], #sheet-view[hidden] { display: none; }
 #sheet-view { position: relative; width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; padding: 22px clamp(8px, 2vw, 24px) 120px; background: #090c13; color: #f8fafc; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-behavior: smooth; touch-action: pan-y pinch-zoom; -webkit-overflow-scrolling: touch; }
 #sheet-view svg { display: block; max-width: 100%; height: auto; }

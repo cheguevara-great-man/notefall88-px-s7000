@@ -99,6 +99,7 @@ import type {
   TimingWindow,
 } from "./types";
 import { createWaterfallSurface } from "./native-waterfall";
+import { phraseRailGeometry, phraseRailSeconds } from "./waterfall";
 import type { WaterfallFeedbackKind } from "./waterfall";
 import { animatedFrameDue, requiresContinuousRendering, shouldPaintVisual } from "./render-scheduler";
 import { requestImmersiveMode } from "./immersive";
@@ -1625,6 +1626,15 @@ function seekTimelineTo(target: number, audition = true): void {
   const safeTarget = Math.max(0, Math.min(score.duration, target));
   clock.seek(safeTarget);
   lastScoreSeconds = safeTarget;
+  const firstChord = chords.findIndex((chord) => chord.start >= safeTarget - 0.001);
+  waitIndex = firstChord < 0 ? chords.length : firstChord;
+  lastTargetSignature = "";
+  waitHitBuffer.clear();
+  waitMatcher.allNotesOff();
+  realtimeMatcher.seek(safeTarget);
+  metronome.reset(safeTarget);
+  setWaitChord(currentWaitChord());
+  updateTarget(safeTarget);
   if (audition) playScrubTone(safeTarget);
   scoreTime.textContent = `${formatTime(safeTarget)} / ${formatTime(score.duration)}`;
   syncTimelinePlayhead(safeTarget);
@@ -3407,9 +3417,7 @@ function frame(now: number): void {
   let scoreSeconds = clock.time(now);
   if (score) {
     const loop = selectedLoop();
-    if (!demonstrationActive && mode !== "realtime") {
-      scoreSeconds = currentWaitChord()?.start ?? rangeEnd();
-    } else if (clock.isRunning() && loop && scoreSeconds >= loop.end) {
+    if (clock.isRunning() && loop && scoreSeconds >= loop.end) {
       if (demonstrationActive) {
         device.panicMidi();
         midiOutOwnedByThisPage = false;
@@ -3501,7 +3509,13 @@ navLoopMode.addEventListener("change", () => {
 });
 
 type TimelineDragKind = "seek" | "a" | "b";
-let timelineDrag: { pointerId: number; kind: TimelineDragKind; current: number; heard: Set<string> } | undefined;
+let timelineDrag: {
+  pointerId: number;
+  kind: TimelineDragKind;
+  current: number;
+  heard: Set<string>;
+  captureTarget: HTMLElement;
+} | undefined;
 let lastTimelineAuditionAt = -Infinity;
 let lastTimelineAuditionTarget = Number.NaN;
 
@@ -3534,6 +3548,13 @@ function updateTimelineDrag(target: number): void {
   auditionTimeline(target, false, timelineDrag.heard);
 }
 
+function beginTimelineDrag(pointerId: number, kind: TimelineDragKind, target: number, captureTarget: HTMLElement): void {
+  cancelFollowPlayback();
+  timelineDrag = { pointerId, kind, current: target, heard: new Set<string>(), captureTarget };
+  captureTarget.setPointerCapture(pointerId);
+  updateTimelineDrag(target);
+}
+
 timelineTrack.addEventListener("pointerdown", (event) => {
   if (!score || event.button !== 0) return;
   const marker = (event.target as HTMLElement).closest<HTMLElement>(".loop-marker");
@@ -3541,9 +3562,7 @@ timelineTrack.addEventListener("pointerdown", (event) => {
   const kind: TimelineDragKind = marker === timelineMarkerA ? "a"
     : marker === timelineMarkerB ? "b"
       : "seek";
-  timelineDrag = { pointerId: event.pointerId, kind, current: target, heard: new Set<string>() };
-  timelineTrack.setPointerCapture(event.pointerId);
-  updateTimelineDrag(target);
+  beginTimelineDrag(event.pointerId, kind, target, timelineTrack);
   event.preventDefault();
 });
 
@@ -3557,7 +3576,7 @@ function finishTimelineDrag(event: PointerEvent): void {
   if (!timelineDrag || timelineDrag.pointerId !== event.pointerId) return;
   const drag = timelineDrag;
   timelineDrag = undefined;
-  if (timelineTrack.hasPointerCapture(event.pointerId)) timelineTrack.releasePointerCapture(event.pointerId);
+  if (drag.captureTarget.hasPointerCapture(event.pointerId)) drag.captureTarget.releasePointerCapture(event.pointerId);
   if (!score) return;
   if (drag.kind === "a" || drag.kind === "b") {
     setTimelineLoop(Number(loopStart.value), Number(loopEnd.value));
@@ -3572,6 +3591,71 @@ function finishTimelineDrag(event: PointerEvent): void {
 
 timelineTrack.addEventListener("pointerup", finishTimelineDrag);
 timelineTrack.addEventListener("pointercancel", finishTimelineDrag);
+
+function waterfallRailTarget(event: PointerEvent): { seconds: number; kind: TimelineDragKind } | undefined {
+  if (!score || waterfallCanvas.hidden) return undefined;
+  const rect = waterfallCanvas.getBoundingClientRect();
+  const rail = phraseRailGeometry(rect.width, rect.height);
+  const localX = event.clientX - rect.left;
+  const hitPadding = 24;
+  if (localX < rail.x - hitPadding || localX > rail.x + rail.width + hitPadding) return undefined;
+  const seconds = phraseRailSeconds(event.clientY, rect.top, rail, score.duration);
+  if (!loopEnabled.checked || navLoopMode.value === "measure") return { seconds, kind: "seek" };
+  const y = event.clientY - rect.top;
+  const aY = rail.top + Number(loopStart.value) / Math.max(0.5, score.duration) * rail.height;
+  const bY = rail.top + Number(loopEnd.value) / Math.max(0.5, score.duration) * rail.height;
+  const handleRadius = 24;
+  if (Math.abs(y - aY) <= handleRadius && Math.abs(y - aY) <= Math.abs(y - bY)) return { seconds, kind: "a" };
+  if (Math.abs(y - bY) <= handleRadius) return { seconds, kind: "b" };
+  return { seconds, kind: "seek" };
+}
+
+waterfallCanvas.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  const target = waterfallRailTarget(event);
+  if (!target) return;
+  beginTimelineDrag(event.pointerId, target.kind, target.seconds, waterfallCanvas);
+  event.preventDefault();
+});
+
+waterfallCanvas.addEventListener("pointermove", (event) => {
+  if (!timelineDrag || timelineDrag.captureTarget !== waterfallCanvas || timelineDrag.pointerId !== event.pointerId) return;
+  const rect = waterfallCanvas.getBoundingClientRect();
+  const rail = phraseRailGeometry(rect.width, rect.height);
+  updateTimelineDrag(phraseRailSeconds(event.clientY, rect.top, rail, score?.duration ?? 0));
+  event.preventDefault();
+});
+waterfallCanvas.addEventListener("pointerup", finishTimelineDrag);
+waterfallCanvas.addEventListener("pointercancel", finishTimelineDrag);
+
+function scorePointerTime(event: PointerEvent): number | undefined {
+  if (!score) return undefined;
+  const note = (event.target as HTMLElement).closest<HTMLElement>("[data-note-start]");
+  if (note) return Number(note.dataset.noteStart);
+  const measure = (event.target as HTMLElement).closest<HTMLElement>("[data-measure-start]");
+  if (measure) {
+    const start = Number(measure.dataset.measureStart);
+    const end = Number(measure.dataset.measureEnd);
+    const rect = measure.getBoundingClientRect();
+    const ratio = rect.width <= 0 ? 0 : Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    return start + ratio * Math.max(0, end - start);
+  }
+  return undefined;
+}
+
+jianpuContainer.addEventListener("pointerup", (event) => {
+  const target = scorePointerTime(event);
+  if (target === undefined || !Number.isFinite(target)) return;
+  cancelFollowPlayback();
+  seekTimelineTo(target, true);
+});
+
+osmdContainer.addEventListener("pointerup", (event) => {
+  const target = sheetRenderer.timeAtPoint(event.clientX, event.clientY);
+  if (target === undefined || !Number.isFinite(target)) return;
+  cancelFollowPlayback();
+  seekTimelineTo(target, true);
+});
 
 timelineTrack.addEventListener("keydown", (event) => {
   if (!score) return;

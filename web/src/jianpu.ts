@@ -244,7 +244,7 @@ export class JianpuRenderer {
 
     for (const m of this.measures) {
       html += `
-        <div class="jianpu-measure" data-measure-idx="${m.index}">
+        <div class="jianpu-measure" data-measure-idx="${m.index}" data-measure-start="${m.startTime}" data-measure-end="${m.endTime}">
           <span class="jianpu-measure-num">${m.measureNumber}</span>
           <div class="jianpu-track-row">
             <span class="jianpu-track-label">右手</span>

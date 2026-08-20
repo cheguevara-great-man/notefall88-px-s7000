@@ -25,6 +25,14 @@ interface OsmdInstance {
     SystemRightMargin: number;
   };
   TransposeCalculator: unknown;
+  GraphicSheet?: {
+    MeasureList: Array<Array<{
+      PositionAndShape: {
+        AbsolutePosition: { x: number; y: number };
+        Size: { width: number; height: number };
+      };
+    }>>;
+  };
   Zoom: number;
   load(content: string): Promise<unknown>;
   render(): void;
@@ -219,6 +227,40 @@ export class SheetRenderer {
       try { cursor.hide?.(); } catch { /* Rendering remains usable without a cursor. */ }
     }
     this.currentCursorSignature = target.signature;
+  }
+
+  /** Resolve a pointer on the rendered SVG to a playback time. */
+  timeAtPoint(clientX: number, clientY: number): number | undefined {
+    const measures = this.osmd?.GraphicSheet?.MeasureList;
+    const starts = this.score?.measureStarts;
+    const svg = this.container.querySelector<SVGSVGElement>("svg");
+    if (!measures?.length || !starts?.length || !svg) return undefined;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return undefined;
+    const point = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+    // OSMD graphical units are converted to SVG units at ten pixels per unit,
+    // with Zoom applied by the drawer.
+    const scale = 10 * (this.osmd?.Zoom || 1);
+    const x = point.x / scale;
+    const y = point.y / scale;
+    let best: { index: number; left: number; right: number; distance: number } | undefined;
+    measures.forEach((staves, index) => {
+      const boxes = staves.map((measure) => measure?.PositionAndShape).filter(Boolean);
+      if (boxes.length === 0) return;
+      const left = Math.min(...boxes.map((box) => box.AbsolutePosition.x));
+      const right = Math.max(...boxes.map((box) => box.AbsolutePosition.x + box.Size.width));
+      const top = Math.min(...boxes.map((box) => box.AbsolutePosition.y));
+      const bottom = Math.max(...boxes.map((box) => box.AbsolutePosition.y + box.Size.height));
+      const dx = x < left ? left - x : x > right ? x - right : 0;
+      const dy = y < top ? top - y : y > bottom ? y - bottom : 0;
+      const distance = dx * dx + dy * dy;
+      if (!best || distance < best.distance) best = { index, left, right, distance };
+    });
+    if (!best) return undefined;
+    const start = starts[Math.min(best.index, starts.length - 1)] ?? 0;
+    const end = starts[best.index + 1] ?? this.score!.duration;
+    const ratio = best.right <= best.left ? 0 : Math.max(0, Math.min(1, (x - best.left) / (best.right - best.left)));
+    return start + ratio * Math.max(0, end - start);
   }
 
   private scheduleFollow(element: HTMLElement | undefined): void {

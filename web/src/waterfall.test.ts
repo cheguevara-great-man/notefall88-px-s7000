@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ScoreNote } from "./types";
-import { visibleScoreNotes } from "./waterfall";
+import { phraseRailGeometry, phraseRailSeconds, visibleScoreNotes } from "./waterfall";
 
 const note = (start: number, end: number, midi = 60): ScoreNote => ({
   note: midi,
@@ -9,6 +9,16 @@ const note = (start: number, end: number, midi = 60): ScoreNote => ({
   end,
   velocity: 80,
   hand: "right",
+});
+
+describe("interactive phrase rail", () => {
+  it("uses the same geometry for a 3:2 tablet canvas and maps its full height to the score", () => {
+    const rail = phraseRailGeometry(1600, 900);
+    expect(rail.x + rail.width).toBeLessThan(1600);
+    expect(phraseRailSeconds(rail.top + 100, 100, rail, 120)).toBe(0);
+    expect(phraseRailSeconds(rail.top + rail.height / 2 + 100, 100, rail, 120)).toBeCloseTo(60);
+    expect(phraseRailSeconds(rail.top + rail.height + 100, 100, rail, 120)).toBe(120);
+  });
 });
 
 describe("waterfall render window", () => {
