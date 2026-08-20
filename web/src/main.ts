@@ -1517,7 +1517,7 @@ function rebuildPractice(): void {
 
 let synthAudioContext: AudioContext | undefined;
 
-function playScrubTone(targetTime: number): void {
+function playScrubTone(targetTime: number, heardDuringDrag?: Set<string>): void {
   if (!score || score.notes.length === 0) return;
   const active = score.notes.filter((n) => targetTime >= n.start - 0.05 && targetTime <= n.end + 0.05);
   let notesToSound = active;
@@ -1539,8 +1539,12 @@ function playScrubTone(targetTime: number): void {
     const existing = byPitch.get(note.note);
     if (!existing || note.velocity > existing.velocity) byPitch.set(note.note, note);
     return byPitch;
-  }, new Map<number, ParsedScore["notes"][number]>()).values()].slice(0, 4);
+  }, new Map<number, ParsedScore["notes"][number]>()).values()]
+    .filter((note) => !heardDuringDrag?.has(`${note.note}@${note.start.toFixed(4)}`))
+    .slice(0, 4);
   if (uniqueNotes.length === 0) return;
+
+  for (const note of uniqueNotes) heardDuringDrag?.add(`${note.note}@${note.start.toFixed(4)}`);
 
   if (canUseMidiOut()) {
     const events = uniqueNotes.flatMap(({ note, velocity }) => [
@@ -3495,7 +3499,7 @@ navLoopMode.addEventListener("change", () => {
 });
 
 type TimelineDragKind = "seek" | "a" | "b";
-let timelineDrag: { pointerId: number; kind: TimelineDragKind; current: number } | undefined;
+let timelineDrag: { pointerId: number; kind: TimelineDragKind; current: number; heard: Set<string> } | undefined;
 let lastTimelineAuditionAt = -Infinity;
 let lastTimelineAuditionTarget = Number.NaN;
 
@@ -3506,12 +3510,12 @@ function timelineSecondsAt(clientX: number): number {
   return ratio * score.duration;
 }
 
-function auditionTimeline(target: number, force = false): void {
+function auditionTimeline(target: number, force = false, heard?: Set<string>): void {
   const now = performance.now();
   if (!force && now - lastTimelineAuditionAt < 85 && Math.abs(target - lastTimelineAuditionTarget) < 0.16) return;
   lastTimelineAuditionAt = now;
   lastTimelineAuditionTarget = target;
-  playScrubTone(target);
+  playScrubTone(target, heard);
 }
 
 function updateTimelineDrag(target: number): void {
@@ -3525,7 +3529,7 @@ function updateTimelineDrag(target: number): void {
   // Both modes audition while moving. In normal mode this is a plain seek;
   // in A-B mode only the handles alter the loop boundaries.
   seekTimelineTo(target, false);
-  auditionTimeline(target);
+  auditionTimeline(target, false, timelineDrag.heard);
 }
 
 timelineTrack.addEventListener("pointerdown", (event) => {
@@ -3535,7 +3539,7 @@ timelineTrack.addEventListener("pointerdown", (event) => {
   const kind: TimelineDragKind = marker === timelineMarkerA ? "a"
     : marker === timelineMarkerB ? "b"
       : "seek";
-  timelineDrag = { pointerId: event.pointerId, kind, current: target };
+  timelineDrag = { pointerId: event.pointerId, kind, current: target, heard: new Set<string>() };
   timelineTrack.setPointerCapture(event.pointerId);
   updateTimelineDrag(target);
   event.preventDefault();
@@ -3556,11 +3560,12 @@ function finishTimelineDrag(event: PointerEvent): void {
   if (drag.kind === "a" || drag.kind === "b") {
     setTimelineLoop(Number(loopStart.value), Number(loopEnd.value));
     seekTimelineTo(drag.current, false);
-    auditionTimeline(drag.current, true);
+    auditionTimeline(drag.current, true, drag.heard);
     return;
   }
   // Seeking is always available and never changes A/B mode or its boundaries.
-  seekTimelineTo(drag.current);
+  seekTimelineTo(drag.current, false);
+  auditionTimeline(drag.current, true, drag.heard);
 }
 
 timelineTrack.addEventListener("pointerup", finishTimelineDrag);
