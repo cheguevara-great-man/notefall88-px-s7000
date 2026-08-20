@@ -88,6 +88,9 @@ def test_android_registers_hardware_accelerated_native_waterfall() -> None:
     assert "lowerBoundBeats" in renderer
     assert "lowerBoundPedals" in renderer
     assert "new RectF" not in renderer
+    assert "public boolean isOpaque()" in renderer
+    assert "public boolean hasOverlappingRendering()" in renderer
+    assert "canvas.drawColor(themeColor(" in renderer
 
 
 def test_ios_declares_local_network_usage_without_arbitrary_web_access() -> None:

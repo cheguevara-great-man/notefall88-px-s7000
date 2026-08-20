@@ -18,7 +18,6 @@ import {
   savePracticeCircuit,
 } from "./practice-circuit";
 import type { PracticeCircuit, PracticeMission } from "./practice-circuit";
-import { buildPracticeQueue, practiceDueLabel } from "./practice-queue";
 import {
   commissioningReport,
   completeCommissioning,
@@ -212,9 +211,9 @@ const commissioningStatus = document.getElementById("commissioning-status") as H
 const updateStatus = required("update-status");
 const updateProgress = required<HTMLProgressElement>("update-progress");
 const libraryPanel = required("library-panel");
+const libraryAdminPanel = required("library-admin-panel");
 const libraryList = required("library-list");
 const librarySummary = required("library-summary");
-const practiceQueue = required("practice-queue");
 const storageSummary = required("storage-summary");
 const storagePersist = required<HTMLButtonElement>("storage-persist");
 const librarySearch = required<HTMLInputElement>("library-search");
@@ -1239,7 +1238,6 @@ function renderPracticeHistory(): void {
   historySummary.textContent = `${recentSessions.length} 次近期练习 · ${totalNotes} 个判定事件 · 数据只保存在本机`;
   renderPracticeTrend();
   renderCoach();
-  renderPracticeQueue();
 }
 
 function renderPracticeTrend(): void {
@@ -2240,10 +2238,6 @@ measureSeek.addEventListener("click", () => {
 
 viewMode.addEventListener("change", updateViewMode);
 
-function formatLibraryDuration(seconds: number): string {
-  return formatTime(seconds);
-}
-
 const collapsedFolders = new Set<string>();
 
 function escapeHtml(str: string): string {
@@ -2261,38 +2255,42 @@ function createLibraryItem(item: LibraryScore): HTMLElement {
   card.className = "library-item";
   card.dataset.scoreId = item.id;
 
-  const head = document.createElement("div");
-  head.className = "library-item-head";
+  const openBtn = document.createElement("button");
+  openBtn.type = "button";
+  openBtn.className = "library-score-row";
+  openBtn.dataset.action = "open";
+  openBtn.setAttribute("aria-haspopup", "menu");
+  openBtn.setAttribute("aria-label", `打开${item.title}；长按管理`);
 
-  const title = document.createElement("div");
+  const title = document.createElement("span");
   title.className = "library-item-title";
 
-  const strong = document.createElement("strong");
+  const strong = document.createElement("span");
   strong.textContent = item.title;
 
-  const details = document.createElement("small");
-  const badgeText = item.format === "musicxml" ? "MusicXML 原谱" : "MIDI 演奏";
-  details.textContent = `[${badgeText}] · ${item.noteCount} 音符 · ${formatLibraryDuration(item.duration)} · ${Math.ceil(item.sourceBytes / 1024)} KiB`;
+  const details = document.createElement("span");
+  details.className = "library-item-meta";
+  details.textContent = formatTime(item.duration);
 
-  title.append(strong, details);
+  title.append(strong);
+  openBtn.append(title, details);
 
   const actions = document.createElement("div");
   actions.className = "library-item-actions";
-
-  const openBtn = document.createElement("button");
-  openBtn.type = "button";
-  openBtn.className = "primary";
-  openBtn.dataset.action = "open";
-  openBtn.textContent = "打开";
+  actions.hidden = true;
+  actions.setAttribute("role", "menu");
+  actions.setAttribute("aria-label", `${item.title}的管理操作`);
 
   const renameBtn = document.createElement("button");
   renameBtn.type = "button";
   renameBtn.dataset.action = "rename";
+  renameBtn.setAttribute("role", "menuitem");
   renameBtn.textContent = "重命名";
 
   const moveSelect = document.createElement("select");
   moveSelect.dataset.action = "move";
   moveSelect.className = "item-move-select";
+  moveSelect.setAttribute("aria-label", `移动${item.title}到分类`);
   const rootOpt = document.createElement("option");
   rootOpt.value = "";
   rootOpt.textContent = "移至: 未分类";
@@ -2308,12 +2306,56 @@ function createLibraryItem(item: LibraryScore): HTMLElement {
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
   deleteBtn.dataset.action = "delete";
+  deleteBtn.setAttribute("role", "menuitem");
   deleteBtn.textContent = "删除";
 
-  actions.append(openBtn, renameBtn, moveSelect, deleteBtn);
-  head.append(title, actions);
-  card.append(head);
+  actions.append(renameBtn, moveSelect, deleteBtn);
+  card.append(openBtn, actions);
   return card;
+}
+
+let suppressLibraryOpenUntil = 0;
+let suppressLibraryOpenOnce = false;
+let suppressFolderToggleUntil = 0;
+let libraryLongPressTimer: number | undefined;
+let libraryLongPressStart: { x: number; y: number } | undefined;
+
+function closeLibraryItemMenus(except?: HTMLElement): void {
+  for (const card of libraryList.querySelectorAll<HTMLElement>(".library-item.is-managing")) {
+    if (card === except) continue;
+    card.classList.remove("is-managing");
+    const actions = card.querySelector<HTMLElement>(".library-item-actions");
+    if (actions) actions.hidden = true;
+  }
+}
+
+function openLibraryItemMenu(card: HTMLElement): void {
+  closeLibraryItemMenus(card);
+  card.classList.add("is-managing");
+  const actions = card.querySelector<HTMLElement>(".library-item-actions");
+  if (actions) actions.hidden = false;
+  suppressLibraryOpenUntil = performance.now() + 700;
+}
+
+function openFolderMenu(header: HTMLElement): void {
+  closeLibraryItemMenus();
+  for (const other of libraryList.querySelectorAll<HTMLElement>(".library-folder-header.is-managing")) {
+    if (other !== header) {
+      other.classList.remove("is-managing");
+      const otherActions = other.querySelector<HTMLElement>(".folder-header-actions");
+      if (otherActions) otherActions.hidden = true;
+    }
+  }
+  header.classList.add("is-managing");
+  const actions = header.querySelector<HTMLElement>(".folder-header-actions");
+  if (actions) actions.hidden = false;
+  suppressFolderToggleUntil = performance.now() + 700;
+}
+
+function cancelLibraryLongPress(): void {
+  if (libraryLongPressTimer !== undefined) window.clearTimeout(libraryLongPressTimer);
+  libraryLongPressTimer = undefined;
+  libraryLongPressStart = undefined;
 }
 
 function renderLibrary(): void {
@@ -2367,6 +2409,7 @@ function renderLibrary(): void {
       toggleBtn.className = "folder-toggle-btn";
       toggleBtn.innerHTML = `<span>${isCollapsed ? "▶" : "▼"}</span> <span>${escapeHtml(folder.name)}</span> <span class="folder-song-count">${scores.length} 首</span>`;
       toggleBtn.addEventListener("click", () => {
+        if (performance.now() < suppressFolderToggleUntil) return;
         if (collapsedFolders.has(folder.id)) {
           collapsedFolders.delete(folder.id);
         } else {
@@ -2377,6 +2420,7 @@ function renderLibrary(): void {
 
       const actions = document.createElement("div");
       actions.className = "folder-header-actions";
+      actions.hidden = true;
 
       const renameBtn = document.createElement("button");
       renameBtn.type = "button";
@@ -2429,6 +2473,7 @@ function renderLibrary(): void {
       toggleBtn.className = "folder-toggle-btn";
       toggleBtn.innerHTML = `<span>${isCollapsed ? "▶" : "▼"}</span> <span>未分类</span> <span class="folder-song-count">${rootScores.length} 首</span>`;
       toggleBtn.addEventListener("click", () => {
+        if (performance.now() < suppressFolderToggleUntil) return;
         if (collapsedFolders.has("root")) {
           collapsedFolders.delete("root");
         } else {
@@ -2453,41 +2498,6 @@ function renderLibrary(): void {
 
   const bytes = libraryScores.reduce((sum, item) => sum + item.sourceBytes, 0);
   librarySummary.textContent = `${libraryScores.length} 首 · ${libraryFolders.length} 个分类 · ${(bytes / 1024 / 1024).toFixed(2)} MiB`;
-  renderPracticeQueue();
-}
-
-function renderPracticeQueue(): void {
-  const now = Date.now();
-  const items = buildPracticeQueue(libraryScores, recentSessions, now);
-  practiceQueue.replaceChildren();
-  if (items.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "library-empty";
-    empty.textContent = "曲库中还没有乐谱；导入后会自动安排首次练习。";
-    practiceQueue.append(empty);
-    return;
-  }
-  for (const item of items) {
-    const card = document.createElement("article");
-    card.className = "practice-queue-item";
-    card.dataset.state = item.state;
-    card.dataset.scoreId = item.scoreId;
-    const copy = document.createElement("div");
-    copy.className = "practice-queue-copy";
-    const title = document.createElement("strong");
-    title.textContent = `${practiceDueLabel(item, now)} · ${item.title}`;
-    const detail = document.createElement("small");
-    const mastery = item.mastery === undefined ? "首次建立基线" : `综合掌握 ${item.mastery.toFixed(0)}%`;
-    detail.textContent = `${mastery} · 约 ${item.estimatedMinutes} 分钟 · ${item.reason}`;
-    copy.append(title, detail);
-    const start = document.createElement("button");
-    start.type = "button";
-    start.className = "primary";
-    start.dataset.action = "practice";
-    start.textContent = item.due ? "开始" : "提前练";
-    card.append(copy, start);
-    practiceQueue.append(card);
-  }
 }
 
 async function refreshLibrary(): Promise<void> {
@@ -2512,11 +2522,58 @@ async function refreshLibrary(): Promise<void> {
 
 librarySearch.addEventListener("input", renderLibrary);
 libraryFolderFilter.addEventListener("change", renderLibrary);
+libraryList.addEventListener("pointerdown", (event) => {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  const target = (event.target as HTMLElement).closest<HTMLElement>(".library-score-row, .folder-toggle-btn");
+  if (!target) return;
+  cancelLibraryLongPress();
+  libraryLongPressStart = { x: event.clientX, y: event.clientY };
+  libraryLongPressTimer = window.setTimeout(() => {
+    if (target.classList.contains("library-score-row")) {
+      const card = target.closest<HTMLElement>(".library-item");
+      if (card) {
+        suppressLibraryOpenOnce = true;
+        openLibraryItemMenu(card);
+      }
+    } else {
+      const header = target.closest<HTMLElement>(".library-folder-header");
+      if (header?.querySelector(".folder-header-actions")) openFolderMenu(header);
+    }
+    libraryLongPressTimer = undefined;
+    if (navigator.vibrate) navigator.vibrate(18);
+  }, 520);
+});
+libraryList.addEventListener("pointermove", (event) => {
+  if (!libraryLongPressStart) return;
+  if (Math.hypot(event.clientX - libraryLongPressStart.x, event.clientY - libraryLongPressStart.y) > 10) {
+    cancelLibraryLongPress();
+  }
+});
+for (const eventName of ["pointerup", "pointercancel", "pointerleave"] as const) {
+  libraryList.addEventListener(eventName, cancelLibraryLongPress);
+}
+libraryList.addEventListener("contextmenu", (event) => {
+  const target = (event.target as HTMLElement).closest<HTMLElement>(".library-score-row, .folder-toggle-btn");
+  if (!target) return;
+  event.preventDefault();
+  if (target.classList.contains("library-score-row")) {
+    const card = target.closest<HTMLElement>(".library-item");
+    if (card) openLibraryItemMenu(card);
+  } else {
+    const header = target.closest<HTMLElement>(".library-folder-header");
+    if (header?.querySelector(".folder-header-actions")) openFolderMenu(header);
+  }
+});
 libraryList.addEventListener("click", async (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
   const card = button?.closest<HTMLElement>("[data-score-id]");
   const id = card?.dataset.scoreId;
   if (!button || !id) return;
+  if (button.dataset.action === "open" && suppressLibraryOpenOnce) {
+    suppressLibraryOpenOnce = false;
+    return;
+  }
+  if (button.dataset.action === "open" && performance.now() < suppressLibraryOpenUntil) return;
   try {
     if (button.dataset.action === "open") {
       const stored = await library.getScore(id);
@@ -2533,6 +2590,7 @@ libraryList.addEventListener("click", async (event) => {
         await library.deleteScore(id);
       }
     }
+    closeLibraryItemMenus();
     await refreshLibrary();
   } catch (error) {
     librarySummary.textContent = error instanceof Error ? error.message : "曲库操作失败";
@@ -2547,23 +2605,6 @@ libraryList.addEventListener("change", async (event) => {
     await refreshLibrary();
   } catch (error) {
     librarySummary.textContent = error instanceof Error ? error.message : "无法移动乐谱";
-  }
-});
-
-practiceQueue.addEventListener("click", async (event) => {
-  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action='practice']");
-  const id = button?.closest<HTMLElement>("[data-score-id]")?.dataset.scoreId;
-  if (!button || !id) return;
-  button.disabled = true;
-  try {
-    const stored = await library.getScore(id);
-    if (!stored) throw new Error("乐谱不存在");
-    await loadScoreBuffer(stored.source, stored.fileName, false, stored.sha256, stored.notationXml);
-    libraryPanel.hidden = true;
-    practicePanel.hidden = false;
-  } catch (error) {
-    librarySummary.textContent = error instanceof Error ? error.message : "无法开始今日练习";
-    button.disabled = false;
   }
 });
 
@@ -2744,6 +2785,7 @@ for (const input of [loopStart, loopEnd]) {
 required("practice-options-button").addEventListener("click", () => {
   settingsPanel.hidden = true;
   libraryPanel.hidden = true;
+  libraryAdminPanel.hidden = true;
   if (commissioningPanel) commissioningPanel.hidden = true;
   practicePanel.hidden = false;
   visualDirty = true;
@@ -2827,6 +2869,7 @@ circuitStop.addEventListener("click", () => {
 required("settings-button").addEventListener("click", () => {
   practicePanel.hidden = true;
   libraryPanel.hidden = true;
+  libraryAdminPanel.hidden = true;
   if (commissioningPanel) commissioningPanel.hidden = true;
   settingsPanel.hidden = false;
   visualDirty = true;
@@ -2836,6 +2879,7 @@ required("settings-close").addEventListener("click", () => { settingsPanel.hidde
 required("library-button").addEventListener("click", () => {
   practicePanel.hidden = true;
   settingsPanel.hidden = true;
+  libraryAdminPanel.hidden = true;
   if (commissioningPanel) commissioningPanel.hidden = true;
   libraryPanel.hidden = false;
   visualDirty = true;
@@ -2845,11 +2889,24 @@ required("library-button").addEventListener("click", () => {
   });
 });
 required("library-close").addEventListener("click", () => { libraryPanel.hidden = true; visualDirty = true; });
+required("library-admin-button").addEventListener("click", () => {
+  libraryPanel.hidden = true;
+  libraryAdminPanel.hidden = false;
+  visualDirty = true;
+  void refreshStorageStatus();
+});
+required("library-admin-close").addEventListener("click", () => {
+  libraryAdminPanel.hidden = true;
+  libraryPanel.hidden = false;
+  visualDirty = true;
+  renderLibrary();
+});
 
 document.getElementById("commissioning-button")?.addEventListener("click", () => {
   practicePanel.hidden = true;
   settingsPanel.hidden = true;
   libraryPanel.hidden = true;
+  libraryAdminPanel.hidden = true;
   if (commissioningPanel) commissioningPanel.hidden = false;
   visualDirty = true;
   renderCommissioning();

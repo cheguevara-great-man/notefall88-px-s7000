@@ -437,15 +437,26 @@
 
       
 
-      <aside id="library-panel" class="settings-panel library-panel" hidden>
+      <aside id="library-panel" class="settings-panel library-panel" aria-label="曲库" hidden>
+        <div class="settings-head library-minimal-head">
+          <div class="settings-head-actions">
+            <button id="library-admin-button" aria-label="曲库设置" title="曲库设置">⋯</button>
+            <button id="library-close" aria-label="关闭">关闭</button>
+          </div>
+        </div>
+        <div id="library-summary" class="sr-only" role="status">正在打开曲库…</div>
+        <div id="library-list" class="library-list"></div>
+      </aside>
+
+      <aside id="library-admin-panel" class="settings-panel library-panel" hidden>
         <div class="settings-head">
           <div>
-            <div class="eyebrow">LOCAL SCORE LIBRARY</div>
-            <h2>我的曲库</h2>
+            <div class="eyebrow">LIBRARY SETTINGS</div>
+            <h2>曲库设置</h2>
           </div>
-          <button id="library-close" aria-label="关闭">关闭</button>
+          <button id="library-admin-close" aria-label="返回曲库">返回</button>
         </div>
-        <p>乐谱只保存在当前浏览器的 IndexedDB，不上传云端。请定期导出带校验值的完整备份。</p>
+        <p>这些是低频管理工具；日常选曲无需进入这里。</p>
         <div class="library-filters">
           <input id="library-search" type="search" placeholder="搜索曲名或文件名" />
           <select id="library-format-filter">
@@ -456,8 +467,8 @@
           <select id="library-folder-filter"><option value="all">全部文件夹</option></select>
         </div>
         <form id="folder-form" class="library-filters">
-          <input id="folder-name" maxlength="80" placeholder="新文件夹名称" />
-          <button type="submit">新建文件夹</button>
+          <input id="folder-name" maxlength="80" placeholder="新分类名称" />
+          <button type="submit">新建分类</button>
         </form>
         <div class="button-row">
           <button id="library-backup">导出曲库备份</button>
@@ -469,12 +480,6 @@
           </label>
         </div>
         <div id="storage-summary" class="library-summary">正在检查浏览器存储…</div>
-        <section class="practice-queue-section" aria-labelledby="practice-queue-title">
-          <div class="review-head"><span id="practice-queue-title">今日练习</span><small>只在本机按全曲掌握度与复习间隔计算</small></div>
-          <div id="practice-queue" class="practice-queue"></div>
-        </section>
-        <div id="library-summary" class="library-summary">正在打开曲库…</div>
-        <div id="library-list" class="library-list"></div>
       </aside>
 
       <footer>

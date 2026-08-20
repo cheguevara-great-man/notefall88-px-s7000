@@ -252,8 +252,25 @@ public class NativeWaterfallPlugin extends Plugin {
             density = getResources().getDisplayMetrics().density;
             scaledDensity = getResources().getDisplayMetrics().scaledDensity;
             setLayerType(View.LAYER_TYPE_NONE, null);
+            setWillNotDraw(false);
             stroke.setStrokeWidth(density);
             stroke.setStyle(Paint.Style.STROKE);
+        }
+
+        @Override
+        public boolean isOpaque() {
+            // Every frame covers the complete view. Advertising that fact keeps
+            // Android from blending the WebView underneath during rapid MIDI
+            // invalidations, which otherwise appears as a brightness flash.
+            return true;
+        }
+
+        @Override
+        public boolean hasOverlappingRendering() {
+            // The view is redrawn as one frame; it never needs an off-screen
+            // alpha layer. Avoiding that extra composition also removes a source
+            // of frame-to-frame luminance changes on high-refresh-rate tablets.
+            return false;
         }
 
         void setPreview(double seconds) {
@@ -458,6 +475,11 @@ public class NativeWaterfallPlugin extends Plugin {
             if (animated) lastAnimatedDrawMs = realtimeMs;
             float keyboardHeight = height * 0.22f;
             float keyboardTop = height - keyboardHeight;
+            canvas.drawColor(themeColor(
+                Color.rgb(17, 24, 39),
+                Color.rgb(20, 36, 58),
+                Color.rgb(32, 32, 32)
+            ));
             ensureFrameGradients(keyboardTop);
             paint.setShader(backgroundGradient);
             canvas.drawRect(0, 0, width, keyboardTop, paint);
