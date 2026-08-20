@@ -41,6 +41,7 @@ export class SheetRenderer {
   private resizeTimer?: number;
   private cursorAvailable = true;
   private layout: "sheet" | "split" = "sheet";
+  private focusMode = false;
   private feedbackTimer?: number;
   private followFrame?: number;
   private lastFollowAt = 0;
@@ -71,7 +72,7 @@ export class SheetRenderer {
       // phone rotation responsive without a render loop.
       autoResize: false,
       backend: "svg",
-      drawTitle: true,
+      drawTitle: !this.focusMode,
       drawingParameters: "compacttight",
       // The application owns the stable reading band. OSMD's built-in follow
       // scrolls on every reset; note-level seeking would otherwise repeatedly
@@ -126,6 +127,17 @@ export class SheetRenderer {
     this.layout = layout;
     if (!this.osmd) return;
     this.osmd.Zoom = layout === "sheet" ? 1.12 : 0.94;
+    this.osmd.render();
+    this.renderedWidth = Math.round(this.container.getBoundingClientRect().width);
+    this.currentCursorSignature = "";
+    this.seek(this.currentSeconds);
+  }
+
+  setFocusMode(enabled: boolean): void {
+    if (enabled === this.focusMode) return;
+    this.focusMode = enabled;
+    if (!this.osmd) return;
+    this.osmd.setOptions({ drawTitle: !enabled });
     this.osmd.render();
     this.renderedWidth = Math.round(this.container.getBoundingClientRect().width);
     this.currentCursorSignature = "";

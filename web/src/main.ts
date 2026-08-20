@@ -2163,6 +2163,7 @@ function setFocusMode(enabled: boolean, manageSystemFullscreen = true): void {
   appShell?.setAttribute("data-focus", String(enabled));
   focusButton.setAttribute("aria-pressed", String(enabled));
   focusExit.hidden = !enabled;
+  sheetRenderer.setFocusMode(enabled);
   if (manageSystemFullscreen) void requestImmersiveMode(enabled);
   // OSMD uses a width observer; let layout settle once the controls disappear.
   window.setTimeout(() => sheetRenderer.seek(lastScoreSeconds), 0);
