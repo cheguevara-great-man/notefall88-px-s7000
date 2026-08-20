@@ -253,7 +253,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 .app-shell[data-focus="true"] { width: 100%; max-width: none; min-height: 100dvh; padding: max(3px, env(safe-area-inset-top)) max(3px, env(safe-area-inset-right)) max(3px, env(safe-area-inset-bottom)) max(3px, env(safe-area-inset-left)); }
 .app-shell[data-focus="true"] > .topbar, .app-shell[data-focus="true"] > .transport-card, .app-shell[data-focus="true"] > .studio-toolbar, .app-shell[data-focus="true"] > .score-strip, .app-shell[data-focus="true"] > .score-navigator, .app-shell[data-focus="true"] > footer { display: none; }
 .app-shell[data-focus="true"] .visualizer-card { height: calc(100dvh - max(6px, env(safe-area-inset-top) + env(safe-area-inset-bottom))); min-height: 0; border-radius: 10px; }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] { height: calc(100dvh - max(6px, env(safe-area-inset-top) + env(safe-area-inset-bottom))); grid-template-rows: minmax(250px, 46%) minmax(320px, 54%); }
-.app-shell[data-focus="true"] .legend { top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] .legend { top: calc(46% + 12px); }.app-shell[data-focus="true"] .focus-exit { display: block; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
+.app-shell[data-focus="true"] .legend { display: none; }.app-shell[data-focus="true"] .focus-exit { display: grid; place-items: center; inline-size: 38px; min-width: 38px; min-height: 38px; padding: 0; border-radius: 50%; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); font-size: 26px; line-height: 1; }
 .app-shell[data-focus="true"] .focus-enter { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -655,29 +655,6 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 .library-score-actions button {
   padding: 4px 8px;
   font-size: 12px;
-}
-
-/* Fullscreen Focus Mode */
-.app-shell.focus-mode .topbar,
-.app-shell.focus-mode .transport-card,
-.app-shell.focus-mode .top-timeline-bar,
-.app-shell.focus-mode .score-strip,
-.app-shell.focus-mode footer {
-  display: none !important;
-}
-.app-shell.focus-mode .visualizer-card {
-  height: 100vh !important;
-  max-height: 100vh !important;
-}
-.app-shell.focus-mode #focus-exit {
-  display: flex !important;
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  z-index: 100;
-}
-.app-shell.focus-mode #focus-button {
-  display: none !important;
 }
 
 /* Top Timeline Scrubber & Integrated A-B Region */

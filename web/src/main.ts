@@ -231,7 +231,6 @@ const waterfallCanvas = required<HTMLCanvasElement>("waterfall");
 const visualizerCard = required("visualizer-card");
 const appShell = document.querySelector<HTMLElement>(".app-shell");
 const sheetView = required("sheet-view");
-const transportFocus = required<HTMLButtonElement>("transport-focus");
 const jianpuContainer = required<HTMLElement>("jianpu-container");
 const osmdContainer = required<HTMLElement>("osmd-container");
 const sheetNotationType = required<HTMLSelectElement>("sheet-notation-type");
@@ -3489,8 +3488,6 @@ function frame(now: number): void {
 }
 requestVisualFrame();
 
-
-transportFocus.addEventListener("click", () => setFocusMode(appShell?.dataset.focus !== "true"));
 
 sheetNotationType.addEventListener("change", () => {
   updateViewMode();
