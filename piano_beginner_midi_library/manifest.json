@@ -834,6 +834,130 @@
           ]
         }
       }
+    },
+    {
+      "number": 7,
+      "title": "The Blue Danube (beginner piano arrangement)",
+      "composer": "Johann Strauss II",
+      "category": "01_Beginner",
+      "difficulty": "入门",
+      "source": "PianoVAM v1 direct digital-piano performance MIDI",
+      "source_path": "2024-09-04_16-13-44.mid",
+      "source_title": "The Blue Danube — jiwoo (Beginner)",
+      "is_bonus": true,
+      "available": true,
+      "status": "verified_human_performance_midi",
+      "human_performance_confirmation": "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata",
+      "source_reference": {
+        "dataset_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1",
+        "download_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1/resolve/main/MIDI/2024-09-04_16-13-44.mid?download=true",
+        "repository_member": "MIDI/2024-09-04_16-13-44.mid",
+        "license": "CC BY-NC-SA 4.0"
+      },
+      "local_file": "01_Beginner/bonus_07_The_Blue_Danube__beginner_piano_arrangement/performance.mid",
+      "sha256": "54025027b36e6ca3a27c8c0e5ae711186a73a84bdf7d12089d7ee76fc1d1eec6",
+      "audit": {
+        "midi_format": 1,
+        "track_count": 2,
+        "duration_seconds": 316.379,
+        "note_on_event_count": 144,
+        "velocity": {
+          "present": true,
+          "distinct_nonzero_values": 37,
+          "minimum": 6,
+          "maximum": 69,
+          "varied": true
+        },
+        "pedal": {
+          "sustain_cc64_present": false,
+          "sustain_cc64_pressed_values_present": false,
+          "controllers_present": []
+        }
+      }
+    },
+    {
+      "number": 8,
+      "title": "Sonatina Op. 36 (short classical study)",
+      "composer": "Muzio Clementi",
+      "category": "03_Classical",
+      "difficulty": "古典入门",
+      "source": "PianoVAM v1 direct digital-piano performance MIDI",
+      "source_path": "2024-09-02_18-25-31.mid",
+      "source_title": "Sonatine Op.36 — Junhyung (Advanced performer; beginner repertoire)",
+      "is_bonus": true,
+      "available": true,
+      "status": "verified_human_performance_midi",
+      "human_performance_confirmation": "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata",
+      "source_reference": {
+        "dataset_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1",
+        "download_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1/resolve/main/MIDI/2024-09-02_18-25-31.mid?download=true",
+        "repository_member": "MIDI/2024-09-02_18-25-31.mid",
+        "license": "CC BY-NC-SA 4.0"
+      },
+      "local_file": "03_Classical/bonus_08_Sonatina_Op__36__short_classical_study/performance.mid",
+      "sha256": "468a2a210d84e1625639280ac11dd4c564bda3dd420c83e28d314a94f5250e06",
+      "audit": {
+        "midi_format": 1,
+        "track_count": 2,
+        "duration_seconds": 123.131,
+        "note_on_event_count": 680,
+        "velocity": {
+          "present": true,
+          "distinct_nonzero_values": 56,
+          "minimum": 28,
+          "maximum": 88,
+          "varied": true
+        },
+        "pedal": {
+          "sustain_cc64_present": true,
+          "sustain_cc64_pressed_values_present": true,
+          "controllers_present": [
+            64
+          ]
+        }
+      }
+    },
+    {
+      "number": 9,
+      "title": "Mozart Sonata K. 545 (accessible classical sonata)",
+      "composer": "W. A. Mozart",
+      "category": "03_Classical",
+      "difficulty": "初级进阶",
+      "source": "PianoVAM v1 direct digital-piano performance MIDI",
+      "source_path": "2024-09-02_18-29-40.mid",
+      "source_title": "Sonata K.545 — Junhyung (Advanced performer; intermediate repertoire)",
+      "is_bonus": true,
+      "available": true,
+      "status": "verified_human_performance_midi",
+      "human_performance_confirmation": "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata",
+      "source_reference": {
+        "dataset_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1",
+        "download_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1/resolve/main/MIDI/2024-09-02_18-29-40.mid?download=true",
+        "repository_member": "MIDI/2024-09-02_18-29-40.mid",
+        "license": "CC BY-NC-SA 4.0"
+      },
+      "local_file": "03_Classical/bonus_09_Mozart_Sonata_K__545__accessible_classical_sonata/performance.mid",
+      "sha256": "e2c3db10e287cf6b31572ffc2df626fc165de369da56113af3f7c9b751587aa8",
+      "audit": {
+        "midi_format": 1,
+        "track_count": 2,
+        "duration_seconds": 187.694,
+        "note_on_event_count": 1464,
+        "velocity": {
+          "present": true,
+          "distinct_nonzero_values": 66,
+          "minimum": 3,
+          "maximum": 92,
+          "varied": true
+        },
+        "pedal": {
+          "sustain_cc64_present": true,
+          "sustain_cc64_pressed_values_present": true,
+          "controllers_present": [
+            64
+          ]
+        }
+      }
     }
   ]
 }

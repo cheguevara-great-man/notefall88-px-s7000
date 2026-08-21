@@ -1,0 +1,42 @@
+{
+  "number": 8,
+  "title": "Sonatina Op. 36 (short classical study)",
+  "composer": "Muzio Clementi",
+  "category": "03_Classical",
+  "difficulty": "古典入门",
+  "source": "PianoVAM v1 direct digital-piano performance MIDI",
+  "source_path": "2024-09-02_18-25-31.mid",
+  "source_title": "Sonatine Op.36 — Junhyung (Advanced performer; beginner repertoire)",
+  "is_bonus": true,
+  "available": true,
+  "status": "verified_human_performance_midi",
+  "human_performance_confirmation": "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata",
+  "source_reference": {
+    "dataset_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1",
+    "download_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1/resolve/main/MIDI/2024-09-02_18-25-31.mid?download=true",
+    "repository_member": "MIDI/2024-09-02_18-25-31.mid",
+    "license": "CC BY-NC-SA 4.0"
+  },
+  "local_file": "03_Classical/bonus_08_Sonatina_Op__36__short_classical_study/performance.mid",
+  "sha256": "468a2a210d84e1625639280ac11dd4c564bda3dd420c83e28d314a94f5250e06",
+  "audit": {
+    "midi_format": 1,
+    "track_count": 2,
+    "duration_seconds": 123.131,
+    "note_on_event_count": 680,
+    "velocity": {
+      "present": true,
+      "distinct_nonzero_values": 56,
+      "minimum": 28,
+      "maximum": 88,
+      "varied": true
+    },
+    "pedal": {
+      "sustain_cc64_present": true,
+      "sustain_cc64_pressed_values_present": true,
+      "controllers_present": [
+        64
+      ]
+    }
+  }
+}
