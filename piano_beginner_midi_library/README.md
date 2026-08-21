@@ -50,6 +50,10 @@
 - **PianoCoRe**：已核查，但其当前公开页说明材料仅限审稿过程、不得分发/使用；因此本库不采用其 demo。
 - 未明确存在于上述可用且可验证来源的曲目统一标记为 `not_found_in_verified_performance_dataset`，不以任何其他 MIDI 替代。
 
+## 已验证、但未购买的补齐选项
+
+有 6 首目标曲目已找到演奏者本人明确声明的真人 performance MIDI，但它们是付费个人使用产品，不能替你擅自下单或下载。详见 [已核验付费选项](commercial-verified-options.md)。它们不会计入本库“已导入”的 15 首文件。
+
 ## 文件与可复核性
 
 每个收录曲目目录含 `performance.mid` 和 `metadata.json`。`metadata.json` 给出数据集、原始成员路径、下载链接、SHA-256，以及对音符力度和 CC64 延音踏板的实际审计。
