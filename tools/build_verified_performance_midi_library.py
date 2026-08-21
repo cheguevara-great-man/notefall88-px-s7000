@@ -79,6 +79,8 @@ WORKS = (
     RequestedWork(7, "The Blue Danube (beginner piano arrangement)", "Johann Strauss II", "01_Beginner", "入门", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-04_16-13-44.mid", "The Blue Danube — jiwoo (Beginner)", True),
     RequestedWork(8, "Sonatina Op. 36 (short classical study)", "Muzio Clementi", "03_Classical", "古典入门", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-02_18-25-31.mid", "Sonatine Op.36 — Junhyung (Advanced performer; beginner repertoire)", True),
     RequestedWork(9, "Mozart Sonata K. 545 (accessible classical sonata)", "W. A. Mozart", "03_Classical", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-02_18-29-40.mid", "Sonata K.545 — Junhyung (Advanced performer; intermediate repertoire)", True),
+    RequestedWork(10, "Antifreeze", "Baek Yerin", "02_Intermediate", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-05_20-51-00.mid", "Antifreeze — Yujeong (Intermediate)", True),
+    RequestedWork(11, "This Is the Moment", "Frank Wildhorn", "02_Intermediate", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-05_21-07-35.mid", "This is the moment — Yujeong (Intermediate)", True),
 )
 
 

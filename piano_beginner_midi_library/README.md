@@ -44,6 +44,8 @@
 | B07. The Blue Danube (beginner piano arrangement) | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 无 CC64 | 入门 |
 | B08. Sonatina Op. 36 (short classical study) | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 古典入门 |
 | B09. Mozart Sonata K. 545 (accessible classical sonata) | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
+| B10. Antifreeze | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
+| B11. This Is the Moment | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
 
 ## 严格筛选规则
 
