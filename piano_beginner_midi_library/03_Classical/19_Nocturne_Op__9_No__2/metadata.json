@@ -7,6 +7,7 @@
   "source": "MAESTRO v3 performance MIDI",
   "source_path": "2011/MIDI-Unprocessed_06_R3_2011_MID--AUDIO_R3-D3_05_Track05_wav.midi",
   "source_title": "Nocturne Op. 9 No. 2 in E-flat Major",
+  "is_bonus": false,
   "available": true,
   "status": "verified_human_performance_midi",
   "human_performance_confirmation": "MAESTRO: Yamaha Disklavier capture of a pianist performance",

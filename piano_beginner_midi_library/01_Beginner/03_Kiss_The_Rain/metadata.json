@@ -4,15 +4,39 @@
   "composer": "Yiruma",
   "category": "01_Beginner",
   "difficulty": "入门",
-  "source": null,
-  "source_path": null,
-  "source_title": null,
-  "available": false,
-  "status": "not_found_in_verified_performance_dataset",
-  "source_dataset": null,
-  "download_link": null,
-  "human_performance_confirmation": false,
-  "velocity": null,
-  "pedal": null,
-  "reason": "No exact, usable human-performance MIDI found in MAESTRO v3 or ASAP; PianoCoRe was checked but is not currently usable/distributable."
+  "source": "PianoVAM v1 direct digital-piano performance MIDI",
+  "source_path": "2024-02-17_21-44-37.mid",
+  "source_title": "Kiss The Rain — Changyun (Beginner)",
+  "is_bonus": false,
+  "available": true,
+  "status": "verified_human_performance_midi",
+  "human_performance_confirmation": "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata",
+  "source_reference": {
+    "dataset_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1",
+    "download_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1/resolve/main/MIDI/2024-02-17_21-44-37.mid?download=true",
+    "repository_member": "MIDI/2024-02-17_21-44-37.mid",
+    "license": "CC BY-NC-SA 4.0"
+  },
+  "local_file": "01_Beginner/03_Kiss_The_Rain/performance.mid",
+  "sha256": "fe9cd9fbab850f1456bd73bfaa516cc4835211abc3a092557119bbb79514be80",
+  "audit": {
+    "midi_format": 1,
+    "track_count": 2,
+    "duration_seconds": 171.292,
+    "note_on_event_count": 563,
+    "velocity": {
+      "present": true,
+      "distinct_nonzero_values": 62,
+      "minimum": 8,
+      "maximum": 89,
+      "varied": true
+    },
+    "pedal": {
+      "sustain_cc64_present": true,
+      "sustain_cc64_pressed_values_present": true,
+      "controllers_present": [
+        64
+      ]
+    }
+  }
 }

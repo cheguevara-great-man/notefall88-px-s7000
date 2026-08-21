@@ -4,15 +4,39 @@
   "composer": "Erik Satie",
   "category": "01_Beginner",
   "difficulty": "入门",
-  "source": null,
-  "source_path": null,
-  "source_title": null,
-  "available": false,
-  "status": "not_found_in_verified_performance_dataset",
-  "source_dataset": null,
-  "download_link": null,
-  "human_performance_confirmation": false,
-  "velocity": null,
-  "pedal": null,
-  "reason": "No exact, usable human-performance MIDI found in MAESTRO v3 or ASAP; PianoCoRe was checked but is not currently usable/distributable."
+  "source": "PianoVAM v1 direct digital-piano performance MIDI",
+  "source_path": "2024-09-05_13-25-10.mid",
+  "source_title": "Gymnopedie No.1 — Hyunsung (Beginner)",
+  "is_bonus": false,
+  "available": true,
+  "status": "verified_human_performance_midi",
+  "human_performance_confirmation": "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata",
+  "source_reference": {
+    "dataset_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1",
+    "download_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1/resolve/main/MIDI/2024-09-05_13-25-10.mid?download=true",
+    "repository_member": "MIDI/2024-09-05_13-25-10.mid",
+    "license": "CC BY-NC-SA 4.0"
+  },
+  "local_file": "01_Beginner/05_Gymnopédie_No__1/performance.mid",
+  "sha256": "c205d425aaceaab9a724835ce33879d9054878c4e805bd6a727550e62d8c9541",
+  "audit": {
+    "midi_format": 1,
+    "track_count": 2,
+    "duration_seconds": 189.094,
+    "note_on_event_count": 296,
+    "velocity": {
+      "present": true,
+      "distinct_nonzero_values": 49,
+      "minimum": 3,
+      "maximum": 68,
+      "varied": true
+    },
+    "pedal": {
+      "sustain_cc64_present": true,
+      "sustain_cc64_pressed_values_present": true,
+      "controllers_present": [
+        64
+      ]
+    }
+  }
 }

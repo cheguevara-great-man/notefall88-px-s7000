@@ -7,6 +7,7 @@
   "source": "ASAP performance MIDI",
   "source_path": "Bach/Prelude/bwv_846/Shi05M.mid",
   "source_title": "Prelude_bwv_846",
+  "is_bonus": false,
   "available": true,
   "status": "verified_human_performance_midi",
   "human_performance_confirmation": "ASAP metadata.csv: midi_performance (not midi_score)",

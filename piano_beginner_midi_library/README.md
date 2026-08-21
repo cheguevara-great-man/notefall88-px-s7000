@@ -12,29 +12,41 @@
 | --- | --- | --- | --- | --- | --- |
 | 01. River Flows in You | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 入门 |
 | 02. Comptine d'un autre été | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 入门 |
-| 03. Kiss The Rain | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 入门 |
+| 03. Kiss The Rain | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 入门 |
 | 04. Merry Christmas Mr. Lawrence | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 入门 |
-| 05. Gymnopédie No. 1 | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 入门 |
+| 05. Gymnopédie No. 1 | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 入门 |
 | 06. Canon in D | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 初级进阶 |
-| 07. Always With Me (千与千寻) | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 初级进阶 |
+| 07. Always With Me (千与千寻) | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | — | 初级进阶 |
 | 08. Castle in the Sky (天空之城) | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 初级进阶 |
-| 09. Summer | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 初级进阶 |
+| 09. Summer | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
 | 10. Merry Go Round of Life | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 初级进阶 |
 | 11. Prelude in C Major, BWV 846 | ASAP performance MIDI | 是 | 是 | 是 | 古典入门 |
-| 12. Für Elise | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 古典入门 |
+| 12. Für Elise | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 古典入门 |
 | 13. Moonlight Sonata, 1st Movement | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 古典入门 |
 | 14. Prelude Op. 28 No. 4 | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 古典入门 |
 | 15. Waltz Op. 69 No. 2 | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 古典入门 |
-| 16. Clair de Lune | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 展示型 / 高级 |
+| 16. Clair de Lune | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 展示型 / 高级 |
 | 17. Nuvole Bianche | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 展示型 / 高级 |
 | 18. Experience | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 展示型 / 高级 |
 | 19. Nocturne Op. 9 No. 2 | MAESTRO v3 performance MIDI | 是 | 是 | 是 | 展示型 / 高级 |
 | 20. La Campanella | MAESTRO v3 performance MIDI | 是 | 是 | 是 | 展示型 / 高级 |
 
+## 额外适合当前阶段的真人演奏曲目
+
+| 曲名 | 来源 | 真人确认 | velocity | pedal | 难度 |
+| --- | --- | --- | --- | --- | --- |
+| B01. Canon in C (verified alternate arrangement) | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 无 CC64 | 入门 |
+| B02. My Neighbor Totoro Ending | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 无 CC64 | 入门 |
+| B03. Surprise Symphony (piano arrangement) | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 无 CC64 | 入门 |
+| B04. Home, Sweet Home | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 无 CC64 | 入门 |
+| B05. Stay in Memory | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
+| B06. Ballade Pour Adeline | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
+
 ## 严格筛选规则
 
-- **MAESTRO v3**：Yamaha Disklavier 对真人钢琴家演奏的高精度 MIDI 记录，优先使用。
+- **MAESTRO v3**：Yamaha Disklavier 对真人钢琴家演奏的高精度 MIDI 记录。
 - **ASAP**：只允许其 `metadata.csv` 中 `midi_performance` 字段指定的文件；绝不使用同目录的 `midi_score.mid` 或 MusicXML。
+- **PianoVAM v1**：只使用其标为从数码钢琴直接录得的 ground-truth performance MIDI，且有同步音频/视频与演奏者元数据。
 - **PianoCoRe**：已核查，但其当前公开页说明材料仅限审稿过程、不得分发/使用；因此本库不采用其 demo。
 - 未明确存在于上述可用且可验证来源的曲目统一标记为 `not_found_in_verified_performance_dataset`，不以任何其他 MIDI 替代。
 
@@ -44,6 +56,6 @@
 
 ## 许可与归属
 
-收录 MIDI 保留上游的 **CC BY-NC-SA 4.0** 许可：仅限非商业使用；若再分发，必须保留归属、许可和相同方式共享。MAESTRO 归属 Google LLC / International Piano-e-Competition；ASAP 归属其数据集作者。详见各 `metadata.json` 和官方数据集页面。
+收录 MIDI 保留上游的 **CC BY-NC-SA 4.0** 许可：仅限非商业使用；若再分发，必须保留归属、许可和相同方式共享。MAESTRO 归属 Google LLC / International Piano-e-Competition；ASAP 与 PianoVAM 归属各数据集作者。详见各 `metadata.json` 和官方数据集页面。
 
 生成器：[`tools/build_verified_performance_midi_library.py`](../tools/build_verified_performance_midi_library.py)。

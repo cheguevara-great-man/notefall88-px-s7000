@@ -7,6 +7,7 @@
   "source": null,
   "source_path": null,
   "source_title": null,
+  "is_bonus": false,
   "available": false,
   "status": "not_found_in_verified_performance_dataset",
   "source_dataset": null,
@@ -14,5 +15,5 @@
   "human_performance_confirmation": false,
   "velocity": null,
   "pedal": null,
-  "reason": "No exact, usable human-performance MIDI found in MAESTRO v3 or ASAP; PianoCoRe was checked but is not currently usable/distributable."
+  "reason": "No exact, usable directly captured human-performance MIDI found in MAESTRO v3, ASAP, or PianoVAM v1; PianoCoRe was checked but is not currently usable/distributable."
 }
