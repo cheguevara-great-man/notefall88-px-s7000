@@ -47,12 +47,8 @@
 - **MAESTRO v3**：Yamaha Disklavier 对真人钢琴家演奏的高精度 MIDI 记录。
 - **ASAP**：只允许其 `metadata.csv` 中 `midi_performance` 字段指定的文件；绝不使用同目录的 `midi_score.mid` 或 MusicXML。
 - **PianoVAM v1**：只使用其标为从数码钢琴直接录得的 ground-truth performance MIDI，且有同步音频/视频与演奏者元数据。
-- **PianoCoRe**：已核查，但其当前公开页说明材料仅限审稿过程、不得分发/使用；因此本库不采用其 demo。
+- **PianoCoRe 1.0（正式 TISMIR 版）**：已正式发布，但只接受其元数据中 `is_transcription=false` 的原始 performance MIDI。已审计正式版 250,046 条记录：仅 1,066 条满足该条件，且全部来自 ASAP 的 Disklavier 直录；Aria-MIDI、ATEPP、GiantMIDI-Piano 等标记为转录的条目一律排除。
 - 未明确存在于上述可用且可验证来源的曲目统一标记为 `not_found_in_verified_performance_dataset`，不以任何其他 MIDI 替代。
-
-## 已验证、但未购买的补齐选项
-
-有 6 首目标曲目已找到演奏者本人明确声明的真人 performance MIDI，但它们是付费个人使用产品，不能替你擅自下单或下载。详见 [已核验付费选项](commercial-verified-options.md)。它们不会计入本库“已导入”的 15 首文件。
 
 ## 文件与可复核性
 
