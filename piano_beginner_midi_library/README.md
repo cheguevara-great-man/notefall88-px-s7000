@@ -49,6 +49,8 @@
 | B12. The Virgin's Prayer | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
 | B13. Last Carnival | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
 | B14. Morning Mood | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
+| B15. Reminiscence | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
+| B16. Graceful Ghost Rag | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
 
 ## 严格筛选规则
 

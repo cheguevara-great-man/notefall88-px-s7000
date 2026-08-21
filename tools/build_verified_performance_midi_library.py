@@ -84,6 +84,8 @@ WORKS = (
     RequestedWork(12, "The Virgin's Prayer", "Tekla Bądarzewska", "02_Intermediate", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-02-15_20-38-23.mid", "The Virgin's Prayer — Doha (Intermediate)", True),
     RequestedWork(13, "Last Carnival", "N. Tsuru", "02_Intermediate", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-02-15_20-47-59.mid", "Last Carnival — Doha (Intermediate)", True),
     RequestedWork(14, "Morning Mood", "Edvard Grieg", "03_Classical", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-02-15_22-12-41.mid", "Morning Mood — Doha (Advanced performer; accessible repertoire)", True),
+    RequestedWork(15, "Reminiscence", "Nam Ku Min", "02_Intermediate", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-02_15-05-42.mid", "Reminiscence — Yujeong (Intermediate)", True),
+    RequestedWork(16, "Graceful Ghost Rag", "William Bolcom", "02_Intermediate", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-02_15-15-09.mid", "Graceful Ghost Rag — Yujeong (Intermediate)", True),
 )
 
 
