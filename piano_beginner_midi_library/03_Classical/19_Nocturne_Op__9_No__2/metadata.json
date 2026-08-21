@@ -1,0 +1,43 @@
+{
+  "number": 19,
+  "title": "Nocturne Op. 9 No. 2",
+  "composer": "Frédéric Chopin",
+  "category": "03_Classical",
+  "difficulty": "展示型 / 高级",
+  "source": "MAESTRO v3 performance MIDI",
+  "source_path": "2011/MIDI-Unprocessed_06_R3_2011_MID--AUDIO_R3-D3_05_Track05_wav.midi",
+  "source_title": "Nocturne Op. 9 No. 2 in E-flat Major",
+  "available": true,
+  "status": "verified_human_performance_midi",
+  "human_performance_confirmation": "MAESTRO: Yamaha Disklavier capture of a pianist performance",
+  "source_reference": {
+    "dataset_url": "https://magenta.withgoogle.com/datasets/maestro",
+    "download_url": "https://storage.googleapis.com/magentadata/datasets/maestro/v3.0.0/maestro-v3.0.0-midi.zip",
+    "archive_member": "2011/MIDI-Unprocessed_06_R3_2011_MID--AUDIO_R3-D3_05_Track05_wav.midi",
+    "license": "CC BY-NC-SA 4.0"
+  },
+  "local_file": "03_Classical/19_Nocturne_Op__9_No__2/performance.mid",
+  "sha256": "83ea472e303c1cbbd35c9a06cafb368a09be2fc5c4c793231b32816d0a91aa77",
+  "audit": {
+    "midi_format": 1,
+    "track_count": 2,
+    "duration_seconds": 224.564,
+    "note_on_event_count": 1498,
+    "velocity": {
+      "present": true,
+      "distinct_nonzero_values": 90,
+      "minimum": 3,
+      "maximum": 100,
+      "varied": true
+    },
+    "pedal": {
+      "sustain_cc64_present": true,
+      "sustain_cc64_pressed_values_present": true,
+      "controllers_present": [
+        64,
+        66,
+        67
+      ]
+    }
+  }
+}

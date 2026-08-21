@@ -1,0 +1,18 @@
+{
+  "number": 18,
+  "title": "Experience",
+  "composer": "Ludovico Einaudi",
+  "category": "03_Classical",
+  "difficulty": "展示型 / 高级",
+  "source": null,
+  "source_path": null,
+  "source_title": null,
+  "available": false,
+  "status": "not_found_in_verified_performance_dataset",
+  "source_dataset": null,
+  "download_link": null,
+  "human_performance_confirmation": false,
+  "velocity": null,
+  "pedal": null,
+  "reason": "No exact, usable human-performance MIDI found in MAESTRO v3 or ASAP; PianoCoRe was checked but is not currently usable/distributable."
+}

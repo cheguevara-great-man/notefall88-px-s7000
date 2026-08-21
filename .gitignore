@@ -19,4 +19,8 @@ output/
 *.egg-info/
 .DS_Store
 
+# Raw upstream performance MIDI remains local. Its provenance and licenses are
+# tracked in the library README and manifest; never publish recordings by accident.
+/piano_beginner_midi_library/**/*.mid
+
 node_modules/

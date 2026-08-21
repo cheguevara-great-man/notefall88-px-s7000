@@ -1,0 +1,42 @@
+{
+  "number": 20,
+  "title": "La Campanella",
+  "composer": "Franz Liszt",
+  "category": "03_Classical",
+  "difficulty": "展示型 / 高级",
+  "source": "MAESTRO v3 performance MIDI",
+  "source_path": "2017/MIDI-Unprocessed_046_PIANO046_MID--AUDIO-split_07-06-17_Piano-e_2-02_wav--3.midi",
+  "source_title": "Grandes études de Paganini, No. 3 \"La campanella\", S.141/3",
+  "available": true,
+  "status": "verified_human_performance_midi",
+  "human_performance_confirmation": "MAESTRO: Yamaha Disklavier capture of a pianist performance",
+  "source_reference": {
+    "dataset_url": "https://magenta.withgoogle.com/datasets/maestro",
+    "download_url": "https://storage.googleapis.com/magentadata/datasets/maestro/v3.0.0/maestro-v3.0.0-midi.zip",
+    "archive_member": "2017/MIDI-Unprocessed_046_PIANO046_MID--AUDIO-split_07-06-17_Piano-e_2-02_wav--3.midi",
+    "license": "CC BY-NC-SA 4.0"
+  },
+  "local_file": "03_Classical/20_La_Campanella/performance.mid",
+  "sha256": "de67fe629fc97f15e567d5c5d68fa9dc97ec906434dfcb851a0916d55c5dac51",
+  "audit": {
+    "midi_format": 1,
+    "track_count": 2,
+    "duration_seconds": 282.145,
+    "note_on_event_count": 4085,
+    "velocity": {
+      "present": true,
+      "distinct_nonzero_values": 112,
+      "minimum": 3,
+      "maximum": 117,
+      "varied": true
+    },
+    "pedal": {
+      "sustain_cc64_present": true,
+      "sustain_cc64_pressed_values_present": true,
+      "controllers_present": [
+        64,
+        67
+      ]
+    }
+  }
+}
