@@ -25,6 +25,7 @@ SOURCES = ROOT / ".build" / "verified-midi-sources"
 MAESTRO_ROOT = SOURCES / "maestro-v3.0.0" / "maestro-v3.0.0"
 ASAP_ROOT = SOURCES / "asap-dataset"
 PIANOVAM_ROOT = SOURCES / "pianovam" / "MIDI"
+SMD_ROOT = SOURCES / "smd" / "MIDI"
 MAESTRO_ARCHIVE = "https://storage.googleapis.com/magentadata/datasets/maestro/v3.0.0/maestro-v3.0.0-midi.zip"
 ASAP_REPO = "https://github.com/fosfrancesco/asap-dataset"
 
@@ -60,7 +61,7 @@ WORKS = (
     RequestedWork(11, "Prelude in C Major, BWV 846", "J. S. Bach", "03_Classical", "古典入门", "ASAP performance MIDI", "Bach/Prelude/bwv_846/Shi05M.mid", "Prelude_bwv_846"),
     RequestedWork(12, "Für Elise", "Ludwig van Beethoven", "03_Classical", "古典入门", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-04_21-44-42.mid", "Fur Elise — Junhyung (Advanced)"),
     RequestedWork(13, "Moonlight Sonata, 1st Movement", "Ludwig van Beethoven", "03_Classical", "古典入门"),
-    RequestedWork(14, "Prelude Op. 28 No. 4", "Frédéric Chopin", "03_Classical", "古典入门"),
+    RequestedWork(14, "Prelude Op. 28 No. 4", "Frédéric Chopin", "03_Classical", "古典入门", "SMD direct Yamaha Disklavier performance MIDI", "Chopin_Op028-04_003_20100611-SMD.mid", "Prelude Op. 28 No. 4 — SMD pianist 003"),
     RequestedWork(15, "Waltz Op. 69 No. 2", "Frédéric Chopin", "03_Classical", "古典入门"),
     RequestedWork(16, "Clair de Lune", "Claude Debussy", "03_Classical", "展示型 / 高级", "PianoVAM v1 direct digital-piano performance MIDI", "2024-02-15_21-40-43.mid", "Clair de lune — Doha (Intermediate)"),
     RequestedWork(17, "Nuvole Bianche", "Ludovico Einaudi", "03_Classical", "展示型 / 高级"),
@@ -88,6 +89,8 @@ def source_file(work: RequestedWork) -> Path:
         return ASAP_ROOT / str(work.source_path)
     if work.source == "PianoVAM v1 direct digital-piano performance MIDI":
         return PIANOVAM_ROOT / str(work.source_path)
+    if work.source == "SMD direct Yamaha Disklavier performance MIDI":
+        return SMD_ROOT / str(work.source_path)
     raise ValueError(f"Unsupported source for {work.title}: {work.source}")
 
 
@@ -100,6 +103,9 @@ def source_reference(work: RequestedWork) -> dict[str, str]:
     if work.source == "PianoVAM v1 direct digital-piano performance MIDI":
         member = str(work.source_path)
         return {"dataset_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1", "download_url": f"https://huggingface.co/datasets/PianoVAM/PianoVAM_v1/resolve/main/MIDI/{member}?download=true", "repository_member": f"MIDI/{member}", "license": "CC BY-NC-SA 4.0"}
+    if work.source == "SMD direct Yamaha Disklavier performance MIDI":
+        member = str(work.source_path)
+        return {"dataset_url": "https://www.audiolabs-erlangen.de/resources/MIR/SMD/midi_version_0", "download_url": f"https://www.audiolabs-erlangen.de/content/resources/MIR/SMD/02_midi/data/midi/{member}", "repository_member": f"02_midi/data/midi/{member}", "license": "CC BY-NC-SA 3.0"}
     raise ValueError(f"Unsupported source for {work.title}: {work.source}")
 
 
@@ -169,7 +175,7 @@ def write_readme(records: list[dict[str, Any]]) -> None:
         velocity = "是" if record["audit"]["velocity"]["present"] else "否"
         pedal = "是" if record["audit"]["pedal"]["sustain_cc64_present"] else "无 CC64"
         lines.append(f"| B{record['number']:02d}. {record['title']} | {record['source']} | 是 | {velocity} | {pedal} | {record['difficulty']} |")
-    lines += ["", "## 严格筛选规则", "", "- **MAESTRO v3**：Yamaha Disklavier 对真人钢琴家演奏的高精度 MIDI 记录。", "- **ASAP**：只允许其 `metadata.csv` 中 `midi_performance` 字段指定的文件；绝不使用同目录的 `midi_score.mid` 或 MusicXML。", "- **PianoVAM v1**：只使用其标为从数码钢琴直接录得的 ground-truth performance MIDI，且有同步音频/视频与演奏者元数据。", "- **PianoCoRe 1.0（正式 TISMIR 版）**：已正式发布，但只接受其元数据中 `is_transcription=false` 的原始 performance MIDI。已审计正式版 250,046 条记录：仅 1,066 条满足该条件，且全部来自 ASAP 的 Disklavier 直录；Aria-MIDI、ATEPP、GiantMIDI-Piano 等标记为转录的条目一律排除。", "- 未明确存在于上述可用且可验证来源的曲目统一标记为 `not_found_in_verified_performance_dataset`，不以任何其他 MIDI 替代。", "", "## 文件与可复核性", "", "每个收录曲目目录含 `performance.mid` 和 `metadata.json`。`metadata.json` 给出数据集、原始成员路径、下载链接、SHA-256，以及对音符力度和 CC64 延音踏板的实际审计。", "", "## 许可与归属", "", "收录 MIDI 保留上游的 **CC BY-NC-SA 4.0** 许可：仅限非商业使用；若再分发，必须保留归属、许可和相同方式共享。MAESTRO 归属 Google LLC / International Piano-e-Competition；ASAP 与 PianoVAM 归属各数据集作者。详见各 `metadata.json` 和官方数据集页面。", "", "生成器：[`tools/build_verified_performance_midi_library.py`](../tools/build_verified_performance_midi_library.py)。", ""]
+    lines += ["", "## 严格筛选规则", "", "- **MAESTRO v3**：Yamaha Disklavier 对真人钢琴家演奏的高精度 MIDI 记录。", "- **ASAP**：只允许其 `metadata.csv` 中 `midi_performance` 字段指定的文件；绝不使用同目录的 `midi_score.mid` 或 MusicXML。", "- **PianoVAM v1**：只使用其标为从数码钢琴直接录得的 ground-truth performance MIDI，且有同步音频/视频与演奏者元数据。", "- **SMD**：只使用 Saarland Music Data 中学生在 Yamaha Disklavier 上演奏时直接捕获的 MIDI；原站同时提供同步音频。", "- **PianoCoRe 1.0（正式 TISMIR 版）**：已正式发布，但只接受其元数据中 `is_transcription=false` 的原始 performance MIDI。已审计正式版 250,046 条记录：仅 1,066 条满足该条件，且全部来自 ASAP 的 Disklavier 直录；Aria-MIDI、ATEPP、GiantMIDI-Piano 等标记为转录的条目一律排除。", "- 未明确存在于上述可用且可验证来源的曲目统一标记为 `not_found_in_verified_performance_dataset`，不以任何其他 MIDI 替代。", "", "## 文件与可复核性", "", "每个收录曲目目录含 `performance.mid` 和 `metadata.json`。`metadata.json` 给出数据集、原始成员路径、下载链接、SHA-256，以及对音符力度和 CC64 延音踏板的实际审计。", "", "## 许可与归属", "", "收录 MIDI 保留上游的 CC BY-NC-SA 许可：仅限非商业使用；若再分发，必须保留归属、许可和相同方式共享。MAESTRO 归属 Google LLC / International Piano-e-Competition；ASAP、PianoVAM 与 SMD 归属各数据集作者。详见各 `metadata.json` 和官方数据集页面。", "", "生成器：[`tools/build_verified_performance_midi_library.py`](../tools/build_verified_performance_midi_library.py)。", ""]
     (OUT / "README.md").write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -191,7 +197,7 @@ def main() -> None:
                 "human_performance_confirmation": False,
                 "velocity": None,
                 "pedal": None,
-                "reason": "No exact, usable directly captured human-performance MIDI found in MAESTRO v3, ASAP, PianoVAM v1, or the is_transcription=false subset of formally released PianoCoRe 1.0.",
+                "reason": "No exact, usable directly captured human-performance MIDI found in MAESTRO v3, ASAP, PianoVAM v1, SMD, or the is_transcription=false subset of formally released PianoCoRe 1.0.",
             })
             (target_dir / "metadata.json").write_text(
                 json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

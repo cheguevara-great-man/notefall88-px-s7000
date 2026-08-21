@@ -15,5 +15,5 @@
   "human_performance_confirmation": false,
   "velocity": null,
   "pedal": null,
-  "reason": "No exact, usable directly captured human-performance MIDI found in MAESTRO v3, ASAP, PianoVAM v1, or the is_transcription=false subset of formally released PianoCoRe 1.0."
+  "reason": "No exact, usable directly captured human-performance MIDI found in MAESTRO v3, ASAP, PianoVAM v1, SMD, or the is_transcription=false subset of formally released PianoCoRe 1.0."
 }

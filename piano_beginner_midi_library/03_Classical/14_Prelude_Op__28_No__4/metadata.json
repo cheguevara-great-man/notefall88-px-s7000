@@ -4,16 +4,40 @@
   "composer": "Frédéric Chopin",
   "category": "03_Classical",
   "difficulty": "古典入门",
-  "source": null,
-  "source_path": null,
-  "source_title": null,
+  "source": "SMD direct Yamaha Disklavier performance MIDI",
+  "source_path": "Chopin_Op028-04_003_20100611-SMD.mid",
+  "source_title": "Prelude Op. 28 No. 4 — SMD pianist 003",
   "is_bonus": false,
-  "available": false,
-  "status": "not_found_in_verified_performance_dataset",
-  "source_dataset": null,
-  "download_link": null,
-  "human_performance_confirmation": false,
-  "velocity": null,
-  "pedal": null,
-  "reason": "No exact, usable directly captured human-performance MIDI found in MAESTRO v3, ASAP, PianoVAM v1, or the is_transcription=false subset of formally released PianoCoRe 1.0."
+  "available": true,
+  "status": "verified_human_performance_midi",
+  "human_performance_confirmation": "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata",
+  "source_reference": {
+    "dataset_url": "https://www.audiolabs-erlangen.de/resources/MIR/SMD/midi_version_0",
+    "download_url": "https://www.audiolabs-erlangen.de/content/resources/MIR/SMD/02_midi/data/midi/Chopin_Op028-04_003_20100611-SMD.mid",
+    "repository_member": "02_midi/data/midi/Chopin_Op028-04_003_20100611-SMD.mid",
+    "license": "CC BY-NC-SA 3.0"
+  },
+  "local_file": "03_Classical/14_Prelude_Op__28_No__4/performance.mid",
+  "sha256": "4c1d0b3cd15eb576e1c0506f69725bf61edf8ec5f998bef02c4a8fbd8c88401f",
+  "audit": {
+    "midi_format": 1,
+    "track_count": 2,
+    "duration_seconds": 118.985,
+    "note_on_event_count": 600,
+    "velocity": {
+      "present": true,
+      "distinct_nonzero_values": 73,
+      "minimum": 3,
+      "maximum": 89,
+      "varied": true
+    },
+    "pedal": {
+      "sustain_cc64_present": true,
+      "sustain_cc64_pressed_values_present": true,
+      "controllers_present": [
+        64,
+        67
+      ]
+    }
+  }
 }

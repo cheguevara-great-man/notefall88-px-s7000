@@ -23,7 +23,7 @@
 | 11. Prelude in C Major, BWV 846 | ASAP performance MIDI | 是 | 是 | 是 | 古典入门 |
 | 12. Für Elise | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 古典入门 |
 | 13. Moonlight Sonata, 1st Movement | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 古典入门 |
-| 14. Prelude Op. 28 No. 4 | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 古典入门 |
+| 14. Prelude Op. 28 No. 4 | SMD direct Yamaha Disklavier performance MIDI | 是 | 是 | 是 | 古典入门 |
 | 15. Waltz Op. 69 No. 2 | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 古典入门 |
 | 16. Clair de Lune | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 展示型 / 高级 |
 | 17. Nuvole Bianche | not_found_in_verified_performance_dataset | 否（未收录） | — | — | 展示型 / 高级 |
@@ -50,6 +50,7 @@
 - **MAESTRO v3**：Yamaha Disklavier 对真人钢琴家演奏的高精度 MIDI 记录。
 - **ASAP**：只允许其 `metadata.csv` 中 `midi_performance` 字段指定的文件；绝不使用同目录的 `midi_score.mid` 或 MusicXML。
 - **PianoVAM v1**：只使用其标为从数码钢琴直接录得的 ground-truth performance MIDI，且有同步音频/视频与演奏者元数据。
+- **SMD**：只使用 Saarland Music Data 中学生在 Yamaha Disklavier 上演奏时直接捕获的 MIDI；原站同时提供同步音频。
 - **PianoCoRe 1.0（正式 TISMIR 版）**：已正式发布，但只接受其元数据中 `is_transcription=false` 的原始 performance MIDI。已审计正式版 250,046 条记录：仅 1,066 条满足该条件，且全部来自 ASAP 的 Disklavier 直录；Aria-MIDI、ATEPP、GiantMIDI-Piano 等标记为转录的条目一律排除。
 - 未明确存在于上述可用且可验证来源的曲目统一标记为 `not_found_in_verified_performance_dataset`，不以任何其他 MIDI 替代。
 
@@ -59,6 +60,6 @@
 
 ## 许可与归属
 
-收录 MIDI 保留上游的 **CC BY-NC-SA 4.0** 许可：仅限非商业使用；若再分发，必须保留归属、许可和相同方式共享。MAESTRO 归属 Google LLC / International Piano-e-Competition；ASAP 与 PianoVAM 归属各数据集作者。详见各 `metadata.json` 和官方数据集页面。
+收录 MIDI 保留上游的 CC BY-NC-SA 许可：仅限非商业使用；若再分发，必须保留归属、许可和相同方式共享。MAESTRO 归属 Google LLC / International Piano-e-Competition；ASAP、PianoVAM 与 SMD 归属各数据集作者。详见各 `metadata.json` 和官方数据集页面。
 
 生成器：[`tools/build_verified_performance_midi_library.py`](../tools/build_verified_performance_midi_library.py)。
