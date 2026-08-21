@@ -81,6 +81,9 @@ WORKS = (
     RequestedWork(9, "Mozart Sonata K. 545 (accessible classical sonata)", "W. A. Mozart", "03_Classical", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-02_18-29-40.mid", "Sonata K.545 — Junhyung (Advanced performer; intermediate repertoire)", True),
     RequestedWork(10, "Antifreeze", "Baek Yerin", "02_Intermediate", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-05_20-51-00.mid", "Antifreeze — Yujeong (Intermediate)", True),
     RequestedWork(11, "This Is the Moment", "Frank Wildhorn", "02_Intermediate", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-09-05_21-07-35.mid", "This is the moment — Yujeong (Intermediate)", True),
+    RequestedWork(12, "The Virgin's Prayer", "Tekla Bądarzewska", "02_Intermediate", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-02-15_20-38-23.mid", "The Virgin's Prayer — Doha (Intermediate)", True),
+    RequestedWork(13, "Last Carnival", "N. Tsuru", "02_Intermediate", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-02-15_20-47-59.mid", "Last Carnival — Doha (Intermediate)", True),
+    RequestedWork(14, "Morning Mood", "Edvard Grieg", "03_Classical", "初级进阶", "PianoVAM v1 direct digital-piano performance MIDI", "2024-02-15_22-12-41.mid", "Morning Mood — Doha (Advanced performer; accessible repertoire)", True),
 )
 
 
@@ -215,7 +218,15 @@ def main() -> None:
         shutil.copy2(original, copied)
         record.update({
             "available": True, "status": "verified_human_performance_midi",
-            "human_performance_confirmation": "MAESTRO: Yamaha Disklavier capture of a pianist performance" if work.source.startswith("MAESTRO") else ("ASAP metadata.csv: midi_performance (not midi_score)" if work.source.startswith("ASAP") else "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata"),
+            "human_performance_confirmation": (
+                "MAESTRO: Yamaha Disklavier capture of a pianist performance"
+                if work.source.startswith("MAESTRO")
+                else "ASAP metadata.csv: midi_performance (not midi_score)"
+                if work.source.startswith("ASAP")
+                else "SMD: Yamaha Disklavier capture of a student pianist performance"
+                if work.source.startswith("SMD")
+                else "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata"
+            ),
             "source_reference": source_reference(work), "local_file": copied.relative_to(OUT).as_posix(), "sha256": sha256(copied), "audit": midi_audit(copied),
         })
         (target_dir / "metadata.json").write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

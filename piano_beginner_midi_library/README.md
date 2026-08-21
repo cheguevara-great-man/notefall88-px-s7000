@@ -46,6 +46,9 @@
 | B09. Mozart Sonata K. 545 (accessible classical sonata) | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
 | B10. Antifreeze | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
 | B11. This Is the Moment | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
+| B12. The Virgin's Prayer | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
+| B13. Last Carnival | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
+| B14. Morning Mood | PianoVAM v1 direct digital-piano performance MIDI | 是 | 是 | 是 | 初级进阶 |
 
 ## 严格筛选规则
 

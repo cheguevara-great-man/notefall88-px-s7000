@@ -1,0 +1,43 @@
+{
+  "number": 13,
+  "title": "Last Carnival",
+  "composer": "N. Tsuru",
+  "category": "02_Intermediate",
+  "difficulty": "初级进阶",
+  "source": "PianoVAM v1 direct digital-piano performance MIDI",
+  "source_path": "2024-02-15_20-47-59.mid",
+  "source_title": "Last Carnival — Doha (Intermediate)",
+  "is_bonus": true,
+  "available": true,
+  "status": "verified_human_performance_midi",
+  "human_performance_confirmation": "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata",
+  "source_reference": {
+    "dataset_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1",
+    "download_url": "https://huggingface.co/datasets/PianoVAM/PianoVAM_v1/resolve/main/MIDI/2024-02-15_20-47-59.mid?download=true",
+    "repository_member": "MIDI/2024-02-15_20-47-59.mid",
+    "license": "CC BY-NC-SA 4.0"
+  },
+  "local_file": "02_Intermediate/bonus_13_Last_Carnival/performance.mid",
+  "sha256": "2a95005b3d8d23d6bab42bb3e7d5a139c43f851ee33639b253c389a99e5e9a6a",
+  "audit": {
+    "midi_format": 1,
+    "track_count": 2,
+    "duration_seconds": 304.474,
+    "note_on_event_count": 1662,
+    "velocity": {
+      "present": true,
+      "distinct_nonzero_values": 88,
+      "minimum": 4,
+      "maximum": 94,
+      "varied": true
+    },
+    "pedal": {
+      "sustain_cc64_present": true,
+      "sustain_cc64_pressed_values_present": true,
+      "controllers_present": [
+        64,
+        67
+      ]
+    }
+  }
+}

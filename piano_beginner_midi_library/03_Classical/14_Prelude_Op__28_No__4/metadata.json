@@ -10,7 +10,7 @@
   "is_bonus": false,
   "available": true,
   "status": "verified_human_performance_midi",
-  "human_performance_confirmation": "PianoVAM: ground-truth performance MIDI recorded directly from digital piano, with synchronized audio/video and performer metadata",
+  "human_performance_confirmation": "SMD: Yamaha Disklavier capture of a student pianist performance",
   "source_reference": {
     "dataset_url": "https://www.audiolabs-erlangen.de/resources/MIR/SMD/midi_version_0",
     "download_url": "https://www.audiolabs-erlangen.de/content/resources/MIR/SMD/02_midi/data/midi/Chopin_Op028-04_003_20100611-SMD.mid",
