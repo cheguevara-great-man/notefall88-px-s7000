@@ -809,3 +809,34 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 .library-folder-header.is-managing { outline: 1px solid rgba(111,147,255,.42); outline-offset: -1px; }
 .folder-header-actions button { min-height: 34px; padding: 0 8px; font-size: 11px; }
 .library-folder-scores { display: grid; }
+
+/* Tablet-first library: songs remain visible while categories stay pinned. */
+.library-panel { width: min(880px, calc(100vw - 32px)); }
+.library-split-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 29%);
+  min-height: min(64dvh, 640px);
+  max-height: min(74dvh, 760px);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 12px;
+  background: #0b0e14;
+}
+.library-score-pane, .library-folder-pane { min-width: 0; overflow: auto; overscroll-behavior: contain; }
+.library-score-pane { border-right: 1px solid rgba(255,255,255,.09); }
+.library-folder-pane { background: rgba(255,255,255,.025); }
+.library-folder-pane .library-folder-header { min-height: 45px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.library-folder-pane .folder-toggle-btn { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 5px; min-width: 0; padding: 8px 10px; font-size: 14px; }
+.library-folder-pane .folder-toggle-btn > span:first-child { color: #7f8ba0; font-size: 11px; }
+.library-folder-pane .library-folder-header.is-selected { background: rgba(111,147,255,.18); box-shadow: inset 3px 0 #7f9dff; }
+.library-folder-pane .library-folder-header.is-selected .folder-toggle-btn > span:first-child { color: #b8c8ff; }
+.library-folder-pane .folder-header-actions { position: absolute; right: 4px; z-index: 2; background: #171d2b; padding: 3px; border-radius: 8px; box-shadow: 0 4px 18px rgba(0,0,0,.36); }
+.library-folder-pane .library-folder-header { position: relative; }
+.library-score-pane .library-empty { height: 100%; display: grid; place-items: center; }
+
+@media (max-width: 620px) {
+  .library-panel { width: min(100vw - 16px, 880px); }
+  .library-split-view { grid-template-columns: minmax(0, 1fr) minmax(130px, 34%); min-height: 56dvh; }
+  .library-folder-pane .folder-toggle-btn { padding-inline: 7px; }
+  .library-folder-pane .folder-song-count { display: none; }
+}

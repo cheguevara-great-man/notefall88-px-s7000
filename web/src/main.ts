@@ -2338,8 +2338,6 @@ measureSeek.addEventListener("click", () => {
 
 viewMode.addEventListener("change", updateViewMode);
 
-const collapsedFolders = new Set<string>();
-
 function escapeHtml(str: string): string {
   return str.replace(/[&<>"']/g, (m) => ({
     "&": "&amp;",
@@ -2476,124 +2474,81 @@ function renderLibrary(): void {
     empty.className = "library-empty";
     empty.textContent = "曲库为空；点击“导入乐谱”即可加入。";
     libraryList.append(empty);
-  } else if (filtered.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "library-empty";
-    empty.textContent = "没有符合筛选条件的乐谱。";
-    libraryList.append(empty);
   } else {
-    const scoresByFolder = new Map<string | null, LibraryScore[]>();
-    scoresByFolder.set(null, []);
-    for (const f of libraryFolders) {
-      scoresByFolder.set(f.id, []);
+    const split = document.createElement("div");
+    split.className = "library-split-view";
+    const scorePane = document.createElement("section");
+    scorePane.className = "library-score-pane";
+    const scoreList = document.createElement("div");
+    scoreList.className = "library-folder-scores";
+    if (filtered.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "library-empty";
+      empty.textContent = "这个分类中没有符合条件的乐谱。";
+      scoreList.append(empty);
+    } else {
+      filtered.forEach((item) => scoreList.append(createLibraryItem(item)));
     }
-    for (const item of filtered) {
-      const list = scoresByFolder.get(item.folderId) ?? scoresByFolder.get(null)!;
-      list.push(item);
-    }
+    scorePane.append(scoreList);
 
-    for (const folder of libraryFolders) {
-      const scores = scoresByFolder.get(folder.id) ?? [];
-      if (selectedFolder !== "all" && selectedFolder !== folder.id && scores.length === 0) continue;
-      const isCollapsed = collapsedFolders.has(folder.id);
-
-      const group = document.createElement("section");
-      group.className = "library-folder-group";
-      group.dataset.folderId = folder.id;
-
+    const folderPane = document.createElement("nav");
+    folderPane.className = "library-folder-pane";
+    folderPane.setAttribute("aria-label", "曲库分类");
+    const allFolders: Array<{ id: string; name: string; editable: boolean }> = [
+      { id: "all", name: "全部乐曲", editable: false },
+      { id: "root", name: "未分类", editable: false },
+      ...libraryFolders.map((folder) => ({ id: folder.id, name: folder.name, editable: true })),
+    ];
+    for (const entry of allFolders) {
       const header = document.createElement("div");
       header.className = "library-folder-header";
-
-      const toggleBtn = document.createElement("button");
-      toggleBtn.type = "button";
-      toggleBtn.className = "folder-toggle-btn";
-      toggleBtn.innerHTML = `<span>${isCollapsed ? "▶" : "▼"}</span> <span>${escapeHtml(folder.name)}</span> <span class="folder-song-count">${scores.length} 首</span>`;
-      toggleBtn.addEventListener("click", () => {
+      if (entry.id === selectedFolder) header.classList.add("is-selected");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "folder-toggle-btn";
+      const count = entry.id === "all" ? libraryScores.length : libraryScores.filter((item) => (
+        entry.id === "root" ? item.folderId === null : item.folderId === entry.id
+      )).length;
+      button.innerHTML = `<span>▸</span><span>${escapeHtml(entry.name)}</span><span class="folder-song-count">${count}</span>`;
+      button.addEventListener("click", () => {
         if (performance.now() < suppressFolderToggleUntil) return;
-        if (collapsedFolders.has(folder.id)) {
-          collapsedFolders.delete(folder.id);
-        } else {
-          collapsedFolders.add(folder.id);
-        }
+        libraryFolderFilter.value = entry.id;
         renderLibrary();
       });
-
-      const actions = document.createElement("div");
-      actions.className = "folder-header-actions";
-      actions.hidden = true;
-
-      const renameBtn = document.createElement("button");
-      renameBtn.type = "button";
-      renameBtn.textContent = "重命名";
-      renameBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const next = window.prompt("修改分类名称", folder.name);
-        if (next && next.trim() && next.trim() !== folder.name) {
-          await library.renameFolder(folder.id, next.trim());
-          await refreshLibrary();
-        }
-      });
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.textContent = "删除分类";
-      deleteBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (window.confirm(`确定删除分类“${folder.name}”吗？（分类下的曲目将保留并移至未分类）`)) {
-          await library.deleteFolder(folder.id, false);
-          await refreshLibrary();
-        }
-      });
-
-      actions.append(renameBtn, deleteBtn);
-      header.append(toggleBtn, actions);
-      group.append(header);
-
-      if (!isCollapsed) {
-        const scoresContainer = document.createElement("div");
-        scoresContainer.className = "library-folder-scores";
-        scores.forEach((s) => scoresContainer.append(createLibraryItem(s)));
-        group.append(scoresContainer);
+      header.append(button);
+      if (entry.editable) {
+        const folder = libraryFolders.find((candidate) => candidate.id === entry.id)!;
+        const actions = document.createElement("div");
+        actions.className = "folder-header-actions";
+        actions.hidden = true;
+        const renameBtn = document.createElement("button");
+        renameBtn.type = "button";
+        renameBtn.textContent = "重命名";
+        renameBtn.addEventListener("click", async (event) => {
+          event.stopPropagation();
+          const next = window.prompt("修改分类名称", folder.name);
+          if (next && next.trim() && next.trim() !== folder.name) {
+            await library.renameFolder(folder.id, next.trim());
+            await refreshLibrary();
+          }
+        });
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.textContent = "删除分类";
+        deleteBtn.addEventListener("click", async (event) => {
+          event.stopPropagation();
+          if (window.confirm(`确定删除分类“${folder.name}”吗？（分类下的曲目将保留并移至未分类）`)) {
+            await library.deleteFolder(folder.id, false);
+            await refreshLibrary();
+          }
+        });
+        actions.append(renameBtn, deleteBtn);
+        header.append(actions);
       }
-
-      libraryList.append(group);
+      folderPane.append(header);
     }
-
-    const rootScores = scoresByFolder.get(null) ?? [];
-    if (rootScores.length > 0 && (selectedFolder === "all" || selectedFolder === "root")) {
-      const isCollapsed = collapsedFolders.has("root");
-      const group = document.createElement("section");
-      group.className = "library-folder-group";
-
-      const header = document.createElement("div");
-      header.className = "library-folder-header";
-
-      const toggleBtn = document.createElement("button");
-      toggleBtn.type = "button";
-      toggleBtn.className = "folder-toggle-btn";
-      toggleBtn.innerHTML = `<span>${isCollapsed ? "▶" : "▼"}</span> <span>未分类</span> <span class="folder-song-count">${rootScores.length} 首</span>`;
-      toggleBtn.addEventListener("click", () => {
-        if (performance.now() < suppressFolderToggleUntil) return;
-        if (collapsedFolders.has("root")) {
-          collapsedFolders.delete("root");
-        } else {
-          collapsedFolders.add("root");
-        }
-        renderLibrary();
-      });
-
-      header.append(toggleBtn);
-      group.append(header);
-
-      if (!isCollapsed) {
-        const scoresContainer = document.createElement("div");
-        scoresContainer.className = "library-folder-scores";
-        rootScores.forEach((s) => scoresContainer.append(createLibraryItem(s)));
-        group.append(scoresContainer);
-      }
-
-      libraryList.append(group);
-    }
+    split.append(scorePane, folderPane);
+    libraryList.append(split);
   }
 
   const bytes = libraryScores.reduce((sum, item) => sum + item.sourceBytes, 0);
