@@ -25,4 +25,28 @@ describe("MIDI import", () => {
       { time: 0.75, value: 50, action: "up" },
     ]);
   });
+
+  it("infers unlabeled separate accompaniment and melody tracks by their register", () => {
+    const midi = new Midi();
+    const accompaniment = midi.addTrack();
+    accompaniment.addNote({ midi: 41, time: 0, duration: 0.5, velocity: 0.7 });
+    accompaniment.addNote({ midi: 53, time: 1, duration: 0.5, velocity: 0.7 });
+    const melody = midi.addTrack();
+    melody.addNote({ midi: 60, time: 0, duration: 0.4, velocity: 0.8 });
+    melody.addNote({ midi: 72, time: 1, duration: 0.4, velocity: 0.8 });
+
+    const score = parseMidiFile(midi.toArray().buffer as ArrayBuffer, "unlabeled.mid");
+    expect(score.notes.map((note) => [note.note, note.hand])).toEqual([
+      [41, "left"], [60, "right"], [53, "left"], [72, "right"],
+    ]);
+  });
+
+  it("does not split a compact one-hand triad merely because MIDI has no hand data", () => {
+    const midi = new Midi();
+    const track = midi.addTrack();
+    [60, 64, 67].forEach((note) => track.addNote({ midi: note, time: 0, duration: 0.5, velocity: 0.8 }));
+
+    const score = parseMidiFile(midi.toArray().buffer as ArrayBuffer, "triad.mid");
+    expect(score.notes.map((note) => note.hand)).toEqual(["right", "right", "right"]);
+  });
 });
