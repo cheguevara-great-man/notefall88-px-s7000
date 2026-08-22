@@ -109,7 +109,9 @@
       </nav>
 
       <section class="visualizer-card" id="visualizer-card" data-view="waterfall">
-        <button id="focus-exit" class="focus-exit" type="button" aria-label="退出全屏" title="退出全屏" hidden>×</button>
+        <!-- Kept as an inert compatibility target for the focus controller.
+             Android's edge-back gesture is the actual fullscreen exit affordance. -->
+        <button id="focus-exit" class="focus-exit" type="button" aria-hidden="true" tabindex="-1" hidden></button>
         <canvas id="waterfall" aria-label="钢琴瀑布流"></canvas>
         <div id="sheet-view" aria-label="乐谱视图" hidden>
           <div id="jianpu-container" class="jianpu-container" hidden></div>
@@ -470,6 +472,7 @@
 
     </main>
     <script type="module" src="/src/app-exit.ts"></script>
+    <script type="module" src="/src/app-focus-controls.ts"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

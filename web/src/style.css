@@ -86,8 +86,7 @@ h1 span { color: #8ba7ff; }
 .measure-pill[data-selected="true"] { outline: 2px solid #ffd24c; outline-offset: 1px; }.score-navigator > small { color: #8995ab; font-size: 11px; white-space: nowrap; }
 .measure-seek { flex: 0 0 auto; min-height: 29px; padding: 0 9px; border-color: rgba(135,181,255,.4); color: #d1e2ff; font-size: 11px; white-space: nowrap; }.measure-seek:disabled { opacity: .45; }
 .visualizer-card { position: relative; min-height: 420px; height: min(67vh, 820px); overflow: hidden; border: 1px solid #242b39; border-radius: 16px; background: #0a0d14; box-shadow: 0 24px 80px rgba(0,0,0,.28); }
-.focus-exit { position: absolute; z-index: 3; top: 12px; right: 12px; min-height: 42px; padding: 0 13px; display: inline-flex; align-items: center; gap: 7px; border-color: rgba(208,220,255,.58); background: rgba(8,12,20,.82); backdrop-filter: blur(12px); box-shadow: 0 7px 22px rgba(0,0,0,.28); font-size: 12px; }
-.focus-exit[hidden] { display: none; }
+.focus-exit, .focus-exit[hidden] { display: none !important; }
 .strip-toggle { z-index: 3; min-width: 40px; min-height: 40px; padding: 0; border-radius: 50%; background: rgba(8,12,20,.82); backdrop-filter: blur(12px); font-size: 17px; line-height: 1; }
 .transport-card .strip-toggle { position: static; display: grid; place-items: center; align-self: center; }
 .strip-toggle[aria-pressed="false"] { filter: grayscale(1); opacity: .62; border-color: #495364; }
@@ -266,7 +265,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 .app-shell[data-focus="true"] > .topbar, .app-shell[data-focus="true"] > .transport-card, .app-shell[data-focus="true"] > .studio-toolbar, .app-shell[data-focus="true"] > .lifecycle-status, .app-shell[data-focus="true"] > .score-strip, .app-shell[data-focus="true"] > .score-navigator, .app-shell[data-focus="true"] > footer { display: none; }
 .app-shell[data-focus="true"] .visualizer-card { height: 100%; max-height: 100%; min-height: 0; border-radius: 10px; box-sizing: border-box; }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] { height: 100%; grid-template-rows: minmax(0, 32%) minmax(0, 68%); }
 .app-shell[data-focus="true"] > .top-timeline-bar { position: absolute; z-index: 5; top: max(8px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: max(62px, calc(env(safe-area-inset-right) + 54px)); width: auto; min-height: 34px; margin: 0; padding: 4px 8px; border-radius: 9px; background: rgba(10,14,23,.76); backdrop-filter: blur(10px); box-shadow: 0 5px 18px rgba(0,0,0,.24); }
-.app-shell[data-focus="true"] .legend { display: none; }.app-shell[data-focus="true"] .focus-exit { display: grid; place-items: center; inline-size: 38px; min-width: 38px; min-height: 38px; padding: 0; border-radius: 50%; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); font-size: 26px; line-height: 1; }
+.app-shell[data-focus="true"] .legend { display: none; }
 .app-shell[data-focus="true"] .jianpu-header { display: none; }
 .app-shell[data-focus="true"] .jianpu-container {
   /* The seek bar floats above the sheet.  Keep a narrow breathing gap, not a
@@ -749,6 +748,18 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   border-color: rgba(236,72,153,.72);
   background: linear-gradient(135deg, rgba(99,102,241,.9), rgba(236,72,153,.85));
   box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset, 0 2px 9px rgba(99,102,241,.32);
+}
+.timeline-strip-toggle {
+  flex: 0 0 30px;
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
 }
 
 .timeline-loop-region {
