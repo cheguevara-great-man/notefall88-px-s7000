@@ -253,14 +253,20 @@ html[data-edition="studio"] h1::after { content: "STUDIO"; margin-left: 10px; pa
 footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 11px; padding: 14px 4px 0; }
 .app-shell[data-focus="true"] { position: fixed; inset: 0; width: 100%; max-width: none; height: 100dvh; min-height: 0; overflow: hidden; padding: max(3px, env(safe-area-inset-top)) max(3px, env(safe-area-inset-right)) max(3px, env(safe-area-inset-bottom)) max(3px, env(safe-area-inset-left)); box-sizing: border-box; }
 .app-shell[data-focus="true"] > .topbar, .app-shell[data-focus="true"] > .transport-card, .app-shell[data-focus="true"] > .studio-toolbar, .app-shell[data-focus="true"] > .lifecycle-status, .app-shell[data-focus="true"] > .score-strip, .app-shell[data-focus="true"] > .score-navigator, .app-shell[data-focus="true"] > footer { display: none; }
-.app-shell[data-focus="true"] .visualizer-card { height: 100%; max-height: 100%; min-height: 0; border-radius: 10px; box-sizing: border-box; }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] { height: 100%; grid-template-rows: auto 1fr; }
+.app-shell[data-focus="true"] .visualizer-card { height: 100%; max-height: 100%; min-height: 0; border-radius: 10px; box-sizing: border-box; }.app-shell[data-focus="true"] .visualizer-card[data-view="split"] { height: 100%; grid-template-rows: minmax(0, 42%) minmax(0, 58%); }
 .app-shell[data-focus="true"] > .top-timeline-bar { position: absolute; z-index: 5; top: max(8px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: max(62px, calc(env(safe-area-inset-right) + 54px)); width: auto; min-height: 34px; margin: 0; padding: 4px 8px; border-radius: 9px; background: rgba(10,14,23,.76); backdrop-filter: blur(10px); box-shadow: 0 5px 18px rgba(0,0,0,.24); }
 .app-shell[data-focus="true"] .legend { display: none; }.app-shell[data-focus="true"] .focus-exit { display: grid; place-items: center; inline-size: 38px; min-width: 38px; min-height: 38px; padding: 0; border-radius: 50%; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); font-size: 26px; line-height: 1; }
 .app-shell[data-focus="true"] .jianpu-header { display: none; }
 .app-shell[data-focus="true"] .jianpu-container {
-  /* Keep the first current system clear of the floating seek bar. */
-  padding-top: max(86px, calc(env(safe-area-inset-top) + 76px));
+  /* The seek bar floats above the sheet.  Keep a narrow breathing gap, not a
+     second blank header, so both numbered-notation systems remain visible. */
+  padding-top: max(24px, calc(env(safe-area-inset-top) + 16px));
   padding-bottom: 10px;
+}
+.app-shell[data-focus="true"] .strip-toggle {
+  top: auto;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -287,11 +293,11 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .score-strip { padding: 8px 4px 7px; }
   .score-navigator { gap: 10px; margin-bottom: 7px; padding: 6px 10px; }
   .visualizer-card { height: clamp(460px, calc(100dvh - 306px), 760px); min-height: 0; }
-  .visualizer-card[data-view="split"] { height: clamp(460px, calc(100dvh - 306px), 760px); grid-template-rows: auto 1fr; }
+  .visualizer-card[data-view="split"] { height: clamp(460px, calc(100dvh - 306px), 760px); grid-template-rows: minmax(190px, 42%) minmax(0, 58%); }
   .visualizer-card[data-view="split"] #sheet-view { overflow: hidden; padding: 0 !important; }
   .visualizer-card[data-view="split"] .legend { top: calc(38% + 10px); }
   footer { padding-top: 8px; }
-  .app-shell[data-focus="true"] .visualizer-card[data-view="split"] { grid-template-rows: auto 1fr; }
+  .app-shell[data-focus="true"] .visualizer-card[data-view="split"] { grid-template-rows: minmax(0, 42%) minmax(0, 58%); }
   .app-shell[data-focus="true"] .visualizer-card[data-view="split"] .legend { top: calc(40% + 10px); }
   .focus-exit { min-height: 48px; padding-inline: 16px; font-size: 14px; }
   .focus-icon { font-size: 21px; }
@@ -313,7 +319,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .transport-card { gap: 14px; padding: 14px; font-size: 19px; }
   .transport-card button, .transport-card .file-button, .compact-field select, .tempo-input input { min-height: 60px; }
   .visualizer-card { height: clamp(900px, calc(100dvh - 460px), 1540px); }
-  .visualizer-card[data-view="split"] { height: clamp(900px, calc(100dvh - 460px), 1540px); grid-template-rows: auto 1fr; }
+  .visualizer-card[data-view="split"] { height: clamp(900px, calc(100dvh - 460px), 1540px); grid-template-rows: minmax(280px, 42%) minmax(0, 58%); }
   .visualizer-card[data-view="split"] .legend { top: calc(30% + 14px); }
   .score-strip strong { font-size: 19px; }
   .score-strip .label, .score-navigator > small { font-size: 14px; }
@@ -324,7 +330,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .settings-panel button, .settings-panel input, .settings-panel select { min-height: 60px; }
   .settings-panel .eyebrow { font-size: 14px; }
   .settings-panel h2 { font-size: 30px; }
-  .app-shell[data-focus="true"] .visualizer-card[data-view="split"] { grid-template-rows: auto 1fr; }
+  .app-shell[data-focus="true"] .visualizer-card[data-view="split"] { grid-template-rows: minmax(0, 42%) minmax(0, 58%); }
   .app-shell[data-focus="true"] .visualizer-card[data-view="split"] .legend { top: calc(30% + 14px); }
 }
 
@@ -349,7 +355,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .score-strip > div:nth-child(2) { text-align: left; }
   .score-navigator { gap: 9px; flex-wrap: wrap; }.score-navigator > div:first-child { min-width: 66px; }.measure-pill { flex-basis: 31px; }.score-navigator > small { width: 100%; white-space: normal; }
   .visualizer-card { height: 62vh; min-height: 380px; }
-  .visualizer-card[data-view="split"] { height: 78vh; grid-template-rows: auto 1fr; }
+  .visualizer-card[data-view="split"] { height: 78vh; grid-template-rows: minmax(230px, 42%) minmax(0, 58%); }
   .visualizer-card[data-view="split"] .legend { top: calc(43% + 8px); }
   #sheet-view { padding: 10px 4px 100px; }
   .settings-panel { top: 8px; right: 8px; max-height: calc(100vh - 16px); }
