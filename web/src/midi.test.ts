@@ -15,7 +15,7 @@ describe("MIDI import", () => {
     right.addNote({ midi: 64, time: 0.5, duration: 0.25, velocity: 0.6 });
     right.addNote({ midi: 10, time: 0, duration: 1, velocity: 1 });
     const score = parseMidiFile(midi.toArray().buffer as ArrayBuffer, "fallback.mid");
-    expect(score.name).toBe("Test Song");
+    expect(score.name).toBe("fallback");
     expect(score.notes.map((note) => note.note)).toEqual([64, 48]);
     expect(score.notes[1].hand).toBe("left");
     expect(score.beatMap?.map((beat) => beat.time)).toEqual([0, 0.5, 1]);
