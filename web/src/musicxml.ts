@@ -686,7 +686,16 @@ function parsePart(part: XmlElement, partName: string): PartMeasure[] {
           !child(event, "rest") && !child(event, "cue")) {
         const ties = children(event, "tie").map((tie) => tie.getAttribute("type"));
         const noteVelocity = soundDynamics(descendants(event, "sound")[0]);
-        const velocity = noteVelocity ?? staffVelocities.get(staff) ?? partVelocity;
+        const staffVelocity = staffVelocities.get(staff);
+        const rawVelocity = noteVelocity ?? staffVelocity ?? partVelocity;
+        // A written XML score normally has no per-note performance touch.  If
+        // the same global dynamic is sent to every note, a left-hand chord
+        // contains two or three equally loud notes and overwhelms the melody.
+        // Compensate that accompaniment energy, but never weaken a velocity
+        // explicitly assigned to this note or staff.
+        const velocity = (staff >= 2 || hinted === "left") && noteVelocity === undefined && staffVelocity === undefined
+          ? Math.max(1, Math.round(rawVelocity * 0.78))
+          : rawVelocity;
         notes.push({
           note: pitch,
           start,

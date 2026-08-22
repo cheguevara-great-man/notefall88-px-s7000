@@ -754,7 +754,7 @@ function renderDemonstrationButton(): void {
   listenButton.setAttribute("aria-pressed", String(demonstrationActive));
   listenButton.textContent = demonstrationActive
     ? (canUseMidiOut() ? "停止示范" : "停止示范（静音预览）")
-    : "示范当前声部";
+    : "示范";
 }
 
 function stopDemonstration(sendPanic = true, resumePractice = true): void {
