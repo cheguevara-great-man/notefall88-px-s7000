@@ -14,6 +14,10 @@ constexpr uint16_t kDiscoveryPort = 32188;
 constexpr uint32_t kStatusBroadcastMs = 1000;
 constexpr uint32_t kTestNoteMs = 1800;
 constexpr uint32_t kStationReconnectMs = 10000;
+// A plain WiFi.reconnect() can remain stuck on a stale association after an
+// access point reboot.  Periodically restart the STA association without
+// erasing credentials; the rescue AP remains available throughout.
+constexpr uint8_t kStationReconnectsBeforeFreshBegin = 3;
 constexpr uint32_t kOtaHealthDelayMs = 10000;
 constexpr uint32_t kOtaConfirmationDeadlineMs = 90000;
 constexpr int8_t kMinPixelOffset = -8;

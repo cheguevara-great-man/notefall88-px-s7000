@@ -108,6 +108,7 @@ bool otaExternalHealthSeen = false;
 uint8_t previousApStationCount = 0;
 wl_status_t previousStationStatus = WL_NO_SHIELD;
 uint32_t lastStationReconnectMs = 0;
+uint8_t stationReconnectAttempts = 0;
 uint32_t otaBootStartedMs = 0;
 esp_reset_reason_t bootResetReason = ESP_RST_UNKNOWN;
 uint8_t webClients = 0;
@@ -164,6 +165,7 @@ uint32_t mainLoopMaxUs = 0;
 String activeApPassword;
 String controlSessionToken;
 String configuredStationSsid;
+String configuredStationPassword;
 WebUpdateState webUpdate;
 
 constexpr Rgb kLeftTarget{28, 178, 255};
@@ -1200,9 +1202,9 @@ void startNetwork() {
   if (activeApPassword.length() < 8 || activeApPassword.length() > 63) activeApPassword = kApPassword;
   accessPointReady = WiFi.softAP(kApSsid, activeApPassword.c_str());
   configuredStationSsid = preferences.getString("wifiSsid", "");
-  const String password = preferences.getString("wifiPass", "");
+  configuredStationPassword = preferences.getString("wifiPass", "");
   if (!configuredStationSsid.isEmpty()) {
-    WiFi.begin(configuredStationSsid.c_str(), password.c_str());
+    WiFi.begin(configuredStationSsid.c_str(), configuredStationPassword.c_str());
     lastStationReconnectMs = millis();
   }
 
@@ -1297,6 +1299,7 @@ void recoverHttpAfterAccessPointDeparture() {
 void maintainStationConnection(uint32_t now) {
   const wl_status_t status = WiFi.status();
   if (status == WL_CONNECTED) {
+    stationReconnectAttempts = 0;
     if (previousStationStatus != WL_CONNECTED) {
       if (mdnsStarted) MDNS.end();
       mdnsStarted = MDNS.begin(kHostname);
@@ -1309,7 +1312,16 @@ void maintainStationConnection(uint32_t now) {
     }
     if (!configuredStationSsid.isEmpty() && now - lastStationReconnectMs >= kStationReconnectMs) {
       lastStationReconnectMs = now;
-      WiFi.reconnect();
+      ++stationReconnectAttempts;
+      if (stationReconnectAttempts >= kStationReconnectsBeforeFreshBegin) {
+        // Keep credentials and SoftAP intact.  This only resets the station
+        // association state before supplying the already persisted network.
+        WiFi.disconnect(false, false);
+        WiFi.begin(configuredStationSsid.c_str(), configuredStationPassword.c_str());
+        stationReconnectAttempts = 0;
+      } else {
+        WiFi.reconnect();
+      }
     }
   }
   previousStationStatus = status;
