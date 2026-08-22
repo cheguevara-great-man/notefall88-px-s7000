@@ -38,7 +38,7 @@ button, .file-button {
 button:disabled { opacity: .4; cursor: default; }
 button.primary { background: linear-gradient(135deg, #4c78ff, #a14dff); border-color: transparent; }
 .transport-card button[data-active="true"] { border-color: rgba(116,238,196,.72); background: linear-gradient(135deg, rgba(39,126,111,.92), rgba(61,74,147,.94)); color: #fff; box-shadow: 0 0 0 1px rgba(116,238,196,.12), 0 8px 24px rgba(26,116,103,.24); }
-.app-shell { width: min(1440px, 100%); margin: 0 auto; padding: 20px clamp(12px, 2vw, 30px) 28px; }
+.app-shell { width: min(1440px, 100%); min-height: 100dvh; margin: 0 auto; padding: 20px clamp(12px, 2vw, 30px) 28px; }
 .topbar, .transport-card, .score-strip, footer { display: flex; align-items: center; }
 .topbar { justify-content: space-between; gap: 20px; margin-bottom: 16px; }
 .eyebrow { color: #8591a6; font-size: 11px; letter-spacing: .18em; font-weight: 700; }
@@ -297,8 +297,8 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .compact-field select { height: 46px; }
   .score-strip { padding: 5px 4px; }
   .score-navigator { gap: 10px; margin-bottom: 7px; padding: 6px 10px; }
-  .visualizer-card { height: clamp(460px, calc(100dvh - 306px), 760px); min-height: 0; }
-  .visualizer-card[data-view="split"] { height: clamp(460px, calc(100dvh - 306px), 760px); grid-template-rows: minmax(170px, 34%) minmax(0, 66%); }
+  .visualizer-card { height: max(460px, calc(100dvh - 170px)); min-height: 0; }
+  .visualizer-card[data-view="split"] { height: max(460px, calc(100dvh - 170px)); grid-template-rows: minmax(170px, 34%) minmax(0, 66%); }
   .visualizer-card[data-view="split"] #sheet-view { overflow: hidden; padding: 0 !important; }
   .visualizer-card[data-view="split"] .legend { top: calc(34% + 10px); }
   footer { padding-top: 8px; }
@@ -323,10 +323,10 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .status-pill { padding: 10px 15px; font-size: 16px; }
   .transport-card { gap: 14px; padding: 14px; font-size: 19px; }
   .transport-card button, .transport-card .file-button, .compact-field select { min-height: 60px; }
-  /* On the 3:2 Pad 7 Ultra, normal mode is a workspace rather than a
-     pseudo-fullscreen view.  Reserve the tall canvas for actual fullscreen. */
-  .visualizer-card { height: min(46dvh, 820px); min-height: 560px; }
-  .visualizer-card[data-view="split"] { height: min(46dvh, 820px); min-height: 560px; grid-template-rows: minmax(190px, 34%) minmax(0, 66%); }
+  /* In normal mode the practice surface should use the remaining tablet
+     height.  A fixed cap left a large dead area below the keyboard. */
+  .visualizer-card { height: max(560px, calc(100dvh - 178px)); min-height: 560px; }
+  .visualizer-card[data-view="split"] { height: max(560px, calc(100dvh - 178px)); min-height: 560px; grid-template-rows: minmax(190px, 34%) minmax(0, 66%); }
   .visualizer-card[data-view="split"] .legend { top: calc(34% + 14px); }
   .score-strip strong { font-size: 17px; }
   .score-strip .label, .score-navigator > small { font-size: 14px; }
