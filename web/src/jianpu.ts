@@ -248,16 +248,9 @@ export class JianpuRenderer {
     }
 
     const title = this.currentScore.name || "乐谱";
-
     const measuresPerSystem = this.container.dataset.layout === "split" ? 3 : 4;
     let html = `
-      <div class="jianpu-header">
-        <h3 class="jianpu-title">${escapeHtml(title)}</h3>
-        <div class="jianpu-meta">
-          <span class="jianpu-badge">1 = C</span>
-          <span class="jianpu-badge">4/4 拍</span>
-        </div>
-      </div>
+      <span class="sr-only jianpu-score-name">${escapeHtml(title)}</span>
       <div class="jianpu-body">
     `;
 

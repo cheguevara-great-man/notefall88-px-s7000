@@ -9,24 +9,11 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-BlicfPIV.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CGsbDYPc.css">
+    <script type="module" crossorigin src="./assets/index-CpzWdI8w.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CT2Fq4Mn.css">
   </head>
   <body>
     <main class="app-shell">
-      <header class="topbar">
-        <div>
-          <div class="eyebrow">PX-S7000 · SINGLE STRIP</div>
-          <h1>NoteFall <span>88</span></h1>
-        </div>
-        <div class="status-row">
-          <span class="status-pill" id="device-status" data-state="offline">ESP 未连接</span>
-          <span class="status-pill" id="piano-status" data-state="offline">钢琴未连接</span>
-          <span class="status-pill" id="midi-out-status" data-state="offline">钢琴伴奏不可用</span>
-          <span class="status-pill" id="sustain-status" data-state="offline">延音踏板松开</span>
-        </div>
-      </header>
-
       <section class="transport-card">
         <label class="file-button">
           <input id="midi-file" type="file" multiple accept=".mid,.midi,.xml,.musicxml,.mxl,audio/midi,application/vnd.recordare.musicxml,application/vnd.recordare.musicxml+xml" />
@@ -38,11 +25,11 @@
         <button id="record-button">录制演奏</button>
         <button id="record-playback" disabled aria-pressed="false" title="用 PX-S7000 自身音源回放刚才的演奏">回放录音</button>
         <button id="record-download" disabled>导出录音 MIDI</button>
-        <label class="compact-field">
+        <label class="compact-field mode-field">
           <span>模式</span>
           <select id="practice-mode">
             <option value="wait">等我弹</option>
-            <option value="follow">跟随我（钢琴伴奏）</option>
+            <option value="follow">跟随我</option>
             <option value="realtime">实时</option>
           </select>
         </label>
@@ -62,6 +49,12 @@
         <button id="library-button" aria-controls="library-panel">我的曲库</button>
         <button id="settings-button" aria-controls="settings-panel">设备设置</button>
         <button id="focus-button" type="button" aria-pressed="false" title="隐藏工具区并铺满屏幕">全屏演奏</button>
+        <div class="status-row transport-status" aria-label="设备连接状态">
+          <span class="status-pill" id="device-status" data-state="offline" title="ESP32 未连接">ESP 未连接</span>
+          <span class="status-pill" id="piano-status" data-state="offline" title="钢琴未连接">钢琴未连接</span>
+          <span class="status-pill diagnostic-status" id="midi-out-status" data-state="offline">钢琴伴奏不可用</span>
+          <span class="status-pill diagnostic-status" id="sustain-status" data-state="offline">延音踏板松开</span>
+        </div>
       </section>
 
       <section id="top-timeline-bar" class="top-timeline-bar" hidden>
