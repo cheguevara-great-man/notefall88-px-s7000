@@ -328,8 +328,10 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .status-pill { padding: 10px 15px; font-size: 16px; }
   .transport-card { gap: 14px; padding: 14px; font-size: 19px; }
   .transport-card button, .transport-card .file-button, .compact-field select, .tempo-input input { min-height: 60px; }
-  .visualizer-card { height: clamp(900px, calc(100dvh - 460px), 1540px); }
-  .visualizer-card[data-view="split"] { height: clamp(900px, calc(100dvh - 460px), 1540px); grid-template-rows: minmax(230px, 34%) minmax(0, 66%); }
+  /* On the 3:2 Pad 7 Ultra, normal mode is a workspace rather than a
+     pseudo-fullscreen view.  Reserve the tall canvas for actual fullscreen. */
+  .visualizer-card { height: min(46dvh, 820px); min-height: 560px; }
+  .visualizer-card[data-view="split"] { height: min(46dvh, 820px); min-height: 560px; grid-template-rows: minmax(190px, 34%) minmax(0, 66%); }
   .visualizer-card[data-view="split"] .legend { top: calc(34% + 14px); }
   .score-strip strong { font-size: 19px; }
   .score-strip .label, .score-navigator > small { font-size: 14px; }
