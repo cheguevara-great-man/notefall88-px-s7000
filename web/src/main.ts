@@ -183,7 +183,6 @@ const measureRail = required("measure-rail");
 const measureSeek = required<HTMLButtonElement>("measure-seek");
 const measureNavHint = required("measure-nav-hint");
 const recordResult = required("record-result");
-const latencyStatus = required("latency-status");
 const lifecycleStatus = required("lifecycle-status");
 const practicePanel = required("practice-panel");
 const practiceInsights = required("practice-insights");
@@ -439,6 +438,10 @@ function selectTempoOption(tempo: number): void {
   const percent = Math.max(10, Math.min(100, Math.round(tempoPercent(tempo) / 10) * 10));
   tempoInput.value = String(percent);
 }
+
+// Studio is a dedicated tablet instrument surface, not a browser tab. Keep
+// the OS chrome out of the practice workspace from launch onward.
+if (nativeAppRuntime) void requestImmersiveMode(true);
 
 modeSelect.value = mode;
 handSelect.value = hand;
@@ -2185,7 +2188,11 @@ function setFocusMode(enabled: boolean, manageSystemFullscreen = true): void {
   focusButton.setAttribute("aria-pressed", String(enabled));
   focusExit.hidden = !enabled;
   sheetRenderer.setFocusMode(enabled);
-  if (manageSystemFullscreen) void requestImmersiveMode(enabled);
+  if (manageSystemFullscreen) {
+    // The native app remains immersive even after leaving our in-app focus
+    // layout. Browsers retain their normal Fullscreen API semantics.
+    void requestImmersiveMode(nativeAppRuntime ? true : enabled);
+  }
   // OSMD uses a width observer; let layout settle once the controls disappear.
   window.setTimeout(() => {
     if (sheetNotationType.value === "jianpu") {
@@ -3522,17 +3529,6 @@ function frame(now: number): void {
     }
     visualDirty = false;
   }
-  const network = `WebSocket ${device.latencyMs === undefined ? "--" : Math.round(device.latencyMs)} ms`;
-  const synchronized = device.clockSyncAvailable === false
-    ? "判定时钟：到达时间降级"
-    : device.clockSyncErrorMs === undefined
-      ? "判定时钟校准中"
-      : `判定时钟 ±${Math.max(1, Math.ceil(device.clockSyncErrorMs))} ms`;
-  const transport = device.midiTransportDelayMs === undefined
-    ? ""
-    : ` · MIDI 路径约 ${Math.round(device.midiTransportDelayMs)} ms`;
-  const latencyLabel = `${network} · ${synchronized}${transport}`;
-  if (latencyStatus.textContent !== latencyLabel) latencyStatus.textContent = latencyLabel;
   scheduleNextVisualFrame(now);
 }
 requestVisualFrame();
