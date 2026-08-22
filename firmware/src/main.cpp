@@ -115,6 +115,8 @@ uint8_t brightness = kDefaultGlobalBrightness;
 int8_t pixelOffset = 0;
 int8_t keyPixelOffsets[kNoteCount]{};
 bool stripReversed = false;
+// Persistent user preference: suppress every physical LED state until re-enabled.
+bool stripEnabled = true;
 uint32_t lastTargetMs = 0;
 uint32_t lastStatusMs = 0;
 int16_t testNote = -1;
@@ -347,6 +349,7 @@ bool renderStrip() {
   int8_t globalOffsetSnapshot = 0;
   int16_t testNoteSnapshot = -1;
   bool reversedSnapshot = false;
+  bool enabledSnapshot = true;
   const uint32_t now = millis();
 
   portENTER_CRITICAL(&ledStateMux);
@@ -370,10 +373,11 @@ bool renderStrip() {
   globalOffsetSnapshot = pixelOffset;
   testNoteSnapshot = testNote;
   reversedSnapshot = stripReversed;
+  enabledSnapshot = stripEnabled;
   portEXIT_CRITICAL(&ledStateMux);
 
   strip.clear();
-  for (uint8_t midiNote = kFirstMidiNote; midiNote <= kLastMidiNote; ++midiNote) {
+  if (enabledSnapshot) for (uint8_t midiNote = kFirstMidiNote; midiNote <= kLastMidiNote; ++midiNote) {
     const size_t index = noteIndex(midiNote);
     const int pixel = notefall::midi::mapPixel(
         midiNote, kFirstMidiNote, kLastMidiNote, kPixelCount, kPixelByNote,
@@ -445,6 +449,7 @@ void sendStatus(uint8_t client = 255) {
   doc["brightness"] = brightness;
   doc["offset"] = pixelOffset;
   doc["reversed"] = stripReversed;
+  doc["stripEnabled"] = stripEnabled;
   doc["rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
   doc["stationConnected"] = WiFi.status() == WL_CONNECTED;
   doc["stationIp"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "";
@@ -770,6 +775,7 @@ void saveCalibration() {
   preferences.putUChar("brightness", brightness);
   preferences.putChar("offset", pixelOffset);
   preferences.putBool("reversed", stripReversed);
+  preferences.putBool("stripEnabled", stripEnabled);
 }
 
 void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
@@ -870,6 +876,7 @@ void handleWebMessage(uint8_t client, const uint8_t* payload, size_t length) {
     pixelOffset = static_cast<int8_t>(
         clampValue<int>(doc["offset"] | pixelOffset, kMinPixelOffset, kMaxPixelOffset));
     stripReversed = doc["reversed"] | stripReversed;
+    if (doc["stripEnabled"].is<bool>()) stripEnabled = doc["stripEnabled"].as<bool>();
     ledDirty = true;
     portEXIT_CRITICAL(&ledStateMux);
     notifyRealtime();
@@ -1368,6 +1375,7 @@ void setup() {
     pixelOffset = static_cast<int8_t>(clampValue<int>(preferences.getChar("offset", 0),
                                                       kMinPixelOffset, kMaxPixelOffset));
     stripReversed = preferences.getBool("reversed", false);
+    stripEnabled = preferences.getBool("stripEnabled", true);
     if (preferences.getBytesLength("keyOffsets") == sizeof(keyPixelOffsets)) {
       preferences.getBytes("keyOffsets", keyPixelOffsets, sizeof(keyPixelOffsets));
       bool repaired = false;

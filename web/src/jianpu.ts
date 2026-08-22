@@ -145,6 +145,7 @@ export class JianpuRenderer {
   private currentScore?: ParsedScore;
   private measures: JianpuMeasure[] = [];
   private activeMeasureIndex = -1;
+  private activeSystemIndex = -1;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -154,6 +155,7 @@ export class JianpuRenderer {
     this.currentScore = score;
     this.measures = buildJianpuMeasures(score);
     this.activeMeasureIndex = -1;
+    this.activeSystemIndex = -1;
     this.renderDOM();
   }
 
@@ -177,27 +179,43 @@ export class JianpuRenderer {
       const prev = this.container.querySelector(`[data-measure-idx="${this.activeMeasureIndex}"]`);
       prev?.removeAttribute("data-active");
 
-      const curr = this.container.querySelector(`[data-measure-idx="${targetIndex}"]`);
-      if (curr) {
+      const curr = this.container.querySelector<HTMLElement>(`[data-measure-idx="${targetIndex}"]`);
+      const body = this.container.querySelector<HTMLElement>(".jianpu-body");
+      const systemIndex = Number(curr?.dataset.systemIdx ?? 0);
+      const currentSystem = this.container.querySelector<HTMLElement>(`[data-system-idx="${systemIndex}"]`);
+      const firstSystem = this.container.querySelector<HTMLElement>('[data-system-idx="0"]');
+      if (curr && body) {
         curr.setAttribute("data-active", "true");
-        if (typeof curr.scrollIntoView === "function") {
-          curr.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        // The body shows exactly two systems: current on top, next as preview.
+        // It only advances when a system boundary is crossed.
+        const baseTop = firstSystem?.offsetTop ?? 0;
+        const targetScroll = Math.max(0, (currentSystem?.offsetTop ?? 0) - baseTop);
+        if (systemIndex !== this.activeSystemIndex && Math.abs(body.scrollTop - targetScroll) > 4) {
+          if (typeof body.scrollTo === "function") {
+            body.scrollTo({ top: targetScroll, behavior: "smooth" });
+          } else {
+            body.scrollTop = targetScroll;
+          }
         }
+        this.activeSystemIndex = systemIndex;
       }
       this.activeMeasureIndex = targetIndex;
     }
 
-    const noteEls = this.container.querySelectorAll<HTMLElement>("[data-note-start]");
-    noteEls.forEach((el) => {
-      const start = Number(el.dataset.noteStart || 0);
-      const end = Number(el.dataset.noteEnd || 0);
-      const isPlaying = scoreTime >= start - 0.05 && scoreTime <= end + 0.05;
-      if (isPlaying) {
-        el.setAttribute("data-playing", "true");
-      } else {
-        el.removeAttribute("data-playing");
-      }
-    });
+    const activeEl = this.container.querySelector<HTMLElement>(`[data-measure-idx="${this.activeMeasureIndex}"]`);
+    if (activeEl) {
+      const noteEls = activeEl.querySelectorAll<HTMLElement>("[data-note-start]");
+      noteEls.forEach((el) => {
+        const start = Number(el.dataset.noteStart || 0);
+        const end = Number(el.dataset.noteEnd || 0);
+        const isPlaying = scoreTime >= start - 0.05 && scoreTime <= end + 0.05;
+        if (isPlaying) {
+          el.setAttribute("data-playing", "true");
+        } else {
+          el.removeAttribute("data-playing");
+        }
+      });
+    }
   }
 
   pushFeedback(kind: "hit" | "wrong" | "missed", _note: number, timingMs?: number): void {
@@ -231,6 +249,7 @@ export class JianpuRenderer {
 
     const title = this.currentScore.name || "乐谱";
 
+    const measuresPerSystem = this.container.dataset.layout === "split" ? 3 : 4;
     let html = `
       <div class="jianpu-header">
         <h3 class="jianpu-title">${escapeHtml(title)}</h3>
@@ -242,9 +261,12 @@ export class JianpuRenderer {
       <div class="jianpu-body">
     `;
 
-    for (const m of this.measures) {
-      html += `
-        <div class="jianpu-measure" data-measure-idx="${m.index}" data-measure-start="${m.startTime}" data-measure-end="${m.endTime}">
+    for (let start = 0; start < this.measures.length; start += measuresPerSystem) {
+      const systemIndex = Math.floor(start / measuresPerSystem);
+      html += `<div class="jianpu-system" data-system-idx="${systemIndex}">`;
+      for (const m of this.measures.slice(start, start + measuresPerSystem)) {
+        html += `
+        <div class="jianpu-measure" data-measure-idx="${m.index}" data-system-idx="${systemIndex}" data-measure-start="${m.startTime}" data-measure-end="${m.endTime}">
           <span class="jianpu-measure-num">${m.measureNumber}</span>
           <div class="jianpu-track-row">
             <span class="jianpu-track-label">右手</span>
@@ -261,6 +283,8 @@ export class JianpuRenderer {
           <div class="jianpu-barline"></div>
         </div>
       `;
+      }
+      html += `</div>`;
     }
 
     html += `</div>`;

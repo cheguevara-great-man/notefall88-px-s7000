@@ -227,9 +227,9 @@ export class DeviceLink {
     });
   }
 
-  configure(brightness: number, offset: number, reversed: boolean): void {
+  configure(brightness: number, offset: number, reversed: boolean, stripEnabled = true): void {
     if (!this.controlAuthorized) return;
-    this.send({ t: "config", brightness, offset, reversed });
+    this.send({ t: "config", brightness, offset, reversed, stripEnabled });
   }
 
   setKeyOffset(note: number, offset: number): void {

@@ -69,6 +69,8 @@ export interface DeviceStatus {
   brightness: number;
   offset: number;
   reversed: boolean;
+  /** Undefined only while paired with pre-toggle firmware. */
+  stripEnabled?: boolean;
   rssi?: number;
   stationConnected?: boolean;
   stationIp?: string;

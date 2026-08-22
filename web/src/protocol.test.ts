@@ -15,6 +15,7 @@ const status = {
   brightness: 2,
   offset: 0,
   reversed: false,
+  stripEnabled: true,
   usbVid: 0x07cf,
   usbPid: 0x6802,
   usbOutputMirrorCandidates: 3,
@@ -96,6 +97,7 @@ describe("device protocol decoder", () => {
       mainLoopMaxUs: 2_300,
     });
     expect(result.message.value.ledInputLatencyAvgUs).toBe(790);
+    expect(result.message.value.stripEnabled).toBe(true);
   });
 
   it("keeps realtime diagnostics optional for older firmware", () => {
@@ -107,7 +109,7 @@ describe("device protocol decoder", () => {
       "midiDispatchLatencyLastUs", "midiDispatchLatencyAvgUs", "midiDispatchLatencyMaxUs",
       "midiDispatchLatencySamples", "ledFrames", "ledFramesSkipped", "ledSpiLastUs", "ledSpiMaxUs",
       "ledFrameBytes", "realtimeReady", "realtimeWatchdog", "realtimeHeartbeatAgeMs", "realtimeWakeups",
-      "realtimeStackFreeBytes", "mainLoopLastUs", "mainLoopMaxUs",
+      "realtimeStackFreeBytes", "mainLoopLastUs", "mainLoopMaxUs", "stripEnabled",
     ]) delete legacy[key];
     const result = decodeDeviceMessage(JSON.stringify(legacy));
     expect(result.ok).toBe(true);
@@ -117,6 +119,7 @@ describe("device protocol decoder", () => {
     expect(result.message.value.ledSpiMaxUs).toBeUndefined();
     expect(result.message.value.realtimeReady).toBeUndefined();
     expect(result.message.value.mainLoopMaxUs).toBeUndefined();
+    expect(result.message.value.stripEnabled).toBeUndefined();
   });
 
   it("decodes bounded MIDI, control, result and pong messages", () => {
@@ -167,6 +170,7 @@ describe("device protocol decoder", () => {
       JSON.stringify({ ...status, piano: "yes" }),
       JSON.stringify({ ...status, clients: 1.5 }),
       JSON.stringify({ ...status, brightness: 5 }),
+      JSON.stringify({ ...status, stripEnabled: 1 }),
       JSON.stringify({ ...status, offset: 9 }),
       JSON.stringify({ ...status, usbInputQueueDepth: -1 }),
       JSON.stringify({ ...status, webMidiQueueHighWater: 1.5 }),

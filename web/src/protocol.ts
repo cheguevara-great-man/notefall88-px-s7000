@@ -87,6 +87,7 @@ function statusMessage(source: Record<string, unknown>): DeviceMessage {
   };
 
   status.protocol = requiredInteger(source, "protocol", 0, 255);
+  status.stripEnabled = optionalBoolean(source, "stripEnabled");
   status.firmware = optionalString(source, "firmware", 64);
   status.controlSessionReady = optionalBoolean(source, "controlSessionReady");
   status.controlAuthorized = optionalBoolean(source, "controlAuthorized");

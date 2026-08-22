@@ -230,6 +230,7 @@ const keyOffset = required<HTMLInputElement>("key-offset");
 const keyAutoSelect = required<HTMLInputElement>("key-auto-select");
 const waterfallCanvas = required<HTMLCanvasElement>("waterfall");
 const visualizerCard = required("visualizer-card");
+const stripToggle = required<HTMLButtonElement>("strip-toggle");
 const appShell = document.querySelector<HTMLElement>(".app-shell");
 const sheetView = required("sheet-view");
 const jianpuContainer = required<HTMLElement>("jianpu-container");
@@ -1520,6 +1521,7 @@ function rebuildPractice(): void {
 }
 
 let synthAudioContext: AudioContext | undefined;
+let stripEnabledForPage = true;
 
 function playScrubTone(targetTime: number, heardDuringDrag?: Set<string>): void {
   if (!score || score.notes.length === 0) return;
@@ -2176,7 +2178,13 @@ function setFocusMode(enabled: boolean, manageSystemFullscreen = true): void {
   sheetRenderer.setFocusMode(enabled);
   if (manageSystemFullscreen) void requestImmersiveMode(enabled);
   // OSMD uses a width observer; let layout settle once the controls disappear.
-  window.setTimeout(() => sheetRenderer.seek(lastScoreSeconds), 0);
+  window.setTimeout(() => {
+    if (sheetNotationType.value === "jianpu") {
+      jianpuRenderer.seek(lastScoreSeconds);
+    } else {
+      sheetRenderer.seek(lastScoreSeconds);
+    }
+  }, 0);
 }
 
 focusButton.addEventListener("click", () => setFocusMode(appShell?.dataset.focus !== "true"));
@@ -3024,7 +3032,14 @@ document.getElementById("commission-export")?.addEventListener("click", () => {
 function sendCalibration(): void {
   required("brightness-value").textContent = `${brightness.value} / 4`;
   required("offset-value").textContent = pixelOffset.value;
-  device.configure(Number(brightness.value), Number(pixelOffset.value), reversed.checked);
+  device.configure(Number(brightness.value), Number(pixelOffset.value), reversed.checked, stripEnabledForPage);
+}
+
+function renderStripToggle(): void {
+  stripToggle.setAttribute("aria-pressed", String(stripEnabledForPage));
+  stripToggle.textContent = stripEnabledForPage ? "💡" : "◌";
+  stripToggle.setAttribute("aria-label", stripEnabledForPage ? "关闭键盘灯带" : "开启键盘灯带");
+  stripToggle.title = stripEnabledForPage ? "关闭键盘灯带" : "开启键盘灯带";
 }
 
 function updateKeyCalibration(): void {
@@ -3047,6 +3062,11 @@ required("test-a0").addEventListener("click", () => device.testNote(21));
 required("test-c4").addEventListener("click", () => device.testNote(60));
 required("test-c8").addEventListener("click", () => device.testNote(108));
 required("blackout").addEventListener("click", () => device.blackout());
+stripToggle.addEventListener("click", () => {
+  stripEnabledForPage = !stripEnabledForPage;
+  renderStripToggle();
+  sendCalibration();
+});
 keyNote.addEventListener("input", updateKeyCalibration);
 keyOffset.addEventListener("input", () => {
   const note = clampPianoNote(Number(keyNote.value));
@@ -3260,6 +3280,10 @@ device.onStatus((status: DeviceStatus) => {
   brightness.value = String(status.brightness);
   pixelOffset.value = String(status.offset);
   reversed.checked = status.reversed;
+  if (status.stripEnabled !== undefined) {
+    stripEnabledForPage = status.stripEnabled;
+    renderStripToggle();
+  }
   required("brightness-value").textContent = `${status.brightness} / 4`;
   required("offset-value").textContent = String(status.offset);
   required("diag-version").textContent = `${status.firmware ?? "--"} / v${status.protocol ?? "--"}`;
@@ -3472,9 +3496,16 @@ function frame(now: number): void {
   };
   if (shouldPaintVisual(renderActivity, now, visualDirty)) {
     const expected = new Set(currentTarget.map((target) => target.note));
-    if ((viewMode.value === "sheet" || viewMode.value === "split") && scoreXml) {
-      sheetRenderer.seek(lastScoreSeconds);
-      renderMeasureNavigation(lastScoreSeconds);
+    if (viewMode.value === "sheet" || viewMode.value === "split") {
+      if (sheetNotationType.value === "jianpu") {
+        if (score) {
+          jianpuRenderer.seek(lastScoreSeconds);
+          renderMeasureNavigation(lastScoreSeconds);
+        }
+      } else if (scoreXml) {
+        sheetRenderer.seek(lastScoreSeconds);
+        renderMeasureNavigation(lastScoreSeconds);
+      }
     }
     if (viewMode.value !== "sheet" || !scoreXml) {
       renderer.setState(pressed, expected, wrong);

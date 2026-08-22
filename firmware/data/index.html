@@ -9,8 +9,8 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-BTY0JUKp.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DQrHuJl5.css">
+    <script type="module" crossorigin src="./assets/index-DXgUzSLM.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-W2Ib4Jcb.css">
   </head>
   <body>
     <main class="app-shell">
@@ -61,16 +61,25 @@
         <button id="practice-options-button" aria-controls="practice-panel">练习选项</button>
         <button id="library-button" aria-controls="library-panel">我的曲库</button>
         <button id="settings-button" aria-controls="settings-panel">设备设置</button>
-        <button id="transport-focus" type="button" title="全屏演奏模式（隐藏控制栏并全屏显示瀑布流与曲谱）">全屏演奏</button>
+        <button id="focus-button" type="button" aria-pressed="false" title="隐藏工具区并铺满屏幕">全屏演奏</button>
       </section>
 
       <section id="top-timeline-bar" class="top-timeline-bar" hidden>
-        <div class="timeline-track-wrap">
+        <div id="timeline-track" class="timeline-track-wrap" role="slider" tabindex="0"
+          aria-label="播放位置与 A-B 循环" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
           <div id="timeline-loop-region" class="timeline-loop-region" hidden>
-            <span id="loop-marker-a" class="loop-marker marker-a" title="A点">A</span>
-            <span id="loop-marker-b" class="loop-marker marker-b" title="B点">B</span>
+            <button id="loop-marker-a" class="loop-marker marker-a" type="button" aria-label="循环起点 A，可拖动">A</button>
+            <button id="loop-marker-b" class="loop-marker marker-b" type="button" aria-label="循环终点 B，可拖动">B</button>
           </div>
-          <input id="timeline-scrubber" class="timeline-scrubber" type="range" min="0" max="1" step="0.05" value="0" aria-label="全曲进度拖拽与试听" />
+          <span id="timeline-playhead" class="timeline-playhead" aria-hidden="true"></span>
+          <input id="timeline-scrubber" class="sr-only" type="range" min="0" max="1" step="0.05" value="0" aria-label="全曲进度" />
+        </div>
+        <button id="timeline-loop-toggle" class="timeline-loop-toggle" type="button" aria-label="开启 A-B 循环编辑" aria-pressed="false" title="A-B 循环">⟲</button>
+        <div id="loop-controls" class="sr-only" aria-disabled="true">
+          <input id="loop-enabled" type="checkbox" tabindex="-1" aria-hidden="true" />
+          <input id="loop-start" type="range" min="0" max="1" step="0.1" value="0" tabindex="-1" aria-hidden="true" />
+          <input id="loop-end" type="range" min="0" max="1" step="0.1" value="1" tabindex="-1" aria-hidden="true" />
+          <strong id="loop-start-value">00:00</strong><strong id="loop-end-value">00:00</strong>
         </div>
       </section>
 
@@ -106,12 +115,8 @@
       </nav>
 
       <section class="visualizer-card" id="visualizer-card" data-view="waterfall">
-        <button id="focus-button" class="focus-enter" type="button" aria-pressed="false" title="隐藏工具区并铺满屏幕">
-          <span class="focus-icon" aria-hidden="true">⛶</span><span>全屏演奏</span>
-        </button>
-        <button id="focus-exit" class="focus-exit" type="button" title="返回完整工作台" hidden>
-          <span class="focus-icon" aria-hidden="true">⛶</span><span>退出全屏</span>
-        </button>
+        <button id="strip-toggle" class="strip-toggle" type="button" aria-pressed="true" aria-label="关闭键盘灯带" title="关闭键盘灯带">💡</button>
+        <button id="focus-exit" class="focus-exit" type="button" aria-label="退出全屏" title="退出全屏" hidden>×</button>
         <canvas id="waterfall" aria-label="钢琴瀑布流"></canvas>
         <div id="sheet-view" aria-label="乐谱视图" hidden>
           <div id="jianpu-container" class="jianpu-container" hidden></div>
@@ -210,20 +215,6 @@
           <span>开始前一小节预备拍</span>
           <input id="count-in-enabled" type="checkbox" checked />
         </label>
-        <label class="switch-line">
-          <span>循环 A–B 片段</span>
-          <input id="loop-enabled" type="checkbox" />
-        </label>
-        <div id="loop-controls" class="loop-controls" aria-disabled="true">
-          <label>
-            <span>A：<strong id="loop-start-value">00:00</strong></span>
-            <input id="loop-start" type="range" min="0" max="1" step="0.1" value="0" disabled />
-          </label>
-          <label>
-            <span>B：<strong id="loop-end-value">00:00</strong></span>
-            <input id="loop-end" type="range" min="0" max="1" step="0.1" value="1" disabled />
-          </label>
-        </div>
         <hr />
         <div class="settings-head compact-head">
           <div>
@@ -439,15 +430,26 @@
 
       
 
-      <aside id="library-panel" class="settings-panel library-panel" hidden>
+      <aside id="library-panel" class="settings-panel library-panel" aria-label="曲库" hidden>
+        <div class="settings-head library-minimal-head">
+          <div class="settings-head-actions">
+            <button id="library-admin-button" aria-label="曲库设置" title="曲库设置">⋯</button>
+            <button id="library-close" aria-label="关闭">关闭</button>
+          </div>
+        </div>
+        <div id="library-summary" class="sr-only" role="status">正在打开曲库…</div>
+        <div id="library-list" class="library-list"></div>
+      </aside>
+
+      <aside id="library-admin-panel" class="settings-panel library-panel" hidden>
         <div class="settings-head">
           <div>
-            <div class="eyebrow">LOCAL SCORE LIBRARY</div>
-            <h2>我的曲库</h2>
+            <div class="eyebrow">LIBRARY SETTINGS</div>
+            <h2>曲库设置</h2>
           </div>
-          <button id="library-close" aria-label="关闭">关闭</button>
+          <button id="library-admin-close" aria-label="返回曲库">返回</button>
         </div>
-        <p>乐谱只保存在当前浏览器的 IndexedDB，不上传云端。请定期导出带校验值的完整备份。</p>
+        <p>这些是低频管理工具；日常选曲无需进入这里。</p>
         <div class="library-filters">
           <input id="library-search" type="search" placeholder="搜索曲名或文件名" />
           <select id="library-format-filter">
@@ -458,8 +460,8 @@
           <select id="library-folder-filter"><option value="all">全部文件夹</option></select>
         </div>
         <form id="folder-form" class="library-filters">
-          <input id="folder-name" maxlength="80" placeholder="新文件夹名称" />
-          <button type="submit">新建文件夹</button>
+          <input id="folder-name" maxlength="80" placeholder="新分类名称" />
+          <button type="submit">新建分类</button>
         </form>
         <div class="button-row">
           <button id="library-backup">导出曲库备份</button>
@@ -471,12 +473,6 @@
           </label>
         </div>
         <div id="storage-summary" class="library-summary">正在检查浏览器存储…</div>
-        <section class="practice-queue-section" aria-labelledby="practice-queue-title">
-          <div class="review-head"><span id="practice-queue-title">今日练习</span><small>只在本机按全曲掌握度与复习间隔计算</small></div>
-          <div id="practice-queue" class="practice-queue"></div>
-        </section>
-        <div id="library-summary" class="library-summary">正在打开曲库…</div>
-        <div id="library-list" class="library-list"></div>
       </aside>
 
       <footer>
