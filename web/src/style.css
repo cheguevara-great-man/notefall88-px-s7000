@@ -91,6 +91,7 @@ h1 span { color: #8ba7ff; }
 .strip-toggle { z-index: 3; min-width: 40px; min-height: 40px; padding: 0; border-radius: 50%; background: rgba(8,12,20,.82); backdrop-filter: blur(12px); font-size: 17px; line-height: 1; }
 .transport-card .strip-toggle { position: static; display: grid; place-items: center; align-self: center; }
 .strip-toggle[aria-pressed="false"] { filter: grayscale(1); opacity: .62; border-color: #495364; }
+.app-exit { color: #dce5f7; font-size: 25px; line-height: 1; }
 .focus-icon { font-size: 18px; line-height: 1; }
 .focus-exit:active { transform: scale(.97); }
 #waterfall { width: 100%; height: 100%; display: block; touch-action: none; }
@@ -270,7 +271,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 .app-shell[data-focus="true"] .jianpu-container {
   /* The seek bar floats above the sheet.  Keep a narrow breathing gap, not a
      second blank header, so both numbered-notation systems remain visible. */
-  padding-top: max(24px, calc(env(safe-area-inset-top) + 16px));
+  padding-top: max(50px, calc(env(safe-area-inset-top) + 42px));
   padding-bottom: 10px;
 }
 
@@ -316,7 +317,10 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
    pixels as CSS pixels. Keep the same comfortable information density instead
    of stretching a 1440 px workspace into the middle of a 3200 px panel. */
 @media (min-width: 2400px) and (min-aspect-ratio: 7 / 5) and (max-aspect-ratio: 8 / 5) {
-  .app-shell { width: min(3100px, 100%); padding: 20px clamp(28px, 2vw, 52px) 32px; }
+  /* Treat the 3200 × 2136 Studio canvas as one instrument surface.  The
+     previous fixed card height plus shell padding left a visible dead strip
+     under the keyboard in normal mode. */
+  .app-shell { width: min(3100px, 100%); height: 100dvh; min-height: 0; display: flex; flex-direction: column; padding: 20px clamp(28px, 2vw, 52px) 0; overflow: hidden; }
   .topbar { min-height: 64px; }
   h1 { font-size: 54px; }
   .eyebrow { font-size: 15px; }
@@ -325,8 +329,8 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   .transport-card button, .transport-card .file-button, .compact-field select { min-height: 60px; }
   /* In normal mode the practice surface should use the remaining tablet
      height.  A fixed cap left a large dead area below the keyboard. */
-  .visualizer-card { height: max(560px, calc(100dvh - 178px)); min-height: 560px; }
-  .visualizer-card[data-view="split"] { height: max(560px, calc(100dvh - 178px)); min-height: 560px; grid-template-rows: minmax(190px, 34%) minmax(0, 66%); }
+  .visualizer-card { height: auto; min-height: 0; flex: 1 1 auto; }
+  .visualizer-card[data-view="split"] { height: auto; min-height: 0; flex: 1 1 auto; grid-template-rows: minmax(190px, 34%) minmax(0, 66%); }
   .visualizer-card[data-view="split"] .legend { top: calc(34% + 14px); }
   .score-strip strong { font-size: 17px; }
   .score-strip .label, .score-navigator > small { font-size: 14px; }
@@ -493,7 +497,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   box-sizing: border-box;
   padding: 0;
 }
-.jianpu-system { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; flex: 0 0 calc((100% - 6px) / 2); min-height: 0; }
+.jianpu-system { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; flex: 0 0 calc((100% - 6px) / 2); min-height: 0; align-items: start; }
 .jianpu-container[data-layout="split"] .jianpu-system { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .jianpu-measure {
   position: relative;
@@ -502,7 +506,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   background: #0f172a;
   border: 1px solid #1e293b;
   border-radius: 6px;
-  padding: 4px 8px;
+  padding: 3px 7px;
   min-width: 0;
   overflow: hidden;
   transition: border-color 0.15s, background-color 0.15s;
@@ -532,7 +536,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   display: flex;
   align-items: center;
   gap: clamp(2px, .45vw, 6px);
-  min-height: 28px;
+  min-height: 30px;
   min-width: 0;
   overflow: hidden;
 }
@@ -558,7 +562,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   transition: transform 0.08s ease;
 }
 .jianpu-pitch-main {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: bold;
   line-height: 1;
   display: flex;
