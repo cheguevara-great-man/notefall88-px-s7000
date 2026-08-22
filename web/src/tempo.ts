@@ -1,4 +1,4 @@
-export const MIN_TEMPO = 0.25;
+export const MIN_TEMPO = 0.1;
 export const MAX_TEMPO = 2;
 export const TEMPO_STEP = 0.05;
 

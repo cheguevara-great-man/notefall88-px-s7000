@@ -16,7 +16,7 @@ describe("practice tempo", () => {
   });
 
   it("clamps direct user input to the supported endpoints", () => {
-    expect(clampTempo(0.1)).toBe(0.25);
+    expect(clampTempo(0.1)).toBe(0.1);
     expect(clampTempo(2.8)).toBe(2);
   });
 

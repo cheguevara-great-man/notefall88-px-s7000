@@ -177,7 +177,10 @@ export class WaterfallRenderer {
     this.resize();
     const width = this.logicalWidth;
     const height = this.logicalHeight;
-    const keyboardHeight = height * 0.22;
+    // The keyboard is a locator, not the dominant surface.  Capping it keeps
+    // a high-resolution tablet from turning its lower third into oversized
+    // decorative keys and gives the falling notes useful vertical runway.
+    const keyboardHeight = Math.max(76, Math.min(height * 0.16, 142));
     const keyboardTop = height - keyboardHeight;
     const rollHeight = keyboardTop;
     const visibleSeconds = this.previewSeconds;

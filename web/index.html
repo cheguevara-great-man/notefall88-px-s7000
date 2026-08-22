@@ -18,34 +18,40 @@
           <span>导入乐谱</span>
         </label>
         <button id="play-button" class="primary" disabled>播放</button>
-        <button id="listen-button" disabled aria-pressed="false" title="由 PX-S7000 音源示范当前声部；未连接时仍可预览灯光和画面">示范当前声部</button>
+        <button id="listen-button" disabled aria-pressed="false" title="由 PX-S7000 音源示范当前声部；未连接时仍可预览灯光和画面">示范</button>
         <button id="reset-button" disabled>复位</button>
-        <button id="record-button">录制演奏</button>
+        <button id="record-button">录制</button>
         <button id="record-playback" disabled aria-pressed="false" title="用 PX-S7000 自身音源回放刚才的演奏">回放录音</button>
-        <button id="record-download" disabled>导出录音 MIDI</button>
+        <button id="record-download" disabled>导出</button>
         <label class="compact-field mode-field">
           <span>模式</span>
           <select id="practice-mode">
-            <option value="wait">等我弹</option>
-            <option value="follow">跟随我</option>
+            <option value="wait">等我</option>
+            <option value="follow">跟随</option>
             <option value="realtime">实时</option>
           </select>
         </label>
-        <label class="compact-field">
+        <label class="compact-field tempo-field">
           <span>速度</span>
-          <span class="tempo-input"><input id="tempo" type="number" min="25" max="200" step="5" value="100" inputmode="numeric" aria-label="练习速度百分比" /><span>%</span></span>
+          <select id="tempo" aria-label="练习速度百分比">
+            <option value="10">10%</option><option value="20">20%</option><option value="30">30%</option>
+            <option value="40">40%</option><option value="50">50%</option><option value="60">60%</option>
+            <option value="70">70%</option><option value="80">80%</option><option value="90">90%</option>
+            <option value="100" selected>100%</option>
+          </select>
         </label>
         <label class="compact-field">
           <span>画面</span>
           <select id="view-mode">
-            <option value="waterfall">瀑布流</option>
-            <option value="sheet">乐谱</option>
-            <option value="split">乐谱 + 瀑布流</option>
+            <option value="waterfall">仅瀑布</option>
+            <option value="sheet">仅乐谱</option>
+            <option value="split">全部</option>
           </select>
         </label>
         <button id="practice-options-button" aria-controls="practice-panel">练习选项</button>
         <button id="library-button" aria-controls="library-panel">我的曲库</button>
         <button id="settings-button" aria-controls="settings-panel">设备设置</button>
+        <button id="strip-toggle" class="strip-toggle" type="button" aria-pressed="true" aria-label="关闭键盘灯带" title="关闭键盘灯带">💡</button>
         <button id="focus-button" type="button" aria-pressed="false" title="隐藏工具区并铺满屏幕">全屏演奏</button>
         <div class="status-row transport-status" aria-label="设备连接状态">
           <span class="status-pill" id="device-status" data-state="offline" title="ESP32 未连接">ESP 未连接</span>
@@ -78,19 +84,15 @@
 
       <section class="score-strip">
         <div>
-          <span class="label">曲目</span>
           <strong id="score-name">尚未加载</strong>
         </div>
         <div>
-          <span class="label">进度</span>
           <strong id="score-time">00:00 / 00:00</strong>
         </div>
         <div>
-          <span class="label">本次成绩</span>
           <strong id="score-result">命中 0 · 错 0 · 漏 0 · 100%</strong>
         </div>
         <div>
-          <span class="label">演奏录制</span>
           <strong id="record-result">尚未录制</strong>
         </div>
       </section>
@@ -106,7 +108,6 @@
       </nav>
 
       <section class="visualizer-card" id="visualizer-card" data-view="waterfall">
-        <button id="strip-toggle" class="strip-toggle" type="button" aria-pressed="true" aria-label="关闭键盘灯带" title="关闭键盘灯带">💡</button>
         <button id="focus-exit" class="focus-exit" type="button" aria-label="退出全屏" title="退出全屏" hidden>×</button>
         <canvas id="waterfall" aria-label="钢琴瀑布流"></canvas>
         <div id="sheet-view" aria-label="乐谱视图" hidden>

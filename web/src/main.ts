@@ -153,7 +153,7 @@ const recordDownload = required<HTMLButtonElement>("record-download");
 const focusButton = required<HTMLButtonElement>("focus-button");
 const focusExit = required<HTMLButtonElement>("focus-exit");
 const modeSelect = required<HTMLSelectElement>("practice-mode");
-const tempoInput = required<HTMLInputElement>("tempo");
+const tempoInput = required<HTMLSelectElement>("tempo");
 const viewMode = required<HTMLSelectElement>("view-mode");
 const handSelect = required<HTMLSelectElement>("hand-selection");
 const timingProfileSelect = required<HTMLSelectElement>("timing-profile");
@@ -431,10 +431,19 @@ let backgroundSuspension: BackgroundSuspension | undefined;
 let backgroundPlayLabel = "播放";
 let practicePass = 0;
 
+function selectTempoOption(tempo: number): void {
+  // The practice toolbar intentionally exposes only calm, predictable 10%
+  // steps.  Advanced coaching may still calculate a finer tempo internally;
+  // show its nearest available user-facing step instead of leaving a blank
+  // select control.
+  const percent = Math.max(10, Math.min(100, Math.round(tempoPercent(tempo) / 10) * 10));
+  tempoInput.value = String(percent);
+}
+
 modeSelect.value = mode;
 handSelect.value = hand;
 timingProfileSelect.value = timingProfile;
-tempoInput.value = String(tempoPercent(initialPreferences.tempo));
+selectTempoOption(initialPreferences.tempo);
 leadTime.value = String(leadMs);
 metronomeEnabled.checked = initialPreferences.metronome;
 countInEnabled.checked = initialPreferences.countIn;
@@ -480,7 +489,7 @@ function selectedTempo(): number {
 
 function setSelectedTempo(tempo: number): void {
   const normalized = normalizeTempo(tempo);
-  tempoInput.value = String(tempoPercent(normalized));
+  selectTempoOption(normalized);
   const now = performance.now();
   clock.setSpeed(normalized, now);
   if (recordingPlaybackActive) recordingPlaybackClock.setSpeed(normalized, now);
