@@ -119,6 +119,27 @@ async function waitForCondition(expression, message, attempts = 80) {
   throw new Error(`${message}; last value: ${JSON.stringify(last)}`);
 }
 
+async function chooseImportDestination(fileName) {
+  await waitForCondition(
+    `() => JSON.stringify(
+      !document.querySelector('#import-destination-dialog')?.hasAttribute('hidden')
+      && document.querySelector('#import-destination-summary')?.textContent?.includes(${JSON.stringify(fileName)})
+      && Boolean(document.querySelector('#import-destination-list button'))
+    )`,
+    "import destination chooser did not open",
+  );
+  const selected = evaluate(`() => {
+    const button = document.querySelector('#import-destination-list button');
+    button?.click();
+    return JSON.stringify(Boolean(button));
+  }`);
+  assert(selected, "import destination chooser has no selectable category");
+  await waitForCondition(
+    `() => JSON.stringify(document.querySelector('#import-destination-dialog')?.hasAttribute('hidden'))`,
+    "import destination chooser did not close",
+  );
+}
+
 async function waitForServer() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     try {
@@ -146,8 +167,8 @@ try {
   assert(identity.studioToolbar === (EDITION === "studio"), "Studio toolbar visibility does not match edition");
   assert(identity.studioSettingsNested && !identity.topLevelStudioToolbar, "Studio connection controls escaped the device settings panel");
   let page = snapshot();
-  assert(page.includes("NoteFall 88"), "mobile page did not render NoteFall 88");
-  assert(page.includes("硬件尚未验收"), "offline commissioning state is not visible");
+  assert(page.includes('button "导入乐谱"') && page.includes("尚未加载"), "mobile page did not render the NoteFall workspace");
+  assert(page.includes("ESP 未连接") && page.includes("钢琴未连接"), "offline device state is not visible");
 
   const mobile = evaluate(`() => JSON.stringify({
     width: innerWidth,
@@ -228,7 +249,7 @@ try {
   command(["click", settingsCloseRef]);
 
   page = snapshot();
-  const importRef = refFor(page, /generic \[ref=(e\d+)\][^\n]*: 导入乐谱/, "score import control");
+  const importRef = refFor(page, /button "导入乐谱"[^\n]*\[ref=(e\d+)\]/, "score import control");
   let studioConversion = null;
   let studioMidiNotation = null;
   if (EDITION === "studio") {
@@ -236,6 +257,7 @@ try {
     assert(advancedAccept.includes('.mscz') && advancedAccept.includes('.gp5'), `Studio advanced formats are absent: ${advancedAccept}`);
     command(["click", importRef]);
     command(["upload", join(WEB, "test-fixtures", "notefall-minimal.mscx")]);
+    await chooseImportDestination("notefall-minimal.mscx");
     await waitForCondition(
       `() => JSON.stringify(
         document.querySelector('#score-name')?.textContent === 'NoteFall Converter Test · 3 音符'
@@ -258,6 +280,7 @@ try {
 
     command(["click", importRef]);
     command(["upload", midiNotationPath]);
+    await chooseImportDestination("notefall-midi-sheet-test.mid");
     await waitForCondition(
       `() => JSON.stringify(
         document.querySelector('#score-name')?.textContent === 'NoteFall MIDI Sheet Test · 3 音符'
@@ -296,6 +319,7 @@ try {
   }
   command(["click", importRef]);
   command(["upload", join(WEB, "test-fixtures", "parser-etude.musicxml")]);
+  await chooseImportDestination("parser-etude.musicxml");
   await waitForCondition(
     `() => JSON.stringify(
       document.querySelector('#score-name')?.textContent === 'Parser Etude · 4 音符'
@@ -557,6 +581,7 @@ try {
 
   command(["click", importRef]);
   command(["upload", repeatCursorScorePath]);
+  await chooseImportDestination("repeat-cursor-probe.musicxml");
   await waitForCondition(
     `() => JSON.stringify(document.querySelector('#score-name')?.textContent?.startsWith('Repeat Cursor Probe'))`,
     "repeat-aware cursor score did not render",
@@ -723,6 +748,7 @@ try {
 
   command(["click", importRef]);
   command(["upload", dynamicsScorePath]);
+  await chooseImportDestination("dynamics-visual-probe.musicxml");
   await waitForCondition(
     `() => JSON.stringify(document.querySelector('#score-name')?.textContent?.startsWith('Dynamics Visual Probe'))`,
     "dynamics visual score did not render",
@@ -860,9 +886,10 @@ try {
 
   command(["resize", "1600", "1068"]);
   page = snapshot();
-  const longImportRef = refFor(page, /generic \[ref=(e\d+)\][^\n]*: 导入乐谱/, "long score import control");
+  const longImportRef = refFor(page, /button "导入乐谱"[^\n]*\[ref=(e\d+)\]/, "long score import control");
   command(["click", longImportRef]);
   command(["upload", longScorePath]);
+  await chooseImportDestination("long-follow-study.musicxml");
   await waitForCondition(
     `() => JSON.stringify(document.querySelector('#score-name')?.textContent === 'Long Follow Study · 240 音符')`,
     "synthetic long score did not render",

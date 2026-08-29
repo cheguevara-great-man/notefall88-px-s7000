@@ -214,6 +214,11 @@ const libraryPanel = required("library-panel");
 const libraryAdminPanel = required("library-admin-panel");
 const libraryList = required("library-list");
 const librarySummary = required("library-summary");
+const importDestinationDialog = required("import-destination-dialog");
+const importDestinationList = required("import-destination-list");
+const importDestinationSummary = required("import-destination-summary");
+const importDestinationCancel = required<HTMLButtonElement>("import-destination-cancel");
+const importStatus = required("import-status");
 const storageSummary = required("storage-summary");
 const storagePersist = required<HTMLButtonElement>("storage-persist");
 const librarySearch = required<HTMLInputElement>("library-search");
@@ -337,6 +342,56 @@ let transposeSemitones = 0;
 let visualTheme: VisualTheme = normalizeVisualTheme(window.localStorage.getItem(VISUAL_THEME_STORAGE_KEY));
 let libraryFolders: LibraryFolder[] = [];
 let libraryScores: LibraryScore[] = [];
+type ImportDestination = { id: string | null; name: string };
+let resolveImportDestination: ((destination: ImportDestination | undefined) => void) | undefined;
+let importStatusTimer: number | undefined;
+
+function showImportStatus(message: string, kind: "success" | "error" = "success"): void {
+  if (importStatusTimer !== undefined) window.clearTimeout(importStatusTimer);
+  importStatus.textContent = message;
+  importStatus.dataset.kind = kind;
+  importStatus.hidden = false;
+  importStatusTimer = window.setTimeout(() => {
+    importStatus.hidden = true;
+    importStatusTimer = undefined;
+  }, kind === "error" ? 7000 : 4500);
+}
+
+function finishImportDestination(destination: ImportDestination | undefined): void {
+  importDestinationDialog.hidden = true;
+  const resolve = resolveImportDestination;
+  resolveImportDestination = undefined;
+  resolve?.(destination);
+}
+
+async function chooseImportDestination(files: File[]): Promise<ImportDestination | undefined> {
+  if (resolveImportDestination) finishImportDestination(undefined);
+  await refreshLibrary();
+  importDestinationSummary.textContent = files.length === 1
+    ? `“${files[0].name}”将保存到：`
+    : `已选择 ${files.length} 个文件，它们将一起保存到：`;
+  importDestinationList.replaceChildren();
+  const destinations: ImportDestination[] = [
+    ...libraryFolders.map((folder) => ({ id: folder.id, name: folder.name })),
+    { id: null, name: "未分类" },
+  ];
+  for (const destination of destinations) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = destination.name;
+    button.addEventListener("click", () => finishImportDestination(destination));
+    importDestinationList.append(button);
+  }
+  importDestinationDialog.hidden = false;
+  return new Promise((resolve) => {
+    resolveImportDestination = resolve;
+  });
+}
+
+importDestinationCancel.addEventListener("click", () => finishImportDestination(undefined));
+importDestinationDialog.addEventListener("click", (event) => {
+  if (event.target === importDestinationDialog) finishImportDestination(undefined);
+});
 
 async function refreshStorageStatus(): Promise<void> {
   const status = await inspectBrowserStorage();
@@ -2052,7 +2107,7 @@ async function activateScore(
     : "根据历史错漏、拍点和左右手差异，自动安排最多三处弱点。";
   // Sanitize score title
   let cleanName = (parsed.name || "未命名乐谱").trim();
-  cleanName = cleanName.replace(/^[\s -\x1f-\x9f!@#$%^&*()_+=\-\[\]{}|;:'",.<>?/`~\ufffd]+/, "").trim();
+  cleanName = cleanName.replace(/^[\s\x00-\x1f\x7f-\x9f!@#$%^&*()_+=\-\[\]{}|;:'",.<>?/`~\ufffd]+/, "").trim();
   if (!cleanName || /[\x00-\x1f\x7f-\x9f\ufffd]/.test(cleanName)) {
     cleanName = "未命名乐谱";
   }
@@ -2099,8 +2154,15 @@ async function loadScoreBuffer(
 fileInput.addEventListener("change", async () => {
   const files = [...(fileInput.files ?? [])];
   if (files.length === 0) return;
+  fileInput.value = "";
+  const destination = await chooseImportDestination(files);
+  if (!destination) {
+    showImportStatus("已取消导入");
+    return;
+  }
   try {
     scoreName.textContent = "正在解析乐谱…";
+    showImportStatus(`正在导入到“${destination.name}”…`);
     let first: {
       parsed: ParsedScore;
       xml?: string;
@@ -2117,9 +2179,13 @@ fileInput.addEventListener("change", async () => {
         prepared.buffer,
         prepared.parsed,
         prepared.fileName,
-        null,
+        destination.id,
         prepared.notationXml,
       );
+      if (saved.duplicate && saved.score.folderId !== destination.id) {
+        await library.moveScore(saved.score.id, destination.id);
+        saved.score.folderId = destination.id;
+      }
       if (!first) first = {
         parsed: prepared.parsed,
         xml: prepared.xml,
@@ -2135,11 +2201,13 @@ fileInput.addEventListener("change", async () => {
       scoreName.title = first.warning ?? "";
     }
     await refreshLibrary();
-    if (files.length > 1) librarySummary.textContent = `批量导入完成：新增 ${added}，重复 ${duplicates}`;
+    const result = `导入完成：新增 ${added}，已有 ${duplicates} · 已保存到“${destination.name}”`;
+    librarySummary.textContent = result;
+    showImportStatus(result);
   } catch (error) {
-    scoreName.textContent = `无法读取：${error instanceof Error ? error.message : "未知错误"}`;
-  } finally {
-    fileInput.value = "";
+    const message = `无法导入：${error instanceof Error ? error.message : "未知错误"}`;
+    scoreName.textContent = message;
+    showImportStatus(message, "error");
   }
 });
 

@@ -470,6 +470,29 @@
         <div id="storage-summary" class="library-summary">正在检查浏览器存储…</div>
       </aside>
 
+      <div
+        id="import-destination-dialog"
+        class="import-destination-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-destination-title"
+        hidden
+      >
+        <section class="import-destination-card">
+          <div class="import-destination-head">
+            <div>
+              <div class="eyebrow">IMPORT</div>
+              <h2 id="import-destination-title">保存到分类</h2>
+            </div>
+            <button id="import-destination-cancel" type="button">取消</button>
+          </div>
+          <p id="import-destination-summary"></p>
+          <div id="import-destination-list" class="import-destination-list"></div>
+        </section>
+      </div>
+
+      <div id="import-status" class="import-status" role="status" aria-live="polite" hidden></div>
+
     </main>
     <script type="module" src="/src/app-exit.ts"></script>
     <script type="module" src="/src/app-focus-controls.ts"></script>

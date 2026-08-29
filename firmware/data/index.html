@@ -9,8 +9,8 @@
     <meta name="description" content="NoteFall 88 — PX-S7000 单排灯带钢琴练习器" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M13 13h9v38h-9zm14 0h9v38h-9zm14 0h10v38H41z' fill='%238ba7ff'/%3E%3C/svg%3E" />
     <title>NoteFall 88</title>
-    <script type="module" crossorigin src="./assets/index-DQCXPjYp.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-D3qI4gE9.css">
+    <script type="module" crossorigin src="./assets/index-CrJn55j6.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-dxU6yDUO.css">
   </head>
   <body>
     <main class="app-shell">
@@ -55,6 +55,7 @@
         <button id="settings-button" aria-controls="settings-panel">设备设置</button>
         <button id="focus-button" type="button" aria-pressed="false" title="隐藏工具区并铺满屏幕">全屏</button>
         <button id="strip-toggle" class="strip-toggle" type="button" aria-pressed="true" aria-label="关闭键盘灯带" title="关闭键盘灯带">💡</button>
+        <button id="app-exit" class="strip-toggle app-exit" type="button" aria-label="退出 Studio" title="退出 Studio">×</button>
         <div class="status-row transport-status" aria-label="设备连接状态">
           <span class="status-pill" id="device-status" data-state="offline" title="ESP32 未连接">ESP 未连接</span>
           <span class="status-pill" id="piano-status" data-state="offline" title="钢琴未连接">钢琴未连接</span>
@@ -110,7 +111,9 @@
       </nav>
 
       <section class="visualizer-card" id="visualizer-card" data-view="waterfall">
-        <button id="focus-exit" class="focus-exit" type="button" aria-label="退出全屏" title="退出全屏" hidden>×</button>
+        <!-- Kept as an inert compatibility target for the focus controller.
+             Android's edge-back gesture is the actual fullscreen exit affordance. -->
+        <button id="focus-exit" class="focus-exit" type="button" aria-hidden="true" tabindex="-1" hidden></button>
         <canvas id="waterfall" aria-label="钢琴瀑布流"></canvas>
         <div id="sheet-view" aria-label="乐谱视图" hidden>
           <div id="jianpu-container" class="jianpu-container" hidden></div>
@@ -469,10 +472,29 @@
         <div id="storage-summary" class="library-summary">正在检查浏览器存储…</div>
       </aside>
 
-      <footer>
-        <span>网页只显示瀑布流；钢琴上是一条单排目标灯。</span>
-        <span id="latency-status">WebSocket -- ms</span>
-      </footer>
+      <div
+        id="import-destination-dialog"
+        class="import-destination-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-destination-title"
+        hidden
+      >
+        <section class="import-destination-card">
+          <div class="import-destination-head">
+            <div>
+              <div class="eyebrow">IMPORT</div>
+              <h2 id="import-destination-title">保存到分类</h2>
+            </div>
+            <button id="import-destination-cancel" type="button">取消</button>
+          </div>
+          <p id="import-destination-summary"></p>
+          <div id="import-destination-list" class="import-destination-list"></div>
+        </section>
+      </div>
+
+      <div id="import-status" class="import-status" role="status" aria-live="polite" hidden></div>
+
     </main>
   </body>
 </html>
