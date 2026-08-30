@@ -462,6 +462,7 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   color: #f1f5f9;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   user-select: none;
+  touch-action: none;
 }
 .jianpu-empty {
   margin: auto;
@@ -572,6 +573,20 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   transform: scale(1.15);
   transition: transform 0.08s ease;
 }
+.jianpu-note-cell[data-loop-point]::after {
+  position: absolute;
+  top: -12px;
+  right: 0;
+  min-width: 15px;
+  padding: 1px 3px;
+  border-radius: 8px;
+  color: #07111f;
+  background: #fbbf24;
+  font: 800 10px/1.2 ui-sans-serif, system-ui, sans-serif;
+  text-align: center;
+  content: attr(data-loop-point);
+}
+.jianpu-note-cell[data-loop-point="b"]::after { background: #a5b4fc; }
 .jianpu-pitch-main {
   font-size: 22px;
   font-weight: bold;

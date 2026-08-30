@@ -1726,7 +1726,27 @@ function setTimelineLoop(start: number, end: number, rebuild = true): void {
   loopEnd.disabled = false;
   loopControls.setAttribute("aria-disabled", "false");
   updateLoopLabels();
+  syncJianpuLoopMarkers();
   if (rebuild) rebuildPractice();
+}
+
+function syncJianpuLoopMarkers(): void {
+  for (const note of jianpuContainer.querySelectorAll<HTMLElement>("[data-note-start]")) {
+    note.removeAttribute("data-loop-point");
+  }
+  if (!score || !loopEnabled.checked || navLoopMode.value === "measure") return;
+  for (const [point, seconds] of [["a", Number(loopStart.value)], ["b", Number(loopEnd.value)]] as const) {
+    let closest: HTMLElement | undefined;
+    let distance = Infinity;
+    for (const note of jianpuContainer.querySelectorAll<HTMLElement>("[data-note-start]")) {
+      const nextDistance = Math.abs(Number(note.dataset.noteStart) - seconds);
+      if (nextDistance < distance) {
+        closest = note;
+        distance = nextDistance;
+      }
+    }
+    closest?.setAttribute("data-loop-point", point);
+  }
 }
 
 function configureLoopInputs(): void {
@@ -1758,6 +1778,7 @@ function configureLoopInputs(): void {
   updateLoopLabels();
   syncTimelinePlayhead(lastScoreSeconds);
   syncTimelineLoopRegion();
+  syncJianpuLoopMarkers();
 }
 
 function updateLoopLabels(): void {
@@ -2231,7 +2252,10 @@ function updateViewMode(): void {
       jianpuContainer.hidden = false;
       osmdContainer.hidden = true;
       jianpuRenderer.setLayout(wantsSplit ? "split" : "sheet");
-      if (score) jianpuRenderer.load(score);
+      if (score) {
+        jianpuRenderer.load(score);
+        syncJianpuLoopMarkers();
+      }
       jianpuRenderer.seek(lastScoreSeconds);
     } else {
       jianpuContainer.hidden = true;
@@ -3702,11 +3726,99 @@ function scorePointerTime(event: PointerEvent): number | undefined {
   return undefined;
 }
 
-jianpuContainer.addEventListener("pointerup", (event) => {
-  const target = scorePointerTime(event);
-  if (target === undefined || !Number.isFinite(target)) return;
-  cancelFollowPlayback();
+let jianpuDrag: {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startTime: number;
+  kind: TimelineDragKind;
+  axis?: "horizontal" | "vertical";
+  moved: boolean;
+  heard: Set<string>;
+} | undefined;
+let jianpuNextLoopPoint: "a" | "b" = "a";
+
+function setJianpuLoopPoint(point: "a" | "b", target: number): void {
+  if (!score) return;
+  const duration = score.duration;
+  if (point === "a") {
+    setTimelineLoop(target, Math.min(duration, target + Math.max(0.05, duration / 100)), false);
+    jianpuNextLoopPoint = "b";
+    showImportStatus(`A 已设在 ${formatTime(target)}；再点一个简谱音符设 B`);
+  } else {
+    setTimelineLoop(Number(loopStart.value), target);
+    jianpuNextLoopPoint = "a";
+    showImportStatus(`A–B 已设：${formatTime(Number(loopStart.value))} ～ ${formatTime(Number(loopEnd.value))}`);
+  }
   seekTimelineTo(target, true);
+}
+
+jianpuContainer.addEventListener("pointerdown", (event) => {
+  if (!score || event.button !== 0) return;
+  cancelFollowPlayback();
+  const loopMarker = (event.target as HTMLElement).closest<HTMLElement>("[data-loop-point]");
+  const markerKind = loopMarker?.dataset.loopPoint;
+  const kind: TimelineDragKind = markerKind === "a" || markerKind === "b" ? markerKind : "seek";
+  jianpuDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    startTime: scorePointerTime(event) ?? lastScoreSeconds,
+    kind,
+    moved: false,
+    heard: new Set<string>(),
+  };
+  jianpuContainer.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+
+jianpuContainer.addEventListener("pointermove", (event) => {
+  if (!score || !jianpuDrag || jianpuDrag.pointerId !== event.pointerId) return;
+  const dx = event.clientX - jianpuDrag.startX;
+  const dy = event.clientY - jianpuDrag.startY;
+  if (!jianpuDrag.moved && Math.hypot(dx, dy) < 8) return;
+  jianpuDrag.moved = true;
+  jianpuDrag.axis ??= Math.abs(dx) >= Math.abs(dy) ? "horizontal" : "vertical";
+  const rect = jianpuContainer.getBoundingClientRect();
+  const ratio = jianpuDrag.axis === "horizontal"
+    ? (rect.width > 0 ? dx / rect.width : 0)
+    : (rect.height > 0 ? -dy / rect.height : 0);
+  const target = Math.max(0, Math.min(score.duration, jianpuDrag.startTime + ratio * score.duration));
+  if (jianpuDrag.kind === "a") {
+    setTimelineLoop(target, Number(loopEnd.value), false);
+  } else if (jianpuDrag.kind === "b") {
+    setTimelineLoop(Number(loopStart.value), target, false);
+  }
+  seekTimelineTo(target, false);
+  auditionTimeline(target, false, jianpuDrag.heard);
+  event.preventDefault();
+});
+
+function finishJianpuDrag(event: PointerEvent): void {
+  if (!score || !jianpuDrag || jianpuDrag.pointerId !== event.pointerId) return;
+  const drag = jianpuDrag;
+  jianpuDrag = undefined;
+  if (jianpuContainer.hasPointerCapture(event.pointerId)) jianpuContainer.releasePointerCapture(event.pointerId);
+  const target = scorePointerTime(event) ?? lastScoreSeconds;
+  if (drag.moved) {
+    if (drag.kind === "a" || drag.kind === "b") {
+      setTimelineLoop(Number(loopStart.value), Number(loopEnd.value));
+    }
+    auditionTimeline(lastScoreSeconds, true, drag.heard);
+    return;
+  }
+  if (loopEnabled.checked && navLoopMode.value !== "measure") {
+    setJianpuLoopPoint(jianpuNextLoopPoint, target);
+    return;
+  }
+  seekTimelineTo(target, true);
+}
+
+jianpuContainer.addEventListener("pointerup", finishJianpuDrag);
+jianpuContainer.addEventListener("pointercancel", (event) => {
+  if (!jianpuDrag || jianpuDrag.pointerId !== event.pointerId) return;
+  jianpuDrag = undefined;
+  if (jianpuContainer.hasPointerCapture(event.pointerId)) jianpuContainer.releasePointerCapture(event.pointerId);
 });
 
 osmdContainer.addEventListener("pointerup", (event) => {
@@ -3743,10 +3855,13 @@ timelineLoopToggle.addEventListener("click", () => {
       loopEnd.value = String(Math.min(duration, start + span));
     }
     loopEnabled.checked = true;
+    jianpuNextLoopPoint = "a";
   } else {
     loopEnabled.checked = false;
+    jianpuNextLoopPoint = "a";
   }
   updateLoopLabels();
+  syncJianpuLoopMarkers();
   rebuildPractice();
   seekTimelineTo(lastScoreSeconds, false);
 });
