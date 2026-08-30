@@ -3842,7 +3842,7 @@ jianpuContainer.addEventListener("pointermove", (event) => {
   jianpuDrag.axis ??= Math.abs(dx) >= Math.abs(dy) ? "horizontal" : "vertical";
   const rect = jianpuContainer.getBoundingClientRect();
   const rawRatio = jianpuDrag.axis === "horizontal"
-    ? (rect.width <= 0 ? 0 : dx / rect.width)
+    ? (rect.width <= 0 ? 0 : dx / rect.width * 2)
     : (rect.height <= 0 ? 0 : -dy / rect.height);
   const ratio = Math.max(-1, Math.min(1, rawRatio));
   const target = Math.max(0, Math.min(score.duration, jianpuDrag.startTime + ratio * jianpuDrag.horizontalSpan));
