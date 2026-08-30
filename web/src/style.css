@@ -590,8 +590,8 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 .jianpu-note-cell[data-loop-point] { cursor: grab; }
 .jianpu-note-cell[data-loop-point]:active { cursor: grabbing; }
 .jianpu-note-cell[data-loop-point="b"]::after { background: #a5b4fc; }
-.jianpu-container[data-next-loop-point="a"] .jianpu-note-cell[data-loop-point="a"]::after,
-.jianpu-container[data-next-loop-point="b"] .jianpu-note-cell[data-loop-point="b"]::after {
+.jianpu-container[data-active-loop-point="a"] .jianpu-note-cell[data-loop-point="a"]::after,
+.jianpu-container[data-active-loop-point="b"] .jianpu-note-cell[data-loop-point="b"]::after {
   outline: 2px solid #f8fafc;
   outline-offset: 2px;
   box-shadow: 0 0 10px rgba(248, 250, 252, 0.8);
@@ -832,6 +832,11 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
 }
 .loop-marker.marker-b {
   background: #ec4899;
+}
+.loop-marker[data-selected="true"] {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(255,255,255,.16), 0 3px 12px rgba(0,0,0,.45);
 }
 .timeline-playhead { position: absolute; z-index: 3; top: 5px; bottom: 5px; width: 2px; background: #e9f2ff; border-radius: 99px; box-shadow: 0 0 8px rgba(190,220,255,.95); transform: translateX(-1px); pointer-events: none; }
 .folder-toggle-btn {

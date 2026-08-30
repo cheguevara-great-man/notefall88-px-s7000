@@ -1656,11 +1656,17 @@ function playScrubTone(targetTime: number, heardDuringDrag?: Set<string>): void 
   }
 }
 
+let activeLoopPoint: "a" | "b" = "a";
+
 function syncTimelineLoopRegion(): void {
   const loopActive = Boolean(score && loopEnabled.checked && navLoopMode.value !== "measure");
   timelineLoopToggle.dataset.active = String(loopActive);
   timelineLoopToggle.setAttribute("aria-pressed", String(loopActive));
   timelineLoopToggle.setAttribute("aria-label", loopActive ? "关闭 A-B 循环编辑" : "开启 A-B 循环编辑");
+  timelineMarkerA.dataset.selected = String(activeLoopPoint === "a");
+  timelineMarkerB.dataset.selected = String(activeLoopPoint === "b");
+  timelineMarkerA.setAttribute("aria-pressed", String(activeLoopPoint === "a"));
+  timelineMarkerB.setAttribute("aria-pressed", String(activeLoopPoint === "b"));
   if (!score || !loopEnabled.checked || navLoopMode.value === "measure") {
     timelineLoopRegion.hidden = true;
     return;
@@ -1738,10 +1744,10 @@ function syncJianpuLoopMarkers(): void {
     note.removeAttribute("title");
   }
   if (!score || !loopEnabled.checked || navLoopMode.value === "measure") {
-    delete jianpuContainer.dataset.nextLoopPoint;
+    delete jianpuContainer.dataset.activeLoopPoint;
     return;
   }
-  jianpuContainer.dataset.nextLoopPoint = jianpuNextLoopPoint;
+  jianpuContainer.dataset.activeLoopPoint = activeLoopPoint;
   for (const [point, seconds] of [["a", Number(loopStart.value)], ["b", Number(loopEnd.value)]] as const) {
     let closest: HTMLElement | undefined;
     let distance = Infinity;
@@ -1760,6 +1766,12 @@ function syncJianpuLoopMarkers(): void {
       closest.title = `拖动以调整 ${label} 点`;
     }
   }
+}
+
+function setActiveLoopPoint(point: "a" | "b"): void {
+  activeLoopPoint = point;
+  syncTimelineLoopRegion();
+  syncJianpuLoopMarkers();
 }
 
 function configureLoopInputs(): void {
@@ -3611,6 +3623,9 @@ let timelineDrag: {
   current: number;
   heard: Set<string>;
   captureTarget: HTMLElement;
+  startX: number;
+  startY: number;
+  moved: boolean;
 } | undefined;
 let lastTimelineAuditionAt = -Infinity;
 let lastTimelineAuditionTarget = Number.NaN;
@@ -3634,20 +3649,54 @@ function updateTimelineDrag(target: number): void {
   if (!score || !timelineDrag) return;
   timelineDrag.current = target;
   if (timelineDrag.kind === "a") {
-    setTimelineLoop(target, Number(loopEnd.value), false);
+    const end = Number(loopEnd.value);
+    timelineDrag.current = Math.min(target, Math.max(0, end - 0.05));
+    setTimelineLoop(timelineDrag.current, end, false);
   } else if (timelineDrag.kind === "b") {
-    setTimelineLoop(Number(loopStart.value), target, false);
+    const start = Number(loopStart.value);
+    timelineDrag.current = Math.max(target, Math.min(score.duration, start + 0.05));
+    setTimelineLoop(start, timelineDrag.current, false);
   }
   // Both modes audition while moving. In normal mode this is a plain seek;
   // in A-B mode only the handles alter the loop boundaries.
-  seekTimelineTo(target, false);
-  auditionTimeline(target, false, timelineDrag.heard);
+  seekTimelineTo(timelineDrag.current, false);
+  auditionTimeline(timelineDrag.current, false, timelineDrag.heard);
 }
 
-function beginTimelineDrag(pointerId: number, kind: TimelineDragKind, target: number, captureTarget: HTMLElement): void {
+function beginTimelineDrag(
+  pointerId: number,
+  kind: TimelineDragKind,
+  target: number,
+  captureTarget: HTMLElement,
+  startX: number,
+  startY: number,
+): void {
   cancelFollowPlayback();
-  timelineDrag = { pointerId, kind, current: target, heard: new Set<string>(), captureTarget };
+  timelineDrag = {
+    pointerId,
+    kind,
+    current: target,
+    heard: new Set<string>(),
+    captureTarget,
+    startX,
+    startY,
+    moved: false,
+  };
   captureTarget.setPointerCapture(pointerId);
+  if (kind === "a" || kind === "b") {
+    // Pressing a handle selects which endpoint Jianpu taps edit. The endpoint
+    // itself only moves after an intentional drag.
+    setActiveLoopPoint(kind);
+  } else {
+    updateTimelineDrag(target);
+  }
+}
+
+function moveTimelineDrag(event: PointerEvent, target: number): void {
+  if (!timelineDrag || timelineDrag.pointerId !== event.pointerId) return;
+  const distance = Math.hypot(event.clientX - timelineDrag.startX, event.clientY - timelineDrag.startY);
+  if ((timelineDrag.kind === "a" || timelineDrag.kind === "b") && !timelineDrag.moved && distance < 6) return;
+  timelineDrag.moved ||= distance >= 6;
   updateTimelineDrag(target);
 }
 
@@ -3658,13 +3707,13 @@ timelineTrack.addEventListener("pointerdown", (event) => {
   const kind: TimelineDragKind = marker === timelineMarkerA ? "a"
     : marker === timelineMarkerB ? "b"
       : "seek";
-  beginTimelineDrag(event.pointerId, kind, target, timelineTrack);
+  beginTimelineDrag(event.pointerId, kind, target, timelineTrack, event.clientX, event.clientY);
   event.preventDefault();
 });
 
 timelineTrack.addEventListener("pointermove", (event) => {
   if (!timelineDrag || timelineDrag.pointerId !== event.pointerId) return;
-  updateTimelineDrag(timelineSecondsAt(event.clientX));
+  moveTimelineDrag(event, timelineSecondsAt(event.clientX));
   event.preventDefault();
 });
 
@@ -3675,6 +3724,7 @@ function finishTimelineDrag(event: PointerEvent): void {
   if (drag.captureTarget.hasPointerCapture(event.pointerId)) drag.captureTarget.releasePointerCapture(event.pointerId);
   if (!score) return;
   if (drag.kind === "a" || drag.kind === "b") {
+    if (!drag.moved) return;
     setTimelineLoop(Number(loopStart.value), Number(loopEnd.value));
     seekTimelineTo(drag.current, false);
     auditionTimeline(drag.current, true, drag.heard);
@@ -3710,7 +3760,7 @@ waterfallCanvas.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
   const target = waterfallRailTarget(event);
   if (!target) return;
-  beginTimelineDrag(event.pointerId, target.kind, target.seconds, waterfallCanvas);
+  beginTimelineDrag(event.pointerId, target.kind, target.seconds, waterfallCanvas, event.clientX, event.clientY);
   event.preventDefault();
 });
 
@@ -3718,7 +3768,7 @@ waterfallCanvas.addEventListener("pointermove", (event) => {
   if (!timelineDrag || timelineDrag.captureTarget !== waterfallCanvas || timelineDrag.pointerId !== event.pointerId) return;
   const rect = waterfallCanvas.getBoundingClientRect();
   const rail = phraseRailGeometry(rect.width, rect.height);
-  updateTimelineDrag(phraseRailSeconds(event.clientY, rect.top, rail, score?.duration ?? 0));
+  moveTimelineDrag(event, phraseRailSeconds(event.clientY, rect.top, rail, score?.duration ?? 0));
   event.preventDefault();
 });
 waterfallCanvas.addEventListener("pointerup", finishTimelineDrag);
@@ -3790,19 +3840,20 @@ let jianpuDrag: {
   moved: boolean;
   heard: Set<string>;
 } | undefined;
-let jianpuNextLoopPoint: "a" | "b" = "a";
-
 function setJianpuLoopPoint(point: "a" | "b", target: number): void {
   if (!score) return;
-  const duration = score.duration;
   if (point === "a") {
-    setTimelineLoop(target, Math.min(duration, target + Math.max(0.05, duration / 100)), false);
-    jianpuNextLoopPoint = "b";
-    showImportStatus(`A 已设在 ${formatTime(target)}；再点一个简谱音符设 B`);
+    const end = Number(loopEnd.value);
+    const nextA = Math.min(target, Math.max(0, end - 0.05));
+    setTimelineLoop(nextA, end, false);
+    target = nextA;
+    showImportStatus(`A 已设在 ${formatTime(target)}；当前继续编辑 A`);
   } else {
-    setTimelineLoop(Number(loopStart.value), target);
-    jianpuNextLoopPoint = "a";
-    showImportStatus(`A–B 已设：${formatTime(Number(loopStart.value))} ～ ${formatTime(Number(loopEnd.value))}`);
+    const start = Number(loopStart.value);
+    const nextB = Math.max(target, Math.min(score.duration, start + 0.05));
+    setTimelineLoop(start, nextB);
+    target = nextB;
+    showImportStatus(`B 已设在 ${formatTime(target)}；当前继续编辑 B`);
   }
   syncJianpuLoopMarkers();
   seekTimelineTo(target, true);
@@ -3814,6 +3865,7 @@ jianpuContainer.addEventListener("pointerdown", (event) => {
   const loopMarker = (event.target as HTMLElement).closest<HTMLElement>("[data-loop-point]");
   const markerKind = loopMarker?.dataset.loopPoint;
   const kind: TimelineDragKind = markerKind === "a" || markerKind === "b" ? markerKind : "seek";
+  if (kind === "a" || kind === "b") setActiveLoopPoint(kind);
   const startTime = kind === "a"
     ? Number(loopStart.value)
     : kind === "b"
@@ -3870,7 +3922,7 @@ function finishJianpuDrag(event: PointerEvent): void {
     return;
   }
   if (loopEnabled.checked && navLoopMode.value !== "measure") {
-    setJianpuLoopPoint(jianpuNextLoopPoint, target);
+    setJianpuLoopPoint(activeLoopPoint, target);
     return;
   }
   seekTimelineTo(target, true);
@@ -3917,10 +3969,10 @@ timelineLoopToggle.addEventListener("click", () => {
       loopEnd.value = String(Math.min(duration, start + span));
     }
     loopEnabled.checked = true;
-    jianpuNextLoopPoint = "a";
+    setActiveLoopPoint("a");
   } else {
     loopEnabled.checked = false;
-    jianpuNextLoopPoint = "a";
+    activeLoopPoint = "a";
   }
   updateLoopLabels();
   syncJianpuLoopMarkers();
