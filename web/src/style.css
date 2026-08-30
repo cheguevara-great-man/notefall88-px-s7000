@@ -585,8 +585,17 @@ footer { justify-content: space-between; gap: 20px; color: #727d90; font-size: 1
   font: 800 10px/1.2 ui-sans-serif, system-ui, sans-serif;
   text-align: center;
   content: attr(data-loop-point);
+  text-transform: uppercase;
 }
+.jianpu-note-cell[data-loop-point] { cursor: grab; }
+.jianpu-note-cell[data-loop-point]:active { cursor: grabbing; }
 .jianpu-note-cell[data-loop-point="b"]::after { background: #a5b4fc; }
+.jianpu-container[data-next-loop-point="a"] .jianpu-note-cell[data-loop-point="a"]::after,
+.jianpu-container[data-next-loop-point="b"] .jianpu-note-cell[data-loop-point="b"]::after {
+  outline: 2px solid #f8fafc;
+  outline-offset: 2px;
+  box-shadow: 0 0 10px rgba(248, 250, 252, 0.8);
+}
 .jianpu-pitch-main {
   font-size: 22px;
   font-weight: bold;

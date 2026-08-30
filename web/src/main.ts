@@ -1733,8 +1733,15 @@ function setTimelineLoop(start: number, end: number, rebuild = true): void {
 function syncJianpuLoopMarkers(): void {
   for (const note of jianpuContainer.querySelectorAll<HTMLElement>("[data-note-start]")) {
     note.removeAttribute("data-loop-point");
+    note.removeAttribute("aria-label");
+    note.removeAttribute("role");
+    note.removeAttribute("title");
   }
-  if (!score || !loopEnabled.checked || navLoopMode.value === "measure") return;
+  if (!score || !loopEnabled.checked || navLoopMode.value === "measure") {
+    delete jianpuContainer.dataset.nextLoopPoint;
+    return;
+  }
+  jianpuContainer.dataset.nextLoopPoint = jianpuNextLoopPoint;
   for (const [point, seconds] of [["a", Number(loopStart.value)], ["b", Number(loopEnd.value)]] as const) {
     let closest: HTMLElement | undefined;
     let distance = Infinity;
@@ -1745,7 +1752,13 @@ function syncJianpuLoopMarkers(): void {
         distance = nextDistance;
       }
     }
-    closest?.setAttribute("data-loop-point", point);
+    if (closest) {
+      const label = point.toUpperCase();
+      closest.setAttribute("data-loop-point", point);
+      closest.setAttribute("role", "button");
+      closest.setAttribute("aria-label", `循环端点 ${label}，可拖动`);
+      closest.title = `拖动以调整 ${label} 点`;
+    }
   }
 }
 
@@ -3711,19 +3724,46 @@ waterfallCanvas.addEventListener("pointermove", (event) => {
 waterfallCanvas.addEventListener("pointerup", finishTimelineDrag);
 waterfallCanvas.addEventListener("pointercancel", finishTimelineDrag);
 
-function scorePointerTime(event: PointerEvent): number | undefined {
+function jianpuTimeAtPoint(clientX: number, clientY: number): number | undefined {
   if (!score) return undefined;
-  const note = (event.target as HTMLElement).closest<HTMLElement>("[data-note-start]");
+  const elements = document.elementsFromPoint(clientX, clientY);
+  const note = elements
+    .map((element) => (element as HTMLElement).closest<HTMLElement>("[data-note-start]"))
+    .find((element) => element && jianpuContainer.contains(element));
   if (note) return Number(note.dataset.noteStart);
-  const measure = (event.target as HTMLElement).closest<HTMLElement>("[data-measure-start]");
+
+  const measure = elements
+    .map((element) => (element as HTMLElement).closest<HTMLElement>("[data-measure-start]"))
+    .find((element) => element && jianpuContainer.contains(element));
   if (measure) {
     const start = Number(measure.dataset.measureStart);
     const end = Number(measure.dataset.measureEnd);
     const rect = measure.getBoundingClientRect();
-    const ratio = rect.width <= 0 ? 0 : Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const ratio = rect.width <= 0 ? 0 : Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     return start + ratio * Math.max(0, end - start);
   }
-  return undefined;
+
+  // The gaps between measure cards still map to the closest visible measure,
+  // so the finger remains attached to the score instead of jumping by song length.
+  let closest: HTMLElement | undefined;
+  let closestDistance = Infinity;
+  for (const candidate of jianpuContainer.querySelectorAll<HTMLElement>("[data-measure-start]")) {
+    const rect = candidate.getBoundingClientRect();
+    if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) continue;
+    const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
+    const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+    const distance = Math.hypot(dx, dy);
+    if (distance < closestDistance) {
+      closest = candidate;
+      closestDistance = distance;
+    }
+  }
+  if (!closest) return undefined;
+  const start = Number(closest.dataset.measureStart);
+  const end = Number(closest.dataset.measureEnd);
+  const rect = closest.getBoundingClientRect();
+  const ratio = rect.width <= 0 ? 0 : Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  return start + ratio * Math.max(0, end - start);
 }
 
 let jianpuDrag: {
@@ -3732,7 +3772,6 @@ let jianpuDrag: {
   startY: number;
   startTime: number;
   kind: TimelineDragKind;
-  axis?: "horizontal" | "vertical";
   moved: boolean;
   heard: Set<string>;
 } | undefined;
@@ -3750,6 +3789,7 @@ function setJianpuLoopPoint(point: "a" | "b", target: number): void {
     jianpuNextLoopPoint = "a";
     showImportStatus(`A–B 已设：${formatTime(Number(loopStart.value))} ～ ${formatTime(Number(loopEnd.value))}`);
   }
+  syncJianpuLoopMarkers();
   seekTimelineTo(target, true);
 }
 
@@ -3763,7 +3803,7 @@ jianpuContainer.addEventListener("pointerdown", (event) => {
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
-    startTime: scorePointerTime(event) ?? lastScoreSeconds,
+    startTime: jianpuTimeAtPoint(event.clientX, event.clientY) ?? lastScoreSeconds,
     kind,
     moved: false,
     heard: new Set<string>(),
@@ -3778,12 +3818,8 @@ jianpuContainer.addEventListener("pointermove", (event) => {
   const dy = event.clientY - jianpuDrag.startY;
   if (!jianpuDrag.moved && Math.hypot(dx, dy) < 8) return;
   jianpuDrag.moved = true;
-  jianpuDrag.axis ??= Math.abs(dx) >= Math.abs(dy) ? "horizontal" : "vertical";
-  const rect = jianpuContainer.getBoundingClientRect();
-  const ratio = jianpuDrag.axis === "horizontal"
-    ? (rect.width > 0 ? dx / rect.width : 0)
-    : (rect.height > 0 ? -dy / rect.height : 0);
-  const target = Math.max(0, Math.min(score.duration, jianpuDrag.startTime + ratio * score.duration));
+  const target = jianpuTimeAtPoint(event.clientX, event.clientY);
+  if (target === undefined) return;
   if (jianpuDrag.kind === "a") {
     setTimelineLoop(target, Number(loopEnd.value), false);
   } else if (jianpuDrag.kind === "b") {
@@ -3799,7 +3835,7 @@ function finishJianpuDrag(event: PointerEvent): void {
   const drag = jianpuDrag;
   jianpuDrag = undefined;
   if (jianpuContainer.hasPointerCapture(event.pointerId)) jianpuContainer.releasePointerCapture(event.pointerId);
-  const target = scorePointerTime(event) ?? lastScoreSeconds;
+  const target = jianpuTimeAtPoint(event.clientX, event.clientY) ?? drag.startTime;
   if (drag.moved) {
     if (drag.kind === "a" || drag.kind === "b") {
       setTimelineLoop(Number(loopStart.value), Number(loopEnd.value));
