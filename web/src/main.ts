@@ -3766,12 +3766,27 @@ function jianpuTimeAtPoint(clientX: number, clientY: number): number | undefined
   return start + ratio * Math.max(0, end - start);
 }
 
+function jianpuHorizontalSpanAtPoint(clientX: number, clientY: number): number {
+  if (!score) return 8;
+  const system = document.elementsFromPoint(clientX, clientY)
+    .map((element) => (element as HTMLElement).closest<HTMLElement>(".jianpu-system"))
+    .find((element) => element && jianpuContainer.contains(element));
+  if (!system) return Math.min(score.duration, 8);
+  const measures = [...system.querySelectorAll<HTMLElement>("[data-measure-start]")];
+  if (measures.length === 0) return Math.min(score.duration, 8);
+  const start = Math.min(...measures.map((measure) => Number(measure.dataset.measureStart)));
+  const end = Math.max(...measures.map((measure) => Number(measure.dataset.measureEnd)));
+  return Math.max(2, Math.min(score.duration, end - start));
+}
+
 let jianpuDrag: {
   pointerId: number;
   startX: number;
   startY: number;
   startTime: number;
+  horizontalSpan: number;
   kind: TimelineDragKind;
+  axis?: "horizontal" | "vertical";
   moved: boolean;
   heard: Set<string>;
 } | undefined;
@@ -3799,11 +3814,17 @@ jianpuContainer.addEventListener("pointerdown", (event) => {
   const loopMarker = (event.target as HTMLElement).closest<HTMLElement>("[data-loop-point]");
   const markerKind = loopMarker?.dataset.loopPoint;
   const kind: TimelineDragKind = markerKind === "a" || markerKind === "b" ? markerKind : "seek";
+  const startTime = kind === "a"
+    ? Number(loopStart.value)
+    : kind === "b"
+      ? Number(loopEnd.value)
+      : lastScoreSeconds;
   jianpuDrag = {
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
-    startTime: jianpuTimeAtPoint(event.clientX, event.clientY) ?? lastScoreSeconds,
+    startTime,
+    horizontalSpan: jianpuHorizontalSpanAtPoint(event.clientX, event.clientY),
     kind,
     moved: false,
     heard: new Set<string>(),
@@ -3818,8 +3839,13 @@ jianpuContainer.addEventListener("pointermove", (event) => {
   const dy = event.clientY - jianpuDrag.startY;
   if (!jianpuDrag.moved && Math.hypot(dx, dy) < 8) return;
   jianpuDrag.moved = true;
-  const target = jianpuTimeAtPoint(event.clientX, event.clientY);
-  if (target === undefined) return;
+  jianpuDrag.axis ??= Math.abs(dx) >= Math.abs(dy) ? "horizontal" : "vertical";
+  const rect = jianpuContainer.getBoundingClientRect();
+  const rawRatio = jianpuDrag.axis === "horizontal"
+    ? (rect.width <= 0 ? 0 : dx / rect.width)
+    : (rect.height <= 0 ? 0 : -dy / rect.height);
+  const ratio = Math.max(-1, Math.min(1, rawRatio));
+  const target = Math.max(0, Math.min(score.duration, jianpuDrag.startTime + ratio * jianpuDrag.horizontalSpan));
   if (jianpuDrag.kind === "a") {
     setTimelineLoop(target, Number(loopEnd.value), false);
   } else if (jianpuDrag.kind === "b") {
