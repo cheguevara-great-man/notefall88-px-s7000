@@ -28,7 +28,7 @@
     "@playwright/cli": "0.1.17",
     "@types/node": "24.2.0",
     "@vitest/coverage-v8": "4.1.10",
-    "fake-indexeddb": "6.2.2",
+    "fake-indexeddb": "6.2.5",
     "typescript": "5.9.2",
     "vite": "8.2.0",
     "vite-node": "6.0.0",
