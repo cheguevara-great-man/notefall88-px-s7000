@@ -23,7 +23,7 @@ jobs:
       - run: python scripts/generate.py --check
       - run: python -m pytest
       - run: python scripts/package_manufacturing.py --output dist/notefall88-manufacturing-ci.zip
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: notefall88-manufacturing
           path: dist/notefall88-manufacturing-ci.zip
@@ -54,7 +54,7 @@ jobs:
       - run: npm run smoke:pwa-offline
       - run: npx playwright-cli install-browser webkit --with-deps
       - run: NOTEFALL_BROWSER=webkit npm run smoke:browser
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: notefall88-browser-smoke
@@ -63,7 +63,7 @@ jobs:
             output/playwright/pwa-offline-*
           if-no-files-found: ignore
           include-hidden-files: true
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: notefall-studio-web
           path: dist/studio
@@ -128,7 +128,7 @@ jobs:
       # on Gradle's wrapper is not preserved.  Invoke it explicitly via Bash.
       - run: bash ./gradlew assembleDebug
         working-directory: studio/android
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: notefall-studio-android-debug
           path: studio/android/app/build/outputs/apk/debug/app-debug.apk
