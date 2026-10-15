@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@playwright/cli": "0.1.17",
-    "@types/node": "24.2.0",
+    "@types/node": "26.2.0",
     "@vitest/coverage-v8": "4.1.10",
     "fake-indexeddb": "6.2.2",
     "typescript": "5.9.2",
