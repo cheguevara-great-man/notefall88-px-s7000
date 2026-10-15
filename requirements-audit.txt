@@ -1,2 +1,2 @@
 # Optional independent MusicXML cross-checker; not required to build NoteFall.
-music21==9.9.1
+music21==10.5.0
